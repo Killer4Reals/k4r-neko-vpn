@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+_ref/
+_shots/
+app/vite.log
+app/tauri.log
+*.log
+.DS_Store

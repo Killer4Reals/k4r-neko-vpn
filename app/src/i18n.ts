@@ -1,0 +1,95 @@
+export type Lang = "ru" | "en";
+
+type Dict = Record<string, { ru: string; en: string }>;
+
+const dict: Dict = {
+  appName: { ru: "K4R Neko VPN", en: "K4R Neko VPN" },
+  tagBeta: { ru: "beta", en: "beta" },
+
+  navHome: { ru: "Подключение", en: "Connection" },
+  navServers: { ru: "Серверы", en: "Servers" },
+  navSplit: { ru: "Разделение", en: "Split tunnel" },
+  navZapret: { ru: "Защита", en: "Protection" },
+  navLogs: { ru: "Журнал", en: "Log" },
+  navSettings: { ru: "Настройки", en: "Settings" },
+
+  stOff: { ru: "Отключено", en: "Disconnected" },
+  stConnecting: { ru: "Подключение…", en: "Connecting…" },
+  stConnected: { ru: "Защищено", en: "Protected" },
+  stError: { ru: "Ошибка", en: "Error" },
+
+  hintOff: { ru: "Нажми, чтобы включить", en: "Tap to connect" },
+  hintConnecting: { ru: "Поднимаем туннель", en: "Bringing tunnel up" },
+  hintConnected: { ru: "Нажми, чтобы выключить", en: "Tap to disconnect" },
+
+  autoPick: { ru: "Авто: быстрейший", en: "Auto: fastest" },
+  servers: { ru: "Серверы", en: "Servers" },
+  refresh: { ru: "Обновить", en: "Refresh" },
+  updated: { ru: "обновлено", en: "updated" },
+
+  down: { ru: "Скачивание", en: "Download" },
+  up: { ru: "Отдача", en: "Upload" },
+  uptime: { ru: "В сети", en: "Uptime" },
+
+  tunnelGuard: { ru: "Защита туннеля", en: "Tunnel guard" },
+  killSwitch: { ru: "Блокировка при обрыве", en: "Kill switch" },
+
+  serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },
+  serversSub: { ru: "Список приходит из твоей подписки", en: "The list comes from your subscription" },
+  subUrl: { ru: "Ссылка подписки", en: "Subscription URL" },
+  subHeaders: { ru: "Заголовки запроса", en: "Request headers" },
+  subHeadersHint: {
+    ru: "Некоторые провайдеры отдают конфиги только определённым клиентам. Здесь можно вписать нужные заголовки.",
+    en: "Some providers only serve configs to specific clients. Add the required headers here."
+  },
+  importLink: { ru: "Импорт ссылки", en: "Import link" },
+  importFile: { ru: "Импорт файла", en: "Import file" },
+  addProfile: { ru: "Добавить подписку", en: "Add subscription" },
+
+  splitTitle: { ru: "Что идёт через VPN", en: "What goes through VPN" },
+  splitSub: {
+    ru: "Всё, что не в списке, работает напрямую — быстрее и без нагрузки на сервер",
+    en: "Everything not listed goes direct — faster, less load on the server"
+  },
+  viaVpn: { ru: "Через VPN", en: "Via VPN" },
+  direct: { ru: "Напрямую", en: "Direct" },
+  searchApp: { ru: "Поиск приложения", en: "Search apps" },
+  addApp: { ru: "Добавить приложение", en: "Add application" },
+
+  zapretTitle: { ru: "Защита туннеля", en: "Tunnel guard" },
+  zapretSub: {
+    ru: "Zapret 2 маскирует туннель от DPI, чтобы соединение не рвали",
+    en: "Zapret 2 disguises the tunnel from DPI so the connection is not cut"
+  },
+  preset: { ru: "Пресет", en: "Preset" },
+  zapretPath: { ru: "Папка Zapret", en: "Zapret folder" },
+  autoRestart: { ru: "Перезапускать при сбое", en: "Restart on failure" },
+  health: { ru: "Состояние", en: "Health" },
+  unknown: { ru: "не проверено", en: "not checked" },
+
+  settingsTitle: { ru: "Настройки", en: "Settings" },
+  language: { ru: "Язык", en: "Language" },
+  autostart: { ru: "Запускать с Windows", en: "Start with Windows" },
+  tray: { ru: "Сворачивать в трей", en: "Minimize to tray" },
+  dns: { ru: "Защита от утечки DNS", en: "DNS leak protection" },
+  ipv6: { ru: "Разрешить IPv6", en: "Allow IPv6" },
+  theme: { ru: "Тема", en: "Theme" },
+  themeDark: { ru: "Тёмная", en: "Dark" },
+  about: { ru: "О приложении", en: "About" },
+  version: { ru: "Версия", en: "Version" },
+  core: { ru: "Ядро", en: "Core" },
+  coreValue: { ru: "Rust + sidecar (0.1)", en: "Rust + sidecar (0.1)" },
+
+  logsTitle: { ru: "Журнал", en: "Log" },
+  logsSub: { ru: "Ключи и адреса вырезаны", en: "Keys and addresses are redacted" },
+  copy: { ru: "Скопировать", en: "Copy" },
+};
+
+export function t(lang: Lang, key: keyof typeof dict | string): string {
+  const entry = (dict as Dict)[key as string];
+  return entry ? entry[lang] : String(key);
+}
+
+export function useT(lang: Lang) {
+  return (key: string) => t(lang, key);
+}
