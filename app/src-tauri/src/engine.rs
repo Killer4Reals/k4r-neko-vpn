@@ -148,20 +148,29 @@ pub fn is_elevated() -> bool {
         .is_ok()
 }
 
+/// Finds the bundled engine in every layout we ship: installed, portable, dev.
 pub fn sidecar_path(resource_dir: &Path) -> PathBuf {
-    let bundled = resource_dir.join("bin").join("sing-box.exe");
-    if bundled.exists() {
-        return bundled;
+    let mut candidates = vec![
+        resource_dir.join("bin").join("sing-box.exe"),
+        resource_dir.join("resources").join("bin").join("sing-box.exe"),
+    ];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("bin").join("sing-box.exe"));
+            candidates.push(dir.join("resources").join("bin").join("sing-box.exe"));
+        }
     }
-    // dev fallback: resources live in the source tree
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources")
-        .join("bin")
-        .join("sing-box.exe");
-    if dev.exists() {
-        return dev;
-    }
-    bundled
+    candidates.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("bin")
+            .join("sing-box.exe"),
+    );
+    candidates
+        .iter()
+        .find(|p| p.exists())
+        .cloned()
+        .unwrap_or_else(|| candidates[0].clone())
 }
 
 pub fn check_config(bin: &Path, config: &Path) -> Result<(), String> {

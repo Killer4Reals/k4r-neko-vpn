@@ -16,11 +16,118 @@
   --cyan: #22d3ee;
   --danger: #ff7a85;
   --danger-soft: rgba(255, 122, 133, 0.12);
+  --ok-text: #d6ffcc;
+  --ok-bg: rgba(57, 255, 20, 0.12);
+  --info-text: #bfefff;
+  --info-bg: rgba(34, 211, 238, 0.1);
+  --warn-text: #ffe6a8;
+  --warn-bg: rgba(255, 214, 102, 0.08);
+  --warn-line: rgba(255, 214, 102, 0.28);
+  --danger-text: #ffd2d6;
+  --danger-bg: rgba(255, 122, 133, 0.12);
+  --on-accent: #06210a;
+  --grid-line: rgba(255, 255, 255, 0.022);
+  --orb-bg: radial-gradient(circle at 50% 38%, #131a24, #0a0d13 70%);
+  --stat-bg: rgba(11, 13, 19, 0.7);
+  --rail-sheen: rgba(255, 255, 255, 0.012);
   --radius-lg: 18px;
   --radius-md: 12px;
   --radius-sm: 9px;
   --font: "Manrope Variable", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --mono: "Cascadia Mono", ui-monospace, "Consolas", monospace;
+}
+
+[data-theme="light"] {
+  --bg-0: #efece6;
+  --bg-1: #f7f5f1;
+  --bg-2: #ffffff;
+  --bg-3: #f1eee8;
+  --line: #ddd7cd;
+  --line-soft: #e7e2d9;
+  --txt: #1b1a1f;
+  --txt-2: #5c5a63;
+  --txt-3: #8b8792;
+  --green: #128a3f;
+  --green-soft: rgba(18, 138, 63, 0.1);
+  --green-line: rgba(18, 138, 63, 0.35);
+  --violet: #7c3aed;
+  --violet-soft: rgba(124, 58, 237, 0.1);
+  --cyan: #0e7490;
+  --danger: #c02b3a;
+  --danger-soft: rgba(192, 43, 58, 0.1);
+  --ok-text: #0d5c2c;
+  --ok-bg: rgba(18, 138, 63, 0.1);
+  --info-text: #0b5566;
+  --info-bg: rgba(14, 116, 144, 0.1);
+  --warn-text: #7a5200;
+  --warn-bg: rgba(214, 158, 0, 0.12);
+  --warn-line: rgba(214, 158, 0, 0.35);
+  --danger-text: #8f1f2b;
+  --danger-bg: rgba(192, 43, 58, 0.09);
+  --on-accent: #ffffff;
+  --grid-line: rgba(0, 0, 0, 0.035);
+  --orb-bg: radial-gradient(circle at 50% 38%, #ffffff, #f2efe9 72%);
+  --stat-bg: rgba(255, 255, 255, 0.85);
+  --rail-sheen: rgba(0, 0, 0, 0.012);
+}
+
+[data-theme="mascot"] {
+  --bg-0: #0a0512;
+  --bg-1: #100819;
+  --bg-2: #170c24;
+  --bg-3: #1f1030;
+  --line: #2e1a45;
+  --line-soft: #241436;
+  --txt: #f2e9ff;
+  --txt-2: #b9a6d4;
+  --txt-3: #7f6b9c;
+  --green: #39ff14;
+  --green-soft: rgba(57, 255, 20, 0.12);
+  --green-line: rgba(57, 255, 20, 0.34);
+  --violet: #c084fc;
+  --violet-soft: rgba(192, 132, 252, 0.16);
+  --cyan: #22d3ee;
+  --danger: #ff7a85;
+  --danger-soft: rgba(255, 122, 133, 0.12);
+  --ok-text: #d9ffd0;
+  --ok-bg: rgba(57, 255, 20, 0.12);
+  --info-text: #bfefff;
+  --info-bg: rgba(34, 211, 238, 0.1);
+  --warn-text: #ffe6a8;
+  --warn-bg: rgba(255, 214, 102, 0.08);
+  --warn-line: rgba(255, 214, 102, 0.28);
+  --danger-text: #ffd2d6;
+  --danger-bg: rgba(255, 122, 133, 0.12);
+  --on-accent: #06210a;
+  --grid-line: rgba(192, 132, 252, 0.05);
+  --orb-bg: radial-gradient(circle at 50% 38%, #241238, #120a1c 72%);
+  --stat-bg: rgba(23, 12, 36, 0.75);
+  --rail-sheen: rgba(192, 132, 252, 0.03);
+}
+
+/* Light theme needs explicit surfaces: some components read as "dark chrome"
+   when they inherit the neutral panel colour. */
+[data-theme="light"] .server[aria-current="true"],
+[data-theme="light"] .btn,
+[data-theme="light"] .app-item .ico,
+[data-theme="light"] .seg button[data-on="true"],
+[data-theme="light"] .chip {
+  background: #f1eee8;
+  color: #1b1a1f;
+}
+[data-theme="light"] .btn.primary {
+  background: #128a3f;
+  color: #ffffff;
+}
+[data-theme="light"] .chip[data-on="true"] {
+  background: rgba(18, 138, 63, 0.1);
+  color: #0d5c2c;
+}
+[data-theme="light"] .orb {
+  box-shadow: 0 18px 50px -28px rgba(18, 138, 63, 0.5);
+}
+[data-theme="light"] .mascot {
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.18));
 }
 
 * {
@@ -158,7 +265,7 @@ input {
   align-items: center;
   padding: 14px 0;
   gap: 6px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.012), transparent 40%);
+  background: linear-gradient(180deg, var(--rail-sheen), transparent 40%);
 }
 
 .rail .nav {
@@ -270,8 +377,8 @@ input {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 34px 34px;
   mask-image: radial-gradient(circle at 50% 42%, #000 35%, transparent 78%);
   pointer-events: none;
@@ -298,18 +405,18 @@ input {
   background: var(--txt-3);
 }
 .status-pill[data-state="connected"] {
-  color: #d6ffcc;
+  color: var(--ok-text);
   border-color: var(--green-line);
-  background: var(--green-soft);
+  background: var(--ok-bg);
 }
 .status-pill[data-state="connected"] .dot {
   background: var(--green);
   box-shadow: 0 0 9px var(--green);
 }
 .status-pill[data-state="connecting"] {
-  color: #bfefff;
+  color: var(--info-text);
   border-color: rgba(34, 211, 238, 0.35);
-  background: rgba(34, 211, 238, 0.1);
+  background: var(--info-bg);
 }
 .status-pill[data-state="connecting"] .dot {
   background: var(--cyan);
@@ -317,7 +424,7 @@ input {
   animation: pulse 1.1s ease-in-out infinite;
 }
 .status-pill[data-state="error"] {
-  color: #ffd2d6;
+  color: var(--danger-text);
   border-color: rgba(255, 122, 133, 0.4);
   background: var(--danger-soft);
 }
@@ -345,7 +452,7 @@ input {
   display: grid;
   place-items: center;
   border: 1px solid var(--line);
-  background: radial-gradient(circle at 50% 38%, #131a24, #0a0d13 70%);
+  background: var(--orb-bg);
   transition: border-color 0.25s, box-shadow 0.35s;
   z-index: 1;
 }
@@ -463,7 +570,7 @@ input {
   padding: 9px 12px;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-md);
-  background: rgba(11, 13, 19, 0.7);
+  background: var(--stat-bg);
 }
 .stat .k {
   font-size: 10.5px;
@@ -506,7 +613,7 @@ input {
   border-color: #2b3341;
 }
 .chip[data-on="true"] {
-  color: #cfe9c7;
+  color: var(--ok-text);
   border-color: var(--green-line);
   background: rgba(57, 255, 20, 0.07);
 }
@@ -598,7 +705,7 @@ input {
   background: var(--bg-3);
 }
 .server[aria-current="true"] {
-  background: var(--bg-3);
+  background: var(--green-soft);
   border-color: var(--green-line);
 }
 .server .flag {
@@ -665,7 +772,7 @@ input {
   padding: 10px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--line);
-  background: var(--bg-3);
+  background: var(--bg-2);
   color: var(--txt);
   font-weight: 650;
   font-size: 12.5px;
@@ -676,16 +783,16 @@ input {
   transition: background 0.15s, border-color 0.15s, transform 0.06s;
 }
 .btn:hover {
-  border-color: #2b3646;
-  background: #171c26;
+  border-color: var(--line);
+  background: var(--bg-3);
 }
 .btn:active {
   transform: translateY(1px);
 }
 .btn.primary {
   background: var(--green);
-  border-color: #57ff37;
-  color: #06210a;
+  border-color: var(--green);
+  color: var(--on-accent);
   box-shadow: 0 10px 30px -14px rgba(57, 255, 20, 0.75);
 }
 .btn.primary:hover {
@@ -862,9 +969,9 @@ input {
   align-items: center;
   gap: 12px;
   padding: 9px 14px;
-  background: rgba(255, 214, 102, 0.08);
-  border-bottom: 1px solid rgba(255, 214, 102, 0.22);
-  color: #ffe6a8;
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-line);
+  color: var(--warn-text);
   font-size: 12px;
 }
 .banner span {
@@ -883,9 +990,9 @@ input {
   margin-top: 10px;
   padding: 9px 11px;
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 214, 102, 0.28);
-  background: rgba(255, 214, 102, 0.07);
-  color: #ffe6a8;
+  border: 1px solid var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn-text);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -895,8 +1002,8 @@ input {
   text-align: center;
   font-size: 12px;
   line-height: 1.5;
-  color: #ffd2d6;
-  background: var(--danger-soft);
+  color: var(--danger-text);
+  background: var(--danger-bg);
   border: 1px solid rgba(255, 122, 133, 0.3);
   border-radius: var(--radius-md);
   padding: 7px 11px;
@@ -936,7 +1043,7 @@ input {
   color: var(--txt-2);
 }
 .tag.beta {
-  color: #ffe6a8;
-  border-color: rgba(255, 214, 102, 0.35);
-  background: rgba(255, 214, 102, 0.08);
+  color: var(--warn-text);
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
 }

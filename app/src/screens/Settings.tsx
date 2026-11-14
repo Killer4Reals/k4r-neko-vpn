@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
+import type { Theme } from "../App";
 import { api, inTauri } from "../api";
 
 type Props = {
@@ -10,10 +11,12 @@ type Props = {
   setKillSwitch: (v: boolean) => void;
   autostart: boolean;
   setAutostart: (v: boolean) => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
 };
 
 export function SettingsScreen(p: Props) {
-  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart } = p;
+  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const [tray, setTray] = useState(true);
   const [deviceId, setDeviceId] = useState("");
   const [dns, setDns] = useState(true);
@@ -47,9 +50,18 @@ export function SettingsScreen(p: Props) {
         <div className="row">
           <div className="txt">
             <b>{t("theme")}</b>
+            <span>{t("themeHint")}</span>
           </div>
           <div className="seg">
-            <button data-on>{t("themeDark")}</button>
+            <button data-on={theme === "dark"} onClick={() => setTheme("dark")}>
+              {t("themeDark")}
+            </button>
+            <button data-on={theme === "light"} onClick={() => setTheme("light")}>
+              {t("themeLight")}
+            </button>
+            <button data-on={theme === "mascot"} onClick={() => setTheme("mascot")}>
+              {t("themeMascot")}
+            </button>
           </div>
         </div>
       </div>

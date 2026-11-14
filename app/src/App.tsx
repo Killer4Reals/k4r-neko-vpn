@@ -24,6 +24,7 @@ import { LogsScreen } from "./screens/Logs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export type Screen = "home" | "servers" | "split" | "zapret" | "logs" | "settings";
+export type Theme = "dark" | "light" | "mascot";
 
 const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "home", key: "navHome", icon: PowerIcon },
@@ -40,6 +41,12 @@ const DEFAULT_UA = "K4R-Neko-VPN/0.1";
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
+  const [theme, setTheme] = useState<Theme>(
+    () =>
+      (initial.get("theme") as Theme) ||
+      (localStorage.getItem("k4r.theme") as Theme) ||
+      "dark",
+  );
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
   const [conn, setConn] = useState<ConnState>((initial.get("state") as ConnState) || "idle");
   const [selectedId, setSelectedId] = useState(demoCatalog[0].id);
@@ -61,6 +68,11 @@ export default function App() {
   const win = inTauri ? getCurrentWindow() : null;
 
   const t = useT(lang);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("k4r.theme", theme);
+  }, [theme]);
 
   const viewServers = useMemo<Server[]>(() => {
     if (profiles.length === 0) return demoCatalog;
@@ -369,6 +381,8 @@ export default function App() {
               setKillSwitch={setKillSwitch}
               autostart={autostart}
               setAutostart={setAutostart}
+              theme={theme}
+              setTheme={setTheme}
             />
           )}
         </main>
