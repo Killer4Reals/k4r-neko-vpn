@@ -143,6 +143,8 @@ def make_states() -> None:
         ("state_connected_raw.png", "state_connected.png"),
         ("state_error_raw.png", "state_error.png"),
         ("state_empty_raw.png", "state_empty.png"),
+        ("state_log_empty_raw.png", "state_log_empty.png"),
+        ("state_wave_raw.png", "state_wave.png"),
         ("banner_hero_raw.png", "banner_hero.png"),
     ):
         im = cutout(RAW / src, OUT / dst, trim=False)
@@ -156,14 +158,14 @@ def main() -> None:
     # keep the original canvas for states: character stays in place across frames
     idle = cutout(RAW / "state_idle_sleep.png", OUT / "state_idle.png", trim=False)
     recolor_z(idle).save(OUT / "state_idle.png")
-    cutout(RAW / "state_connecting.png", OUT / "state_connecting.png", trim=False)
+    cutout(RAW / "state_connecting2_raw.png", OUT / "state_connecting.png", trim=False)
     make_states()
     # already dark artwork: no keying, just ship it
     for src, dst, size in (("bg_texture_raw.png", "bg_texture.png", 720),
                            ("banner_installer_raw.png", "banner_installer.png", 1024)):
         im = Image.open(RAW / src).convert("RGB")
         im.resize((size, int(size * im.height / im.width)), Image.LANCZOS).save(OUT / dst)
-    make_glyph(RAW / "glyph.png")
+    make_glyph(RAW / "glyph2_raw.png")
     for p in sorted(OUT.iterdir()):
         print(f"{p.name:24} {Image.open(p).size}")
 

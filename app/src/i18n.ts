@@ -29,6 +29,7 @@ const dict: Dict = {
     en: "Paste your provider link and the servers will show up here.",
   },
   welcomeCta: { ru: "Добавить подписку", en: "Add subscription" },
+  logsEmptyTitle: { ru: "Журнал пуст", en: "Log is empty" },
   noServersTitle: { ru: "Список пуст", en: "Nothing here yet" },
   noServersText: {
     ru: "Обнови подписку или вставь ссылку на сервер вручную.",

@@ -39,12 +39,22 @@ export function LogsScreen({ t, conn, error }: Props) {
         </button>
       </div>
 
-      <div
-        className="card logbox"
-        style={{ fontFamily: "var(--mono)", fontSize: 11.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}
-      >
-        {text ? text : <span className="muted">{t("logsEmpty")}</span>}
-      </div>
+      {text ? (
+        <div
+          className="card logbox"
+          style={{ fontFamily: "var(--mono)", fontSize: 11.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}
+        >
+          {text}
+        </div>
+      ) : (
+        <div className="card empty-box">
+          <img src="/mascot/log-empty.webp" alt="" draggable={false} />
+          <div>
+            <h3>{t("logsEmptyTitle")}</h3>
+            <p className="muted">{t("logsEmpty")}</p>
+          </div>
+        </div>
+      )}
 
       <div className="muted" style={{ marginTop: 10 }}>
         state: {conn}
