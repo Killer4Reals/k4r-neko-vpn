@@ -105,29 +105,125 @@
   --rail-sheen: rgba(192, 132, 252, 0.03);
 }
 
-/* Light theme needs explicit surfaces: some components read as "dark chrome"
-   when they inherit the neutral panel colour. */
-[data-theme="light"] .server[aria-current="true"],
-[data-theme="light"] .btn,
-[data-theme="light"] .app-item .ico,
-[data-theme="light"] .seg button[data-on="true"],
-[data-theme="light"] .chip {
-  background: #f1eee8;
-  color: #1b1a1f;
-}
-[data-theme="light"] .btn.primary {
-  background: #128a3f;
-  color: #ffffff;
-}
-[data-theme="light"] .chip[data-on="true"] {
-  background: rgba(18, 138, 63, 0.1);
-  color: #0d5c2c;
-}
+/* light theme polish */
 [data-theme="light"] .orb {
   box-shadow: 0 18px 50px -28px rgba(18, 138, 63, 0.5);
 }
 [data-theme="light"] .mascot {
   filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.18));
+}
+
+
+/* ---- welcome / empty ---------------------------------------------------- */
+.home[data-nosub="true"] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* the welcome strip steals height: keep the hero itself fitting */
+.home[data-nosub="true"] .hero {
+  gap: 10px;
+}
+
+.home[data-nosub="true"] .orb {
+  --orb: clamp(160px, 30vh, 226px);
+}
+
+.welcome {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px 13px 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(420px 200px at 88% 50%, var(--orb-bg), transparent 72%),
+    var(--bg-2);
+  overflow: hidden;
+}
+
+.welcome-copy h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.welcome-copy p {
+  margin: 0 0 12px;
+  max-width: 46ch;
+  color: var(--txt-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.welcome-art {
+  width: 100%;
+  max-height: 104px;
+  object-fit: contain;
+  object-position: right center;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35));
+  pointer-events: none;
+}
+
+.empty-box {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+}
+
+.empty-box img {
+  width: 118px;
+  height: 118px;
+  object-fit: contain;
+  flex: none;
+}
+
+.empty-box h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.empty-box p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  max-width: 42ch;
+}
+
+/* faint mascot texture behind the whole window (dark themes only) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: url("/mascot/bg.webp") center / cover no-repeat;
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-theme="dark"] body::before,
+[data-theme="mascot"] body::before {
+  opacity: 0.06;
+}
+
+[data-theme="mascot"] body::before {
+  opacity: 0.1;
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
 
 * {
@@ -362,7 +458,7 @@ input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: clamp(8px, 1.5vh, 14px);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   background:
@@ -445,9 +541,10 @@ input {
 }
 
 .orb {
+  --orb: clamp(180px, 38vh, 268px);
   position: relative;
-  width: 268px;
-  height: 268px;
+  width: var(--orb);
+  height: var(--orb);
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -491,8 +588,8 @@ input {
 }
 
 .orb .mascot {
-  width: 176px;
-  height: 176px;
+  width: calc(var(--orb) * var(--k, 1));
+  height: calc(var(--orb) * var(--k, 1));
   object-fit: contain;
   object-position: center bottom;
   filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.55));
@@ -500,9 +597,20 @@ input {
   pointer-events: none;
   transform: translateY(6px);
 }
+.orb[data-state="idle"] .mascot {
+  --k: 1.08;
+}
+.orb[data-state="connecting"] .mascot {
+  --k: 0.93;
+}
+.orb[data-state="connected"] .mascot {
+  --k: 0.94;
+}
+.orb[data-state="error"] .mascot {
+  --k: 0.9;
+}
 .orb[data-state="connected"] .mascot {
   filter: drop-shadow(0 0 16px rgba(57, 255, 20, 0.35)) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5));
-  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 99%);
   mask-image: linear-gradient(to bottom, #000 72%, transparent 99%);
   transform: translateY(-2px) scale(1.04);
 }

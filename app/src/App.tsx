@@ -41,12 +41,12 @@ const DEFAULT_UA = "K4R-Neko-VPN/0.1";
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
-  const [theme, setTheme] = useState<Theme>(
-    () =>
-      (initial.get("theme") as Theme) ||
-      (localStorage.getItem("k4r.theme") as Theme) ||
-      "dark",
-  );
+  const [theme, setTheme] = useState<Theme>(() => {
+    // index.html already resolved this before first paint
+    const applied = document.documentElement.dataset.theme as Theme | undefined;
+    if (applied === "light" || applied === "mascot" || applied === "dark") return applied;
+    return (initial.get("theme") as Theme) || "dark";
+  });
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
   const [conn, setConn] = useState<ConnState>((initial.get("state") as ConnState) || "idle");
   const [selectedId, setSelectedId] = useState(demoCatalog[0].id);
@@ -350,6 +350,8 @@ export default function App() {
               killSwitch={killSwitch}
               setKillSwitch={setKillSwitch}
               onOpenSplit={() => setScreen("split")}
+              onOpenServers={() => setScreen("servers")}
+              realCount={profiles.length}
             />
           )}
           {screen === "servers" && (

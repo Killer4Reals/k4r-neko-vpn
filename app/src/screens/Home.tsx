@@ -15,14 +15,18 @@ type Props = {
   killSwitch: boolean;
   setKillSwitch: (v: boolean) => void;
   onOpenSplit: () => void;
+  onOpenServers: () => void;
+  realCount: number;
   error: string;
 };
 
-const mascot: Record<ConnState, { src: string; w: number; h: number }> = {
-  idle: { src: "/mascot/idle.png", w: 240, h: 184 },
-  connecting: { src: "/mascot/connecting.png", w: 168, h: 210 },
-  connected: { src: "/mascot/avatar.png", w: 168, h: 168 },
-  error: { src: "/mascot/idle.png", w: 240, h: 184 },
+// sizes live in CSS: each art has a different amount of empty canvas, so the
+// per-state scale keeps the drawn character the same height everywhere
+const mascot: Record<ConnState, string> = {
+  idle: "/mascot/idle.webp",
+  connecting: "/mascot/connecting.webp",
+  connected: "/mascot/connected.webp",
+  error: "/mascot/error.webp",
 };
 
 const fmt = (n: number) => n.toFixed(1);
@@ -58,7 +62,23 @@ export function HomeScreen(p: Props) {
   const ss = String(uptime % 60).padStart(2, "0");
 
   return (
-    <div className="home">
+    <div className="home" data-nosub={p.realCount === 0 ? "true" : undefined}>
+      {p.realCount === 0 && (
+        <div className="welcome">
+          <div className="welcome-copy">
+            <h2>{t("welcomeTitle")}</h2>
+            <p>{t("welcomeText")}</p>
+            <button
+              className="btn primary"
+              style={{ width: "auto", paddingInline: 18 }}
+              onClick={p.onOpenServers}
+            >
+              {t("welcomeCta")}
+            </button>
+          </div>
+          <img className="welcome-art" src="/mascot/banner.webp" alt="" draggable={false} />
+        </div>
+      )}
       <section className="hero">
         <div className="grid-lines" />
 
@@ -69,13 +89,7 @@ export function HomeScreen(p: Props) {
 
         <div className="orb" data-state={conn}>
           <div className="ring" />
-          <img
-            className="mascot"
-            src={m.src}
-            alt=""
-            style={{ width: m.w, height: m.h }}
-            draggable={false}
-          />
+          <img className="mascot" src={m} alt="" draggable={false} />
           <button className="orb-hit" onClick={toggleConnection} aria-label={t(hintKey)} />
         </div>
 

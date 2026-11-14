@@ -6,6 +6,20 @@
     <title>K4R Neko VPN</title>
   </head>
   <body>
+    <!-- theme before first paint: no flash of the wrong palette -->
+    <script>
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get("theme");
+          var saved = localStorage.getItem("k4r.theme");
+          var t = q || saved;
+          document.documentElement.dataset.theme =
+            t === "light" || t === "mascot" || t === "dark" ? t : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

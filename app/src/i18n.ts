@@ -23,6 +23,17 @@ const dict: Dict = {
   hintConnected: { ru: "Нажми, чтобы выключить", en: "Tap to disconnect" },
 
   autoPick: { ru: "Авто: быстрейший", en: "Auto: fastest" },
+  welcomeTitle: { ru: "Подписка ещё не загружена", en: "No subscription yet" },
+  welcomeText: {
+    ru: "Вставь ссылку от провайдера — серверы появятся здесь сами.",
+    en: "Paste your provider link and the servers will show up here.",
+  },
+  welcomeCta: { ru: "Добавить подписку", en: "Add subscription" },
+  noServersTitle: { ru: "Список пуст", en: "Nothing here yet" },
+  noServersText: {
+    ru: "Обнови подписку или вставь ссылку на сервер вручную.",
+    en: "Refresh the subscription or paste a server link manually.",
+  },
   servers: { ru: "Серверы", en: "Servers" },
   refresh: { ru: "Обновить", en: "Refresh" },
   updated: { ru: "обновлено", en: "updated" },

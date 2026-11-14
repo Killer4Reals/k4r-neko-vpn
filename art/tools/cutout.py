@@ -125,6 +125,31 @@ def make_glyph(src: Path) -> None:
             OUT / f"tray_{name}.ico", sizes=[(16, 16), (32, 32), (48, 48)])
 
 
+def green_hologram(im: Image.Image) -> Image.Image:
+    """The shield is drawn translucent over magenta, so keying leaves it lilac.
+    Push the see-through part back to the neon green it is supposed to be."""
+    arr = np.asarray(im).astype(np.float32)
+    a = arr[..., 3] / 255.0
+    r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
+    # only the see-through part of the shield is lilac; opaque hair must stay intact
+    lilac = (b > g * 1.04) & (r > g * 0.85) & (a < 0.95)
+    arr[..., 3] = np.where(lilac, arr[..., 3] * 0.34, arr[..., 3])
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
+
+
+def make_states() -> None:
+    """Full-canvas states so the character does not jump when the state changes."""
+    for src, dst in (
+        ("state_connected_raw.png", "state_connected.png"),
+        ("state_error_raw.png", "state_error.png"),
+        ("state_empty_raw.png", "state_empty.png"),
+        ("banner_hero_raw.png", "banner_hero.png"),
+    ):
+        im = cutout(RAW / src, OUT / dst, trim=False)
+        if src in ("state_connected_raw.png", "banner_hero_raw.png"):
+            green_hologram(im).save(OUT / dst)
+
+
 def main() -> None:
     cutout(RAW / "icon_bust.png", OUT / "avatar_512.png")
     make_app_icon(RAW / "icon_bust.png")
@@ -132,6 +157,12 @@ def main() -> None:
     idle = cutout(RAW / "state_idle_sleep.png", OUT / "state_idle.png", trim=False)
     recolor_z(idle).save(OUT / "state_idle.png")
     cutout(RAW / "state_connecting.png", OUT / "state_connecting.png", trim=False)
+    make_states()
+    # already dark artwork: no keying, just ship it
+    for src, dst, size in (("bg_texture_raw.png", "bg_texture.png", 720),
+                           ("banner_installer_raw.png", "banner_installer.png", 1024)):
+        im = Image.open(RAW / src).convert("RGB")
+        im.resize((size, int(size * im.height / im.width)), Image.LANCZOS).save(OUT / dst)
     make_glyph(RAW / "glyph.png")
     for p in sorted(OUT.iterdir()):
         print(f"{p.name:24} {Image.open(p).size}")

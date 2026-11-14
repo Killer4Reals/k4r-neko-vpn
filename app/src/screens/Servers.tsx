@@ -122,6 +122,17 @@ export function ServersScreen(p: Props) {
         )}
       </div>
 
+      {servers.length === 0 && (
+        <div className="card empty-box">
+          <img src="/mascot/empty.webp" alt="" draggable={false} />
+          <div>
+            <h3>{t("noServersTitle")}</h3>
+            <p className="muted">{t("noServersText")}</p>
+          </div>
+        </div>
+      )}
+
+      {servers.length > 0 && (
       <div className="card" style={{ padding: 8 }}>
         <div className="server-list">
           {servers.map((s) => (
@@ -152,6 +163,7 @@ export function ServersScreen(p: Props) {
           ))}
         </div>
       </div>
+      )}
     </>
   );
 }
