@@ -71,9 +71,11 @@ export const api = {
   stateLoad: () => invoke<AppState>("state_load"),
   stateSave: (state: AppState) => invoke<void>("state_save", { state }),
   logsTail: (which: string, lines: number) => invoke<string>("logs_tail", { which, lines }),
+  installId: () => invoke<string>("install_id"),
 };
 
 export type AppState = {
+  hwid?: string;
   profiles: Profile[];
   sub_url: string;
   sub_ua: string;

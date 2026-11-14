@@ -89,10 +89,15 @@ pub fn build_config(profile: &Profile, excluded: &[String], dns_server: &str) ->
 
     match profile.network.as_str() {
         "ws" => {
-            outbound["transport"] = json!({ "type": "ws", "path": "/" });
+            let path = if profile.path.is_empty() { "/" } else { &profile.path };
+            outbound["transport"] = json!({ "type": "ws", "path": path });
         }
         "grpc" => {
-            outbound["transport"] = json!({ "type": "grpc" });
+            let mut transport = json!({ "type": "grpc" });
+            if !profile.service_name.is_empty() {
+                transport["service_name"] = json!(profile.service_name);
+            }
+            outbound["transport"] = transport;
         }
         _ => {}
     }
@@ -320,6 +325,8 @@ mod tests {
             public_key: "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0".into(),
             short_id: "ab".into(),
             fingerprint: "chrome".into(),
+            service_name: "api".into(),
+            path: String::new(),
         }
     }
 
@@ -332,6 +339,16 @@ mod tests {
         std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
         check_config(&bin, &path).expect("engine rejected the generated config");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn grpc_transport_carries_service_name() {
+        let mut p = sample();
+        p.network = "grpc".into();
+        let cfg = build_config(&p, &[], "1.1.1.1");
+        assert_eq!(cfg["outbounds"][0]["transport"]["type"], "grpc");
+        assert_eq!(cfg["outbounds"][0]["transport"]["service_name"], "api");
+        assert_eq!(cfg["outbounds"][0]["tls"]["reality"]["public_key"], "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0");
     }
 
     #[test]

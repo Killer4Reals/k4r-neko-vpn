@@ -22,6 +22,12 @@ pub struct Profile {
     pub short_id: String,
     #[serde(default)]
     pub fingerprint: String,
+    /// gRPC service name (VLESS + gRPC) — required by most modern providers.
+    #[serde(default)]
+    pub service_name: String,
+    /// WebSocket path.
+    #[serde(default)]
+    pub path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -267,6 +273,19 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
         .unwrap_or("chrome")
         .to_string();
 
+    let service_name = stream
+        .and_then(|s| s.get("grpcSettings"))
+        .and_then(|g| g.get("serviceName"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let path = stream
+        .and_then(|s| s.get("wsSettings"))
+        .and_then(|w| w.get("path"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     let name = if remarks.is_empty() {
         host.clone()
     } else {
@@ -286,6 +305,8 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
         public_key,
         short_id,
         fingerprint,
+        service_name,
+        path,
     })
 }
 
@@ -315,10 +336,13 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         get("type")
     };
 
-    let name = if url.fragment().unwrap_or("").is_empty() {
+    let fragment = percent_encoding::percent_decode_str(url.fragment().unwrap_or(""))
+        .decode_utf8_lossy()
+        .to_string();
+    let name = if fragment.trim().is_empty() {
         format!("{host}:{port}")
     } else {
-        url.fragment().unwrap_or("").to_string()
+        fragment
     };
 
     Ok(Profile {
@@ -338,6 +362,8 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         } else {
             get("fp")
         },
+        service_name: get("serviceName"),
+        path: get("path"),
     })
 }
 
@@ -373,6 +399,15 @@ mod tests {
         assert_eq!(r.profiles.len(), 1);
         assert_eq!(r.profiles[0].host, "5.6.7.8");
         assert_eq!(r.profiles[0].public_key, "k");
+    }
+
+    #[test]
+    fn reads_grpc_service_name_from_xray_json() {
+        let body = r#"[{"remarks":"DE","outbounds":[{"protocol":"vless","settings":{"vnext":[{"address":"1.2.3.4","port":10121,"users":[{"id":"u","flow":""}]}]},"streamSettings":{"network":"grpc","grpcSettings":{"serviceName":"api"},"security":"reality","realitySettings":{"serverName":"deepl.com","publicKey":"k","shortId":"s","fingerprint":"firefox"}}}]}]"#;
+        let r = parse(body).unwrap();
+        assert_eq!(r.profiles[0].service_name, "api");
+        assert_eq!(r.profiles[0].network, "grpc");
+        assert_eq!(r.profiles[0].fingerprint, "firefox");
     }
 
     #[test]

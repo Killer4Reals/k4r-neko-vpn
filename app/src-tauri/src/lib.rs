@@ -1,11 +1,11 @@
 // Prevents an extra console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod engine;
-mod probe;
-mod store;
-mod subscription;
-mod zapret;
+pub mod engine;
+pub mod probe;
+pub mod store;
+pub mod subscription;
+pub mod zapret;
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -95,8 +95,13 @@ fn state_load(app: tauri::AppHandle) -> Result<AppState, String> {
 }
 
 #[tauri::command]
-fn state_save(app: tauri::AppHandle, state: AppState) -> Result<(), String> {
-    store::save(&data_dir(&app)?, &state)
+fn state_save(app: tauri::AppHandle, mut state: AppState) -> Result<(), String> {
+    let dir = data_dir(&app)?;
+    // Never lose the install id: it is our device slot with the provider.
+    if state.hwid.is_empty() {
+        state.hwid = store::install_id(&dir);
+    }
+    store::save(&dir, &state)
 }
 
 #[tauri::command]
@@ -110,15 +115,33 @@ fn set_start_with_windows(enabled: bool) -> Result<bool, String> {
     Ok(autostart_enabled())
 }
 
+/// Providers that gate on a device id get ours: stable per install, never impersonates
+/// another client's identity.
 #[tauri::command]
 async fn sub_fetch(
+    app: tauri::AppHandle,
     url: String,
     user_agent: String,
     headers: Vec<SubHeader>,
 ) -> Result<SubResult, String> {
-    tauri::async_runtime::spawn_blocking(move || subscription::fetch(&url, &user_agent, &headers))
-        .await
-        .map_err(|e| format!("задача упала: {e}"))?
+    let hwid = store::install_id(&data_dir(&app)?);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut all = headers;
+        if !all.iter().any(|h| h.name.eq_ignore_ascii_case("x-hwid")) {
+            all.push(SubHeader {
+                name: "X-HWID".into(),
+                value: hwid,
+            });
+        }
+        subscription::fetch(&url, &user_agent, &all)
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
+#[tauri::command]
+fn install_id(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(store::install_id(&data_dir(&app)?))
 }
 
 #[tauri::command]
@@ -291,6 +314,7 @@ pub fn run() {
             core_info,
             set_start_with_windows,
             sub_fetch,
+            install_id,
             profiles_import,
             probe_ping,
             state_load,

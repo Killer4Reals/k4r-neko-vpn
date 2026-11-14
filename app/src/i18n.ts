@@ -91,6 +91,7 @@ const dict: Dict = {
   version: { ru: "Версия", en: "Version" },
   core: { ru: "Ядро", en: "Core" },
   coreValue: { ru: "Rust + sidecar (0.1)", en: "Rust + sidecar (0.1)" },
+  deviceId: { ru: "ID устройства", en: "Device ID" },
 
   logsTitle: { ru: "Журнал", en: "Log" },
   logsSub: { ru: "Ключи и адреса вырезаны", en: "Keys and addresses are redacted" },

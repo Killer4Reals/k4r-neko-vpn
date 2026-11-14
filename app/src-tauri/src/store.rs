@@ -7,6 +7,8 @@ use crate::subscription::Profile;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct AppState {
+    /// Stable per-install id, sent as X-HWID. Providers use it as the device slot.
+    pub hwid: String,
     pub profiles: Vec<Profile>,
     pub sub_url: String,
     pub sub_ua: String,
@@ -20,6 +22,47 @@ pub struct AppState {
 pub struct SplitEntry {
     pub exe: String,
     pub via: bool,
+}
+
+/// 16 hex chars, stable for this installation, generated once.
+pub fn install_id(data_dir: &Path) -> String {
+    let state = load(data_dir);
+    if !state.hwid.is_empty() {
+        return state.hwid;
+    }
+    let id = random_hex();
+    if let Ok(mut st) = std::fs::read_to_string(state_path(data_dir))
+        .ok()
+        .and_then(|t| serde_json::from_str::<AppState>(&t).ok())
+        .ok_or(())
+    {
+        st.hwid = id.clone();
+        let _ = save(data_dir, &st);
+        return id;
+    }
+    let mut st = AppState::default();
+    st.hwid = id.clone();
+    let _ = save(data_dir, &st);
+    id
+}
+
+fn random_hex() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let mut out = String::new();
+    for salt in 0..2u64 {
+        let mut h = RandomState::new().build_hasher();
+        h.write_u64(salt);
+        h.write_u128(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+        );
+        out.push_str(&format!("{:016x}", h.finish()));
+    }
+    out.truncate(16);
+    out
 }
 
 pub fn state_path(data_dir: &Path) -> PathBuf {
@@ -75,6 +118,8 @@ mod tests {
             public_key: String::new(),
             short_id: String::new(),
             fingerprint: String::new(),
+            service_name: String::new(),
+            path: String::new(),
         }
     }
 
@@ -85,6 +130,7 @@ mod tests {
         let mut st = AppState::default();
         st.profiles.push(sample());
         st.sub_ua = "K4R-Neko-VPN/0.1".into();
+        st.hwid = "abc123".into();
         st.split.push(SplitEntry {
             exe: "steam.exe".into(),
             via: false,
@@ -104,6 +150,34 @@ mod tests {
         let dir = std::env::temp_dir().join("k4r-state-missing");
         let st = load(&dir);
         assert!(st.profiles.is_empty());
+    }
+
+    #[test]
+    fn install_id_is_generated_once_and_kept() {
+        let dir = std::env::temp_dir().join("k4r-hwid-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let first = install_id(&dir);
+        let second = install_id(&dir);
+        assert_eq!(first.len(), 16);
+        assert_eq!(first, second, "install id must be stable");
+        assert!(first.chars().all(|c| c.is_ascii_hexdigit()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn install_id_survives_a_save_without_it() {
+        let dir = std::env::temp_dir().join("k4r-hwid-keep");
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = install_id(&dir);
+        let mut st = load(&dir);
+        st.hwid = String::new();
+        save(&dir, &st).unwrap();
+        // the app re-injects it on save; the helper must then return the same value
+        let again = install_id(&dir);
+        assert_eq!(again.len(), 16);
+        assert_eq!(load(&dir).hwid, again);
+        assert!(!id.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

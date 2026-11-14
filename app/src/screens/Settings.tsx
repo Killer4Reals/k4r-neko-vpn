@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
 import { api, inTauri } from "../api";
 
@@ -15,8 +15,14 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart } = p;
   const [tray, setTray] = useState(true);
+  const [deviceId, setDeviceId] = useState("");
   const [dns, setDns] = useState(true);
   const [ipv6, setIpv6] = useState(false);
+
+  useEffect(() => {
+    if (!inTauri) return;
+    api.installId().then(setDeviceId).catch(() => undefined);
+  }, []);
 
   return (
     <>
@@ -103,6 +109,8 @@ export function SettingsScreen(p: Props) {
           <dd>0.1.0</dd>
           <dt>{t("core")}</dt>
           <dd>{t("coreValue")}</dd>
+          <dt>{t("deviceId")}</dt>
+          <dd>{deviceId || "—"}</dd>
         </dl>
       </div>
     </>
