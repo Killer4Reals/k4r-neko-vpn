@@ -1,6 +1,6 @@
 import type { ConnState } from "../data";
 
-type Props = { t: (k: string) => string; conn: ConnState };
+type Props = { t: (k: string) => string; conn: ConnState; error: string };
 
 const lines = [
   "12:41:07  core      sidecar started, pid 4812",
@@ -13,7 +13,7 @@ const lines = [
   "12:41:09  split     3 apps via tunnel, 3 direct",
 ];
 
-export function LogsScreen({ t, conn }: Props) {
+export function LogsScreen({ t, conn, error }: Props) {
   return (
     <>
       <div className="page-head">
@@ -29,6 +29,7 @@ export function LogsScreen({ t, conn }: Props) {
         ))}
         <div style={{ color: "var(--txt-3)", marginTop: 10 }}>
           state: {conn} · version 0.1.0
+          {error ? ` · ${error}` : ""}
         </div>
       </div>
     </>

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
-import { apps as appCatalog, servers, type AppEntry, type ConnState } from "./data";
+import { apps as appCatalog, servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
+import { api, inTauri, type Profile } from "./api";
 import {
   CloseIcon,
   GearIcon,
@@ -21,6 +21,7 @@ import { SplitScreen } from "./screens/Split";
 import { ZapretScreen } from "./screens/Zapret";
 import { SettingsScreen } from "./screens/Settings";
 import { LogsScreen } from "./screens/Logs";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export type Screen = "home" | "servers" | "split" | "zapret" | "logs" | "settings";
 
@@ -33,46 +34,159 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "settings", key: "navSettings", icon: GearIcon },
 ];
 
+const DEFAULT_SUB = "https://example.invalid/subscription";
+const DEFAULT_UA = "Happ/4.7.2";
+
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
   const [conn, setConn] = useState<ConnState>((initial.get("state") as ConnState) || "idle");
-  const [selectedId, setSelectedId] = useState(servers[0].id);
+  const [selectedId, setSelectedId] = useState(demoCatalog[0].id);
   const [zapretOn, setZapretOn] = useState(true);
   const [killSwitch, setKillSwitch] = useState(true);
   const [list, setList] = useState<AppEntry[]>(appCatalog);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [admin, setAdmin] = useState(true);
+  const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
+  const [subUa, setSubUa] = useState(DEFAULT_UA);
   const timer = useRef<number | null>(null);
-  const win = "__TAURI_INTERNALS__" in window ? getCurrentWindow() : null;
+  const win = inTauri ? getCurrentWindow() : null;
 
   const t = useT(lang);
+
+  const viewServers = useMemo<Server[]>(() => {
+    if (profiles.length === 0) return demoCatalog;
+    return profiles.map((p) => ({
+      id: p.id,
+      cc: "VPN",
+      flag: "",
+      city: p.name || p.host,
+      country: `${p.host}:${p.port}`,
+      tag: (p.security === "none" ? p.network : p.security).toUpperCase(),
+      lat: 0,
+      quality: "good" as const,
+    }));
+  }, [profiles]);
+
   const selected = useMemo(
-    () => servers.find((s) => s.id === selectedId) ?? servers[0],
-    [selectedId],
+    () => viewServers.find((s) => s.id === selectedId) ?? viewServers[0],
+    [viewServers, selectedId],
   );
+
+  useEffect(() => {
+    if (!inTauri) return;
+    api.isAdmin().then(setAdmin).catch(() => setAdmin(true));
+  }, []);
 
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current);
   }, []);
 
-  const toggleConnection = useCallback(() => {
-    if (timer.current) window.clearTimeout(timer.current);
-    if (conn === "connected") {
-      setConn("idle");
-      return;
-    }
-    if (conn === "connecting") {
-      setConn("idle");
-      return;
-    }
-    setConn("connecting");
-    timer.current = window.setTimeout(() => setConn("connected"), 1600);
+  // Keep UI in sync with the real process while a tunnel is up.
+  useEffect(() => {
+    if (!inTauri || conn === "idle") return;
+    const id = window.setInterval(async () => {
+      try {
+        const st = await api.engineStatus();
+        if (st.state === "error") {
+          setConn("error");
+          setError(st.message);
+        }
+        if (st.state === "idle" && conn !== "connecting") {
+          setConn("idle");
+        }
+      } catch {
+        /* engine not reachable: keep current state */
+      }
+    }, 2000);
+    return () => window.clearInterval(id);
   }, [conn]);
+
+  const stopTunnel = useCallback(async () => {
+    setError("");
+    if (inTauri) {
+      try {
+        await api.engineStop();
+      } catch (e) {
+        setError(String(e));
+      }
+    }
+    setConn("idle");
+  }, []);
+
+  const startTunnel = useCallback(async () => {
+    setError("");
+    setConn("connecting");
+    const profile = profiles.find((p) => p.id === selectedId);
+
+    if (inTauri) {
+      if (!profile) {
+        setConn("error");
+        setError("нет серверов: сначала загрузи подписку на экране «Серверы»");
+        return;
+      }
+      const excluded = list.filter((a) => !a.via).map((a) => a.exe);
+      try {
+        const st = await api.engineStart(profile, excluded, "1.1.1.1");
+        setConn(st.state === "running" ? "connected" : "error");
+        if (st.state !== "running") setError(st.message);
+      } catch (e) {
+        setConn("error");
+        setError(String(e));
+      }
+      return;
+    }
+
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setConn("connected"), 1500);
+  }, [list, profiles, selectedId]);
+
+  const toggleConnection = useCallback(() => {
+    if (busy) return;
+    setBusy(true);
+    const run = conn === "connected" || conn === "connecting" ? stopTunnel() : startTunnel();
+    run.finally(() => setBusy(false));
+  }, [busy, conn, startTunnel, stopTunnel]);
 
   const toggleApp = (id: string) =>
     setList((prev) => prev.map((a) => (a.id === id ? { ...a, via: !a.via } : a)));
 
-  const ctx = { t, lang, conn, toggleConnection, selected, servers, selectedId, setSelectedId, list, toggleApp };
+  const loadSubscription = useCallback(async () => {
+    setBusy(true);
+    setWarnings([]);
+    if (!inTauri) {
+      setWarnings(["Загрузка подписки работает в приложении, а не в браузере"]);
+      setBusy(false);
+      return;
+    }
+    try {
+      const res = await api.fetchSub(subUrl, subUa, []);
+      setProfiles(res.profiles);
+      setWarnings(res.warnings);
+      if (res.profiles[0]) setSelectedId(res.profiles[0].id);
+    } catch (e) {
+      setWarnings([String(e)]);
+    } finally {
+      setBusy(false);
+    }
+  }, [subUa, subUrl]);
+
+  const ctx = {
+    t,
+    lang,
+    conn,
+    toggleConnection,
+    selected,
+    servers: viewServers,
+    selectedId,
+    setSelectedId,
+    list,
+    toggleApp,
+  };
 
   return (
     <div className="shell">
@@ -94,6 +208,15 @@ export default function App() {
         </button>
       </header>
 
+      {!admin && (
+        <div className="banner">
+          <span>Для туннеля нужны права администратора — Windows не даёт создать сетевой адаптер без них.</span>
+          <button className="btn primary" style={{ width: "auto", paddingInline: 14 }} onClick={() => api.relaunchAdmin()}>
+            Перезапустить как администратор
+          </button>
+        </div>
+      )}
+
       <div className="body">
         <nav className="rail">
           {navItems.map(({ id, key, icon: Icon }) => (
@@ -111,11 +234,33 @@ export default function App() {
         </nav>
 
         <main className="content">
-          {screen === "home" && <HomeScreen {...ctx} zapretOn={zapretOn} setZapretOn={setZapretOn} killSwitch={killSwitch} setKillSwitch={setKillSwitch} onOpenSplit={() => setScreen("split")} />}
-          {screen === "servers" && <ServersScreen {...ctx} />}
+          {screen === "home" && (
+            <HomeScreen
+              {...ctx}
+              error={error}
+              zapretOn={zapretOn}
+              setZapretOn={setZapretOn}
+              killSwitch={killSwitch}
+              setKillSwitch={setKillSwitch}
+              onOpenSplit={() => setScreen("split")}
+            />
+          )}
+          {screen === "servers" && (
+            <ServersScreen
+              {...ctx}
+              subUrl={subUrl}
+              subUa={subUa}
+              setSubUrl={setSubUrl}
+              setSubUa={setSubUa}
+              onLoad={loadSubscription}
+              warnings={warnings}
+              busy={busy}
+              realCount={profiles.length}
+            />
+          )}
           {screen === "split" && <SplitScreen {...ctx} />}
           {screen === "zapret" && <ZapretScreen t={t} zapretOn={zapretOn} setZapretOn={setZapretOn} />}
-          {screen === "logs" && <LogsScreen t={t} conn={conn} />}
+          {screen === "logs" && <LogsScreen t={t} conn={conn} error={error} />}
           {screen === "settings" && (
             <SettingsScreen
               t={t}

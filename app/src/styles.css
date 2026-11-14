@@ -857,6 +857,44 @@ input {
   color: var(--txt-3);
 }
 
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  background: rgba(255, 214, 102, 0.08);
+  border-bottom: 1px solid rgba(255, 214, 102, 0.22);
+  color: #ffe6a8;
+  font-size: 12px;
+}
+.banner span {
+  flex: 1;
+}
+
+.notice {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 214, 102, 0.28);
+  background: rgba(255, 214, 102, 0.07);
+  color: #ffe6a8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hero-error {
+  max-width: 420px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #ffd2d6;
+  background: var(--danger-soft);
+  border: 1px solid rgba(255, 122, 133, 0.3);
+  border-radius: var(--radius-md);
+  padding: 7px 11px;
+  z-index: 1;
+}
+
 .muted {
   color: var(--txt-3);
   font-size: 12px;

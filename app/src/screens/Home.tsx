@@ -15,6 +15,7 @@ type Props = {
   killSwitch: boolean;
   setKillSwitch: (v: boolean) => void;
   onOpenSplit: () => void;
+  error: string;
 };
 
 const mascot: Record<ConnState, { src: string; w: number; h: number }> = {
@@ -82,8 +83,10 @@ export function HomeScreen(p: Props) {
           <span className="flag-code">{selected.cc}</span>
           <strong>{selected.city}</strong>
           <span>{selected.country}</span>
-          <span className="lat">{selected.lat} ms</span>
+          <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
         </div>
+
+        {p.error && <div className="hero-error">{p.error}</div>}
 
         <div className="stats">
           <div className="stat">
@@ -153,7 +156,7 @@ export function HomeScreen(p: Props) {
                   <i />
                   <i />
                 </span>
-                {s.lat}
+                {s.lat === 0 ? "—" : s.lat}
               </span>
             </button>
           ))}

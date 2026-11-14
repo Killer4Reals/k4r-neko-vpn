@@ -6,9 +6,19 @@ type Props = {
   servers: Server[];
   selectedId: string;
   setSelectedId: (id: string) => void;
+  subUrl: string;
+  subUa: string;
+  setSubUrl: (v: string) => void;
+  setSubUa: (v: string) => void;
+  onLoad: () => void;
+  warnings: string[];
+  busy: boolean;
+  realCount: number;
 };
 
-export function ServersScreen({ t, servers, selectedId, setSelectedId }: Props) {
+export function ServersScreen(p: Props) {
+  const { t, servers, selectedId, setSelectedId, warnings, busy, realCount } = p;
+
   return (
     <>
       <div className="page-head">
@@ -20,21 +30,41 @@ export function ServersScreen({ t, servers, selectedId, setSelectedId }: Props) 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
           <div className="field">
             <label>{t("subUrl")}</label>
-            <input className="input" defaultValue="https://example.invalid/subscription" spellCheck={false} />
+            <input
+              className="input"
+              value={p.subUrl}
+              onChange={(e) => p.setSubUrl(e.target.value)}
+              spellCheck={false}
+            />
           </div>
           <div className="field">
             <label>{t("subHeaders")}</label>
-            <input className="input" defaultValue="User-Agent: Happ/4.7.2" spellCheck={false} />
+            <input
+              className="input"
+              value={p.subUa}
+              onChange={(e) => p.setSubUa(e.target.value)}
+              spellCheck={false}
+            />
           </div>
         </div>
         <p className="muted" style={{ margin: "10px 0 0" }}>{t("subHeadersHint")}</p>
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <button className="btn" style={{ width: "auto", paddingInline: 14 }}>
+
+        {warnings.length > 0 && (
+          <div className="notice">
+            {warnings.map((w, i) => (
+              <div key={i}>{w}</div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+          <button className="btn primary" style={{ width: "auto", paddingInline: 16 }} onClick={p.onLoad} disabled={busy}>
             <RefreshIcon size={14} />
-            {t("refresh")}
+            {busy ? "…" : t("refresh")}
           </button>
           <button className="btn" style={{ width: "auto", paddingInline: 14 }}>{t("importLink")}</button>
           <button className="btn" style={{ width: "auto", paddingInline: 14 }}>{t("importFile")}</button>
+          <span className="muted">{realCount > 0 ? `${realCount}` : "demo"}</span>
         </div>
       </div>
 
@@ -62,7 +92,7 @@ export function ServersScreen({ t, servers, selectedId, setSelectedId }: Props) 
                   <i />
                   <i />
                 </span>
-                {s.lat}
+                {s.lat === 0 ? "—" : s.lat}
               </span>
             </button>
           ))}
