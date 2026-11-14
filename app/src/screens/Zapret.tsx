@@ -1,14 +1,73 @@
-import { useState } from "react";
-import { zapretPresets } from "../data";
+import { useEffect, useState } from "react";
+import { api, inTauri, type ZapretStatus } from "../api";
 
 type Props = {
   t: (k: string) => string;
   zapretOn: boolean;
   setZapretOn: (v: boolean) => void;
+  initialDir: string | null;
 };
 
-export function ZapretScreen({ t, zapretOn, setZapretOn }: Props) {
-  const [preset, setPreset] = useState(zapretPresets[0]);
+export function ZapretScreen({ t, zapretOn, setZapretOn, initialDir }: Props) {
+  const [dir, setDir] = useState(initialDir ?? "");
+  const [presets, setPresets] = useState<string[]>([]);
+  const [preset, setPreset] = useState("");
+  const [status, setStatus] = useState<ZapretStatus | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!inTauri) return;
+    (async () => {
+      const found = initialDir ?? (await api.zapretDetect());
+      if (found) {
+        setDir(found);
+        const list = await api.zapretPresets(found);
+        setPresets(list);
+        setPreset((p) => p || list[0] || "");
+      }
+      try {
+        setStatus(await api.zapretStatus());
+      } catch {
+        /* engine status is optional information */
+      }
+    })();
+  }, [initialDir]);
+
+  const toggle = async () => {
+    setError("");
+    setBusy(true);
+    if (!inTauri) {
+      setZapretOn(!zapretOn);
+      setBusy(false);
+      return;
+    }
+    try {
+      if (zapretOn) {
+        setStatus(await api.zapretStop());
+        setZapretOn(false);
+      } else {
+        const st = await api.zapretStart(dir, preset);
+        setStatus(st);
+        setZapretOn(st.state === "running");
+        if (st.state === "external") setError(st.message);
+      }
+    } catch (e) {
+      setError(String(e));
+      setZapretOn(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stateLabel =
+    status?.state === "running"
+      ? t("zapretRunning")
+      : status?.state === "external"
+        ? t("zapretExternal")
+        : status?.state === "error"
+          ? t("zapretStopped")
+          : t("unknown");
 
   return (
     <>
@@ -24,21 +83,27 @@ export function ZapretScreen({ t, zapretOn, setZapretOn }: Props) {
             <b>{t("tunnelGuard")}</b>
             <span>{t("zapretSub")}</span>
           </div>
-          <button className="switch" aria-checked={zapretOn} onClick={() => setZapretOn(!zapretOn)} />
+          <button
+            className="switch"
+            aria-checked={zapretOn}
+            disabled={busy}
+            onClick={toggle}
+          />
         </div>
 
         <div className="row">
           <div className="txt">
             <b>{t("preset")}</b>
-            <span>{preset}</span>
+            <span>{preset || "—"}</span>
           </div>
           <select
             className="input"
-            style={{ width: 300 }}
+            style={{ width: 320 }}
             value={preset}
             onChange={(e) => setPreset(e.target.value)}
           >
-            {zapretPresets.map((p) => (
+            {presets.length === 0 && <option value="">{t("zapretNone")}</option>}
+            {presets.map((p) => (
               <option key={p} value={p}>
                 {p}
               </option>
@@ -49,20 +114,26 @@ export function ZapretScreen({ t, zapretOn, setZapretOn }: Props) {
         <div className="row">
           <div className="txt">
             <b>{t("zapretPath")}</b>
-            <span>C:\Users\user\Documents\Zapret\Dev</span>
+            <span>{dir || t("zapretNotFound")}</span>
           </div>
-          <button className="btn" style={{ width: "auto", paddingInline: 14 }}>
-            …
-          </button>
+          <span className="tag">
+            {presets.length} {t("presetsCount")}
+          </span>
         </div>
       </div>
+
+      {error && <div className="notice" style={{ marginBottom: 14 }}>{error}</div>}
 
       <div className="card">
         <dl className="kv">
           <dt>{t("health")}</dt>
-          <dd style={{ color: "var(--txt-3)" }}>{t("unknown")}</dd>
+          <dd style={{ color: status?.state === "running" ? "var(--green)" : "var(--txt-3)" }}>
+            {stateLabel}
+          </dd>
           <dt>{t("core")}</dt>
           <dd>winws2 · 21.1.7.261</dd>
+          <dt>PID</dt>
+          <dd>{status?.pid ? status.pid : "—"}</dd>
         </dl>
       </div>
     </>

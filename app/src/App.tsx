@@ -51,6 +51,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [admin, setAdmin] = useState(true);
+  const [zapretDir, setZapretDir] = useState<string | null>(null);
+  const [autostart, setAutostart] = useState(false);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const timer = useRef<number | null>(null);
@@ -79,8 +81,27 @@ export default function App() {
 
   useEffect(() => {
     if (!inTauri) return;
-    api.isAdmin().then(setAdmin).catch(() => setAdmin(true));
+    api
+      .coreInfo()
+      .then((info) => {
+        setAdmin(info.admin);
+        setZapretDir(info.zapret_dir);
+        setAutostart(info.autostart);
+      })
+      .catch(() => setAdmin(true));
   }, []);
+
+  // Tray icon follows the tunnel state.
+  useEffect(() => {
+    if (!inTauri) return;
+    const map: Record<ConnState, string> = {
+      idle: "off",
+      connecting: "connecting",
+      connected: "on",
+      error: "error",
+    };
+    api.setTrayState(map[conn]).catch(() => undefined);
+  }, [conn]);
 
   useEffect(() => () => {
     if (timer.current) window.clearTimeout(timer.current);
@@ -259,7 +280,9 @@ export default function App() {
             />
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
-          {screen === "zapret" && <ZapretScreen t={t} zapretOn={zapretOn} setZapretOn={setZapretOn} />}
+          {screen === "zapret" && (
+            <ZapretScreen t={t} zapretOn={zapretOn} setZapretOn={setZapretOn} initialDir={zapretDir} />
+          )}
           {screen === "logs" && <LogsScreen t={t} conn={conn} error={error} />}
           {screen === "settings" && (
             <SettingsScreen
@@ -268,6 +291,8 @@ export default function App() {
               setLang={setLang}
               killSwitch={killSwitch}
               setKillSwitch={setKillSwitch}
+              autostart={autostart}
+              setAutostart={setAutostart}
             />
           )}
         </main>

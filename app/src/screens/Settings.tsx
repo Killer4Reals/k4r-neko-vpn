@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Lang } from "../i18n";
+import { api, inTauri } from "../api";
 
 type Props = {
   t: (k: string) => string;
@@ -7,10 +8,12 @@ type Props = {
   setLang: (l: Lang) => void;
   killSwitch: boolean;
   setKillSwitch: (v: boolean) => void;
+  autostart: boolean;
+  setAutostart: (v: boolean) => void;
 };
 
-export function SettingsScreen({ t, lang, setLang, killSwitch, setKillSwitch }: Props) {
-  const [autostart, setAutostart] = useState(true);
+export function SettingsScreen(p: Props) {
+  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart } = p;
   const [tray, setTray] = useState(true);
   const [dns, setDns] = useState(true);
   const [ipv6, setIpv6] = useState(false);
@@ -50,7 +53,21 @@ export function SettingsScreen({ t, lang, setLang, killSwitch, setKillSwitch }: 
           <div className="txt">
             <b>{t("autostart")}</b>
           </div>
-          <button className="switch" aria-checked={autostart} onClick={() => setAutostart(!autostart)} />
+          <button
+            className="switch"
+            aria-checked={autostart}
+            onClick={async () => {
+              const next = !autostart;
+              setAutostart(next);
+              if (inTauri) {
+                try {
+                  setAutostart(await api.setStartWithWindows(next));
+                } catch {
+                  setAutostart(!next);
+                }
+              }
+            }}
+          />
         </div>
         <div className="row">
           <div className="txt">

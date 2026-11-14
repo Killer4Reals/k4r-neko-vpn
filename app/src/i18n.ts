@@ -66,6 +66,12 @@ const dict: Dict = {
   autoRestart: { ru: "Перезапускать при сбое", en: "Restart on failure" },
   health: { ru: "Состояние", en: "Health" },
   unknown: { ru: "не проверено", en: "not checked" },
+  zapretNone: { ru: "нет пресетов", en: "no presets" },
+  zapretNotFound: { ru: "не найдена", en: "not found" },
+  presetsCount: { ru: "пресетов", en: "presets" },
+  zapretRunning: { ru: "пресет активен", en: "preset is active" },
+  zapretExternal: { ru: "работает отдельная копия Zapret", en: "another Zapret instance is running" },
+  zapretStopped: { ru: "остановился", en: "stopped" },
 
   settingsTitle: { ru: "Настройки", en: "Settings" },
   language: { ru: "Язык", en: "Language" },

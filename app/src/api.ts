@@ -34,6 +34,16 @@ export type CoreInfo = {
   platform: string;
   data_dir: string;
   admin: boolean;
+  zapret_dir: string | null;
+  autostart: boolean;
+};
+
+export type ZapretStatus = {
+  state: "off" | "running" | "external" | "error";
+  message: string;
+  preset: string;
+  pid: number;
+  dir: string;
 };
 
 export const inTauri = "__TAURI_INTERNALS__" in window;
@@ -48,4 +58,11 @@ export const api = {
   engineStatus: () => invoke<EngineStatus>("engine_status"),
   isAdmin: () => invoke<boolean>("app_is_admin"),
   relaunchAdmin: () => invoke<void>("app_relaunch_admin"),
+  setStartWithWindows: (enabled: boolean) => invoke<boolean>("set_start_with_windows", { enabled }),
+  zapretDetect: () => invoke<string | null>("zapret_detect"),
+  zapretPresets: (dir: string) => invoke<string[]>("zapret_presets", { dir }),
+  zapretStart: (dir: string, preset: string) => invoke<ZapretStatus>("zapret_start", { dir, preset }),
+  zapretStop: () => invoke<ZapretStatus>("zapret_stop"),
+  zapretStatus: () => invoke<ZapretStatus>("zapret_status"),
+  setTrayState: (state: string) => invoke<void>("set_tray_state", { state }),
 };
