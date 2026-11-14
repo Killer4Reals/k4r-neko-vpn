@@ -10,12 +10,51 @@ pub struct AppState {
     /// Stable per-install id, sent as X-HWID. Providers use it as the device slot.
     pub hwid: String,
     pub profiles: Vec<Profile>,
+    /// Kept for files written before multiple subscriptions existed.
     pub sub_url: String,
     pub sub_ua: String,
+    pub subs: Vec<SubSource>,
     pub selected: String,
     pub split: Vec<SplitEntry>,
     pub zapret_dir: String,
     pub zapret_preset: String,
+    /// "tunnel" or "system"
+    pub dns_mode: String,
+    pub block_ipv6: bool,
+    pub reconnect: bool,
+    pub hotkey: String,
+    pub close_to_tray: bool,
+    pub notify: bool,
+    pub autostart: bool,
+    /// 0 = written before the settings existed; bumped when defaults change
+    pub schema: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct SubSource {
+    pub url: String,
+    pub ua: String,
+    pub name: String,
+    /// unix seconds of the last successful refresh
+    pub refreshed: u64,
+}
+
+impl AppState {
+    /// First run defaults: what a normal person expects from a VPN client.
+    pub fn with_defaults() -> Self {
+        Self {
+            dns_mode: "tunnel".into(),
+            block_ipv6: true,
+            reconnect: true,
+            hotkey: "Ctrl+Alt+V".into(),
+            close_to_tray: true,
+            notify: true,
+            autostart: true,
+            schema: 1,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +79,7 @@ pub fn install_id(data_dir: &Path) -> String {
         let _ = save(data_dir, &st);
         return id;
     }
-    let mut st = AppState::default();
+    let mut st = AppState::with_defaults();
     st.hwid = id.clone();
     let _ = save(data_dir, &st);
     id
@@ -70,10 +109,27 @@ pub fn state_path(data_dir: &Path) -> PathBuf {
 }
 
 pub fn load(data_dir: &Path) -> AppState {
-    std::fs::read_to_string(state_path(data_dir))
+    let mut st: AppState = std::fs::read_to_string(state_path(data_dir))
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
-        .unwrap_or_default()
+        .unwrap_or_else(AppState::with_defaults);
+    if st.schema == 0 {
+        // 0.1 files predate the settings: give them the intended defaults
+        let d = AppState::with_defaults();
+        st.block_ipv6 = d.block_ipv6;
+        st.reconnect = d.reconnect;
+        st.close_to_tray = d.close_to_tray;
+        st.notify = d.notify;
+        st.autostart = d.autostart;
+        st.schema = 1;
+    }
+    if st.dns_mode.is_empty() {
+        st.dns_mode = "tunnel".into();
+    }
+    if st.hotkey.is_empty() {
+        st.hotkey = "Ctrl+Alt+V".into();
+    }
+    st
 }
 
 pub fn save(data_dir: &Path, state: &AppState) -> Result<(), String> {

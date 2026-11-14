@@ -29,6 +29,46 @@ const dict: Dict = {
     en: "Paste your provider link and the servers will show up here.",
   },
   welcomeCta: { ru: "Добавить подписку", en: "Add subscription" },
+  subsTitle: { ru: "Мои подписки", en: "My subscriptions" },
+  addSub: { ru: "Добавить подписку", en: "Add subscription" },
+  neverUpdated: { ru: "ещё не обновлялась", en: "never refreshed" },
+  remove: { ru: "Удалить", en: "Remove" },
+  apply: { ru: "Применить", en: "Apply" },
+  copy: { ru: "Копировать", en: "Copy" },
+  support: { ru: "Поддержка", en: "Support" },
+  exportLog: { ru: "Сохранить журнал", en: "Export log" },
+  exportLogHint: {
+    ru: "Один файл с журналом движка — его можно отправить в поддержку",
+    en: "One file with the engine log — send it to support",
+  },
+  savedTo: { ru: "сохранено в", en: "saved to" },
+  tray: { ru: "Сворачивать в трей", en: "Minimize to tray" },
+  trayHint: {
+    ru: "Крестик прячет окно, туннель продолжает работать",
+    en: "The X hides the window, the tunnel keeps running",
+  },
+  notify: { ru: "Уведомления Windows", en: "Windows notifications" },
+  notifyHint: {
+    ru: "Сообщать о подключении и об ошибке",
+    en: "Tell me when the tunnel is up or fails",
+  },
+  hotkey: { ru: "Горячая клавиша", en: "Hotkey" },
+  hotkeyHint: {
+    ru: "Например Ctrl+Alt+V — включает и выключает туннель",
+    en: "For example Ctrl+Alt+V toggles the tunnel",
+  },
+  dns: { ru: "DNS", en: "DNS" },
+  ipv6: { ru: "IPv6", en: "IPv6" },
+  dnsHint: {
+    ru: "Через туннель — запросы идут к серверу и не видны провайдеру",
+    en: "Through the tunnel — queries go to the server, hidden from your ISP",
+  },
+  dnsTunnel: { ru: "Через туннель", en: "Through tunnel" },
+  dnsSystem: { ru: "Системный", en: "System" },
+  ipv6Hint: {
+    ru: "Выключить IPv6 в туннеле, чтобы трафик не уходил мимо",
+    en: "Reject IPv6 inside the tunnel so nothing slips past it",
+  },
   stBlocked: { ru: "Трафик заблокирован", en: "Traffic blocked" },
   noAppsTitle: { ru: "Приложений пока нет", en: "No apps yet" },
   noAppsText: {
@@ -83,7 +123,10 @@ const dict: Dict = {
   viaVpn: { ru: "Через VPN", en: "Via VPN" },
   direct: { ru: "Напрямую", en: "Direct" },
   searchApp: { ru: "Поиск приложения", en: "Search apps" },
-  addApp: { ru: "Добавить приложение", en: "Add application" },
+  splitHint: {
+    ru: "Список собран из установленных программ Windows. Всё, что выключено, идёт напрямую.",
+    en: "Built from the programs installed on this PC. Anything switched off goes direct.",
+  },
 
   zapretTitle: { ru: "Защита туннеля", en: "Tunnel guard" },
   zapretSub: {
@@ -105,9 +148,6 @@ const dict: Dict = {
   settingsTitle: { ru: "Настройки", en: "Settings" },
   language: { ru: "Язык", en: "Language" },
   autostart: { ru: "Запускать с Windows", en: "Start with Windows" },
-  tray: { ru: "Сворачивать в трей", en: "Minimize to tray" },
-  dns: { ru: "Защита от утечки DNS", en: "DNS leak protection" },
-  ipv6: { ru: "Разрешить IPv6", en: "Allow IPv6" },
   theme: { ru: "Тема", en: "Theme" },
   themeDark: { ru: "Тёмная", en: "Dark" },
   themeLight: { ru: "Светлая", en: "Light" },
@@ -121,7 +161,6 @@ const dict: Dict = {
 
   logsTitle: { ru: "Журнал", en: "Log" },
   logsSub: { ru: "Ключи и адреса вырезаны", en: "Keys and addresses are redacted" },
-  copy: { ru: "Скопировать", en: "Copy" },
 };
 
 export function t(lang: Lang, key: keyof typeof dict | string): string {

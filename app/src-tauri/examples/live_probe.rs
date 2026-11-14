@@ -42,7 +42,7 @@ fn main() {
         .unwrap_or(&res.profiles[1])
         .clone();
 
-    let mut config = engine::build_config(&profile, &[], "1.1.1.1");
+    let mut config = engine::build_config(&profile, &[], &engine::NetOptions::default());
     config["inbounds"] = serde_json::json!([{
         "type": "socks",
         "tag": "socks-in",

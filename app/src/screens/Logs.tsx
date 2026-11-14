@@ -3,9 +3,15 @@ import type { ConnState } from "../data";
 import { api, inTauri } from "../api";
 import { RefreshIcon } from "../icons";
 
-type Props = { t: (k: string) => string; conn: ConnState; error: string };
+type Props = {
+  t: (k: string) => string;
+  conn: ConnState;
+  error: string;
+  onExport: () => Promise<string>;
+};
 
-export function LogsScreen({ t, conn, error }: Props) {
+export function LogsScreen({ t, conn, error, onExport }: Props) {
+  const [saved, setSaved] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -37,6 +43,16 @@ export function LogsScreen({ t, conn, error }: Props) {
         <button className="ghost-btn" onClick={refresh}>
           <RefreshIcon size={13} /> {busy ? "…" : t("refresh")}
         </button>
+        <button
+          className="ghost-btn"
+          onClick={async () => {
+            const path = await onExport();
+            setSaved(path);
+          }}
+          title={t("exportLogHint")}
+        >
+          {t("exportLog")}
+        </button>
       </div>
 
       {text ? (
@@ -59,6 +75,7 @@ export function LogsScreen({ t, conn, error }: Props) {
       <div className="muted" style={{ marginTop: 10 }}>
         state: {conn}
         {error ? ` · ${error}` : ""}
+        {saved ? <div>{t("savedTo")} {saved}</div> : null}
       </div>
     </>
   );

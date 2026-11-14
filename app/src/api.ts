@@ -72,15 +72,29 @@ export const api = {
   stateSave: (state: AppState) => invoke<void>("state_save", { state }),
   logsTail: (which: string, lines: number) => invoke<string>("logs_tail", { which, lines }),
   installId: () => invoke<string>("install_id"),
+  appsScan: () => invoke<InstalledApp[]>("apps_scan"),
+  exportLog: () => invoke<string>("export_log"),
 };
+
+export type InstalledApp = { exe: string; name: string; path: string; running: boolean };
+
+export type SubSource = { url: string; ua: string; name: string; refreshed: number };
 
 export type AppState = {
   hwid?: string;
   profiles: Profile[];
   sub_url: string;
   sub_ua: string;
+  subs?: SubSource[];
   selected: string;
   split: { exe: string; via: boolean }[];
   zapret_dir: string;
   zapret_preset: string;
+  dns_mode?: string;
+  block_ipv6?: boolean;
+  reconnect?: boolean;
+  hotkey?: string;
+  close_to_tray?: boolean;
+  notify?: boolean;
+  autostart?: boolean;
 };

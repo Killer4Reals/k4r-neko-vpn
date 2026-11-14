@@ -13,14 +13,24 @@ type Props = {
   setAutostart: (v: boolean) => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
+  dnsMode: "tunnel" | "system";
+  setDnsMode: (v: "tunnel" | "system") => void;
+  blockIpv6: boolean;
+  setBlockIpv6: (v: boolean) => void;
+  closeToTray: boolean;
+  setCloseToTray: (v: boolean) => void;
+  notifyOn: boolean;
+  setNotifyOn: (v: boolean) => void;
+  hotkey: string;
+  setHotkey: (v: string) => void;
+  onExportLog: () => Promise<string>;
 };
 
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
-  const [tray, setTray] = useState(true);
   const [deviceId, setDeviceId] = useState("");
-  const [dns, setDns] = useState(true);
-  const [ipv6, setIpv6] = useState(false);
+  const [hotkeyDraft, setHotkeyDraft] = useState(p.hotkey);
+  const [exported, setExported] = useState("");
 
   useEffect(() => {
     if (!inTauri) return;
@@ -90,8 +100,45 @@ export function SettingsScreen(p: Props) {
         <div className="row">
           <div className="txt">
             <b>{t("tray")}</b>
+            <span>{t("trayHint")}</span>
           </div>
-          <button className="switch" aria-checked={tray} onClick={() => setTray(!tray)} />
+          <button
+            className="switch"
+            aria-checked={p.closeToTray}
+            onClick={() => p.setCloseToTray(!p.closeToTray)}
+          />
+        </div>
+        <div className="row">
+          <div className="txt">
+            <b>{t("notify")}</b>
+            <span>{t("notifyHint")}</span>
+          </div>
+          <button className="switch" aria-checked={p.notifyOn} onClick={() => p.setNotifyOn(!p.notifyOn)} />
+        </div>
+        <div className="row">
+          <div className="txt">
+            <b>{t("hotkey")}</b>
+            <span>{t("hotkeyHint")}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="input"
+              style={{ width: 150 }}
+              value={hotkeyDraft}
+              spellCheck={false}
+              onChange={(e) => setHotkeyDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") p.setHotkey(hotkeyDraft.trim());
+              }}
+            />
+            <button
+              className="btn"
+              style={{ width: "auto", paddingInline: 12 }}
+              onClick={() => p.setHotkey(hotkeyDraft.trim())}
+            >
+              {t("apply")}
+            </button>
+          </div>
         </div>
         <div className="row">
           <div className="txt">
@@ -103,14 +150,23 @@ export function SettingsScreen(p: Props) {
         <div className="row">
           <div className="txt">
             <b>{t("dns")}</b>
+            <span>{t("dnsHint")}</span>
           </div>
-          <button className="switch" aria-checked={dns} onClick={() => setDns(!dns)} />
+          <div className="seg">
+            <button data-on={p.dnsMode === "tunnel"} onClick={() => p.setDnsMode("tunnel")}>
+              {t("dnsTunnel")}
+            </button>
+            <button data-on={p.dnsMode === "system"} onClick={() => p.setDnsMode("system")}>
+              {t("dnsSystem")}
+            </button>
+          </div>
         </div>
         <div className="row">
           <div className="txt">
             <b>{t("ipv6")}</b>
+            <span>{t("ipv6Hint")}</span>
           </div>
-          <button className="switch" aria-checked={ipv6} onClick={() => setIpv6(!ipv6)} />
+          <button className="switch" aria-checked={p.blockIpv6} onClick={() => p.setBlockIpv6(!p.blockIpv6)} />
         </div>
       </div>
 
@@ -123,7 +179,27 @@ export function SettingsScreen(p: Props) {
           <dt>{t("core")}</dt>
           <dd>{t("coreValue")}</dd>
           <dt>{t("deviceId")}</dt>
-          <dd>{deviceId || "—"}</dd>
+          <dd>
+            {deviceId || "—"}{" "}
+            {deviceId ? (
+              <button
+                className="ghost-btn"
+                onClick={() => navigator.clipboard?.writeText(deviceId).catch(() => undefined)}
+              >
+                {t("copy")}
+              </button>
+            ) : null}
+          </dd>
+          <dt>{t("support")}</dt>
+          <dd>
+            <button
+              className="ghost-btn"
+              onClick={async () => setExported(await p.onExportLog())}
+            >
+              {t("exportLog")}
+            </button>
+            {exported ? <div className="muted" style={{ marginTop: 6 }}>{t("savedTo")} {exported}</div> : null}
+          </dd>
         </dl>
       </div>
     </>

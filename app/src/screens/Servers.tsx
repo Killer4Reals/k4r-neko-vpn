@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Server } from "../data";
+import type { SubSource } from "../api";
 import { BoltIcon, RefreshIcon } from "../icons";
 
 type Props = {
@@ -13,10 +14,21 @@ type Props = {
   setSubUa: (v: string) => void;
   onLoad: () => void;
   onImport: (text: string) => Promise<void>;
-  onPing: () => Promise<void>;
+  onPing: () => Promise<unknown>;
   warnings: string[];
   busy: boolean;
   realCount: number;
+  subs: SubSource[];
+  addSub: (url: string, ua: string, name: string) => void;
+  removeSub: (url: string) => void;
+};
+
+const shortUrl = (u: string) => {
+  try {
+    return new URL(u).host;
+  } catch {
+    return u.slice(0, 32);
+  }
 };
 
 export function ServersScreen(p: Props) {
@@ -70,6 +82,27 @@ export function ServersScreen(p: Props) {
         </div>
         <p className="muted" style={{ margin: "10px 0 0" }}>{t("subHeadersHint")}</p>
 
+        {p.subs.length > 0 && (
+          <div className="sub-list">
+            <div className="sub-list-head">{t("subsTitle")}</div>
+            {p.subs.map((s) => (
+              <div className="sub-row" key={s.url}>
+                <span className="grow">
+                  <div className="nm">{s.name || shortUrl(s.url)}</div>
+                  <div className="sub">
+                    {s.refreshed
+                      ? `${t("updated")} ${new Date(s.refreshed * 1000).toLocaleString()}`
+                      : t("neverUpdated")}
+                  </div>
+                </span>
+                <button className="ghost-btn danger" onClick={() => p.removeSub(s.url)} aria-label={t("remove")}>
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {warnings.length > 0 && (
           <div className="notice">
             {warnings.map((w, i) => (
@@ -89,6 +122,16 @@ export function ServersScreen(p: Props) {
             onClick={() => setShowImport((v) => !v)}
           >
             {t("importLink")}
+          </button>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            onClick={() => {
+              if (p.subUrl.trim()) p.addSub(p.subUrl, p.subUa, "");
+            }}
+            disabled={!p.subUrl.trim()}
+          >
+            {t("addSub")}
           </button>
           <button className="btn" style={{ width: "auto", paddingInline: 14 }} onClick={doPing} disabled={pinging}>
             <BoltIcon size={14} />

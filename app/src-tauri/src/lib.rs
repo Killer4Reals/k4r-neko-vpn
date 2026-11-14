@@ -14,7 +14,7 @@ use store::AppState;
 use subscription::{Profile, SubHeader, SubResult};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
 use winreg::RegKey;
 
@@ -109,6 +109,138 @@ fn logs_tail(app: tauri::AppHandle, which: String, lines: usize) -> Result<Strin
     Ok(store::tail(&data_dir(&app)?, &which, lines.clamp(10, 500)))
 }
 
+#[derive(Serialize, Clone)]
+pub struct InstalledApp {
+    pub exe: String,
+    pub name: String,
+    pub path: String,
+    pub running: bool,
+}
+
+/// Running process names, lowercased. Empty when tasklist is unavailable.
+fn running_processes() -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    let Ok(res) = std::process::Command::new("tasklist")
+        .args(["/fo", "csv", "/nh"])
+        .output()
+    else {
+        return out;
+    };
+    for line in String::from_utf8_lossy(&res.stdout).lines() {
+        if let Some(first) = line.split("\",\"").next() {
+            let name = first.trim_matches('"').trim().to_lowercase();
+            if !name.is_empty() {
+                out.insert(name);
+            }
+        }
+    }
+    out
+}
+
+/// Executables Windows itself knows about (App Paths), plus what is running now.
+#[tauri::command]
+fn apps_scan() -> Vec<InstalledApp> {
+    scan_installed()
+}
+
+/// Programs the user actually has open: what split tunneling is about.
+fn running_apps() -> Vec<(String, String)> {
+    let Ok(res) = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "Get-Process | Where-Object { $_.Path } | Select-Object -ExpandProperty Path -Unique",
+        ])
+        .output()
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for line in String::from_utf8_lossy(&res.stdout).lines() {
+        let path = line.trim();
+        let lower = path.to_lowercase();
+        if !lower.ends_with(".exe") || lower.contains("\\windows\\") {
+            continue; // system processes are noise, never the user's apps
+        }
+        let exe = path.rsplit('\\').next().unwrap_or(path).to_lowercase();
+        out.push((exe, path.to_string()));
+    }
+    out
+}
+
+pub fn scan_installed() -> Vec<InstalledApp> {
+    use std::collections::BTreeMap;
+    let running = running_processes();
+    let mut found: BTreeMap<String, InstalledApp> = BTreeMap::new();
+
+    for (exe, path) in running_apps() {
+        found.entry(exe.clone()).or_insert(InstalledApp {
+            running: true,
+            name: exe.trim_end_matches(".exe").to_string(),
+            exe,
+            path,
+        });
+    }
+
+    let roots = [
+        (winreg::enums::HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
+        (winreg::enums::HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
+    ];
+    for (root, key_path) in roots {
+        let Ok(key) = RegKey::predef(root).open_subkey(key_path) else {
+            continue;
+        };
+        for sub in key.enum_keys().flatten() {
+            let Ok(app) = key.open_subkey(&sub) else { continue };
+            let path: String = app.get_value::<String, _>("").unwrap_or_default();
+            let exe = sub.to_lowercase();
+            if !exe.ends_with(".exe") || path.trim().is_empty() {
+                continue;
+            }
+            found.entry(exe.clone()).or_insert(InstalledApp {
+                running: running.contains(&exe),
+                name: exe.trim_end_matches(".exe").to_string(),
+                exe,
+                path,
+            });
+        }
+    }
+    found.into_values().collect()
+}
+
+/// One readable file the user can hand over when something breaks.
+#[tauri::command]
+fn export_log(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+    let out_dir = dir.join("exports");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = out_dir.join(format!("k4r-log-{stamp}.txt"));
+    let mut text = String::new();
+    text.push_str("K4R Neko VPN — журнал для поддержки
+");
+    text.push_str(&format!("версия: {}
+", env!("CARGO_PKG_VERSION")));
+    text.push_str(&format!("админ: {}
+", engine::is_elevated()));
+    text.push_str("
+--- engine.log ---
+");
+    text.push_str(&store::tail(&dir, "engine", 400));
+    text.push_str("
+
+--- zapret.log ---
+");
+    text.push_str(&store::tail(&dir, "zapret", 200));
+    // never include the subscription url or ids here
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
 #[tauri::command]
 fn set_start_with_windows(enabled: bool) -> Result<bool, String> {
     set_autostart(enabled)?;
@@ -159,13 +291,84 @@ fn engine_start(
         &format!("start {}:{} ({})", profile.host, profile.port, profile.name),
     );
 
-    let config = engine::build_config(
-        &profile,
-        &excluded,
-        if dns.trim().is_empty() { "1.1.1.1" } else { dns.trim() },
-    );
+    let saved = store::load(&data_dir(&app)?);
+    let opts = engine::NetOptions {
+        dns_mode: if saved.dns_mode.is_empty() { "tunnel".into() } else { saved.dns_mode },
+        block_ipv6: saved.block_ipv6,
+        dns_server: if dns.trim().is_empty() {
+            "1.1.1.1".to_string()
+        } else {
+            dns.trim().to_string()
+        },
+    };
 
-    engine::start(&engine, &bin, &config, &log_path, &profile.name)
+    let config = engine::build_config(&profile, &excluded, &opts);
+    let status = engine::start(&engine, &bin, &config, &log_path, &profile.name)?;
+    supervise(app, saved.reconnect);
+    Ok(status)
+}
+
+/// Watches the engine: three silent retries, then an honest error in the UI.
+fn supervise(app: tauri::AppHandle, reconnect: bool) {
+    std::thread::spawn(move || {
+        let engine = app.state::<engine::Engine>();
+        let mut attempts: u32 = 0;
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1200));
+            if !engine.wanted.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            let st = engine::poll(&engine);
+            match st.state {
+                engine::EngineState::Idle => break,
+                engine::EngineState::Error if reconnect && attempts < 3 => {
+                    attempts += 1;
+                    let _ = app.emit(
+                        "engine-event",
+                        engine::EngineStatus {
+                            state: engine::EngineState::Starting,
+                            message: format!("переподключаемся ({attempts}/3)"),
+                            server: st.server.clone(),
+                            pid: 0,
+                        },
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(1400));
+                    if !engine.wanted.load(std::sync::atomic::Ordering::SeqCst) {
+                        break;
+                    }
+                    let bin = engine::sidecar_path(&resources_dir(&app));
+                    let log_path = match data_dir(&app) {
+                        Ok(d) => d.join("logs").join("engine.log"),
+                        Err(_) => break,
+                    };
+                    match engine::respawn(&engine, &bin, &log_path, &st.server) {
+                        Ok(ok) => {
+                            attempts = 0;
+                            let _ = app.emit("engine-event", ok);
+                        }
+                        Err(e) => {
+                            let _ = app.emit(
+                                "engine-event",
+                                engine::EngineStatus {
+                                    state: engine::EngineState::Error,
+                                    message: format!("переподключение не удалось: {e}"),
+                                    server: st.server.clone(),
+                                    pid: 0,
+                                },
+                            );
+                        }
+                    }
+                }
+                engine::EngineState::Error => {
+                    let _ = app.emit("engine-event", st);
+                    break;
+                }
+                _ => {
+                    attempts = 0;
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -304,10 +507,28 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(engine::Engine::default())
         .manage(zapret::Zapret::default())
         .setup(|app| {
             build_tray(app.handle())?;
+            // the X button hides to tray unless the user asked for a real quit
+            if let Some(win) = app.get_webview_window("main") {
+                let target = win.clone();
+                let handle = app.handle().clone();
+                win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let to_tray = data_dir(&handle)
+                            .map(|d| store::load(&d).close_to_tray)
+                            .unwrap_or(true);
+                        if to_tray {
+                            api.prevent_close();
+                            let _ = target.hide();
+                        }
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -330,7 +551,9 @@ pub fn run() {
             zapret_start,
             zapret_stop,
             zapret_status,
-            set_tray_state
+            set_tray_state,
+            apps_scan,
+            export_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running K4R Neko VPN");

@@ -83,7 +83,7 @@ fn main() {
     say!("server: {} ({}:{})", profile.name, profile.host, profile.port);
 
     let excluded: Vec<String> = extra.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-    let config = engine::build_config(&profile, &excluded, "1.1.1.1");
+    let config = engine::build_config(&profile, &excluded, &engine::NetOptions::default());
     let cfg_path = std::env::temp_dir().join("k4r-tun-probe.json");
     std::fs::write(&cfg_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
 

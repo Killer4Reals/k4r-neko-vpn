@@ -3,6 +3,7 @@ import "./styles.css";
 import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { apps as appCatalog, servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
+import type { SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
   CloseIcon,
@@ -38,6 +39,30 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
 const DEFAULT_SUB = "https://example.invalid/subscription";
 const DEFAULT_UA = "K4R-Neko-VPN/0.1";
 
+/** "Ctrl+Alt+V" -> "Control+Alt+KeyV": what the shortcut plugin understands. */
+function toAccelerator(hotkey: string): string {
+  const parts = hotkey
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return "";
+  const mods = new Set<string>();
+  let code = "";
+  for (const raw of parts) {
+    const p = raw.toLowerCase();
+    if (p === "ctrl" || p === "control") mods.add("Control");
+    else if (p === "alt") mods.add("Alt");
+    else if (p === "shift") mods.add("Shift");
+    else if (p === "win" || p === "meta" || p === "super") mods.add("Super");
+    else if (/^f\d{1,2}$/.test(p)) code = p.toUpperCase();
+    else if (/^\d$/.test(p)) code = `Digit${p}`;
+    else if (p.length === 1) code = `Key${p.toUpperCase()}`;
+    else code = raw;
+  }
+  if (!code) return "";
+  return [...mods, code].join("+");
+}
+
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
@@ -55,7 +80,7 @@ export default function App() {
   const [list, setList] = useState<AppEntry[]>(appCatalog);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initial.get("error") ?? "");
   const [busy, setBusy] = useState(false);
   const [lat, setLat] = useState<Record<string, number | null>>({});
   const [loaded, setLoaded] = useState(!inTauri);
@@ -64,6 +89,12 @@ export default function App() {
   const [autostart, setAutostart] = useState(false);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
+  const [subs, setSubs] = useState<SubSource[]>([]);
+  const [dnsMode, setDnsMode] = useState<"tunnel" | "system">("tunnel");
+  const [blockIpv6, setBlockIpv6] = useState(true);
+  const [hotkey, setHotkey] = useState("Ctrl+Alt+V");
+  const [closeToTray, setCloseToTray] = useState(true);
+  const [notifyOn, setNotifyOn] = useState(true);
   const timer = useRef<number | null>(null);
   const win = inTauri ? getCurrentWindow() : null;
 
@@ -115,6 +146,12 @@ export default function App() {
         if (st.sub_url) setSubUrl(st.sub_url);
         if (st.sub_ua) setSubUa(st.sub_ua);
         if (st.selected) setSelectedId(st.selected);
+        if (st.subs) setSubs(st.subs);
+        if (st.dns_mode === "system" || st.dns_mode === "tunnel") setDnsMode(st.dns_mode);
+        if (typeof st.block_ipv6 === "boolean") setBlockIpv6(st.block_ipv6);
+        if (st.hotkey) setHotkey(st.hotkey);
+        if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
+        if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (st.split.length) {
           setList((prev) =>
             prev.map((a) => {
@@ -140,11 +177,21 @@ export default function App() {
           split: list.map((a) => ({ exe: a.exe, via: a.via })),
           zapret_dir: zapretDir ?? "",
           zapret_preset: "",
+          subs,
+          dns_mode: dnsMode,
+          block_ipv6: blockIpv6,
+          reconnect: true,
+          hotkey,
+          close_to_tray: closeToTray,
+          notify: notifyOn,
         })
         .catch(() => undefined);
     }, 700);
     return () => window.clearTimeout(id);
-  }, [loaded, profiles, subUrl, subUa, selectedId, list, zapretDir]);
+  }, [
+    loaded, profiles, subUrl, subUa, selectedId, list, zapretDir,
+    subs, dnsMode, blockIpv6, hotkey, closeToTray, notifyOn,
+  ]);
 
   // Tray icon follows the tunnel state.
   useEffect(() => {
@@ -207,7 +254,7 @@ export default function App() {
       }
       const excluded = list.filter((a) => !a.via).map((a) => a.exe);
       try {
-        const st = await api.engineStart(profile, excluded, "1.1.1.1");
+        const st = await api.engineStart(profile, excluded, dnsMode === "tunnel" ? "1.1.1.1" : "");
         setConn(st.state === "running" ? "connected" : "error");
         if (st.state !== "running") setError(st.message);
       } catch (e) {
@@ -219,7 +266,7 @@ export default function App() {
 
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setConn("connected"), 1500);
-  }, [list, profiles, selectedId]);
+  }, [list, profiles, selectedId, dnsMode]);
 
   const toggleConnection = useCallback(() => {
     if (busy) return;
@@ -231,6 +278,7 @@ export default function App() {
   const toggleApp = (id: string) =>
     setList((prev) => prev.map((a) => (a.id === id ? { ...a, via: !a.via } : a)));
 
+  /** Fetches every subscription and merges the servers, keeping the selection. */
   const loadSubscription = useCallback(async () => {
     setBusy(true);
     setWarnings([]);
@@ -239,17 +287,84 @@ export default function App() {
       setBusy(false);
       return;
     }
+    const sources: SubSource[] = subs.length
+      ? subs
+      : subUrl.trim()
+        ? [{ url: subUrl.trim(), ua: subUa, name: "", refreshed: 0 }]
+        : [];
+    if (!sources.length) {
+      setWarnings(["Сначала вставь ссылку подписки"]);
+      setBusy(false);
+      return;
+    }
+
+    const merged: Profile[] = [];
+    const notes: string[] = [];
+    const stamp = Math.floor(Date.now() / 1000);
+    const refreshed: Record<string, number> = {};
+
+    for (const src of sources) {
+      try {
+        const res = await api.fetchSub(src.url, src.ua || subUa, []);
+        merged.push(...res.profiles);
+        notes.push(...res.warnings);
+        refreshed[src.url] = stamp;
+      } catch (e) {
+        const msg = String(e);
+        notes.push(
+          src.name
+            ? `${src.name}: ${msg}`
+            : msg.includes("устройств")
+              ? "Провайдер говорит «достигнут предел устройств»: удали лишнее устройство в личном кабинете или напиши в поддержку, приложив ID из настроек."
+              : msg,
+        );
+      }
+    }
+
+    const seen = new Set<string>();
+    const unique = merged.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+    setProfiles(unique);
+    setWarnings(notes);
+    setSubs((prev) =>
+      prev.map((s) => (refreshed[s.url] ? { ...s, refreshed: refreshed[s.url] } : s)),
+    );
+    if (unique.length) {
+      setSelectedId((cur) => (unique.some((p) => p.id === cur) ? cur : unique[0].id));
+    }
+    setBusy(false);
+  }, [subUa, subUrl, subs]);
+
+  const addSub = useCallback((url: string, ua: string, name: string) => {
+    const clean = url.trim();
+    if (!clean) return;
+    setSubs((prev) =>
+      prev.some((s) => s.url === clean)
+        ? prev
+        : [...prev, { url: clean, ua: ua || DEFAULT_UA, name: name.trim(), refreshed: 0 }],
+    );
+  }, []);
+
+  const removeSub = useCallback((url: string) => {
+    setSubs((prev) => prev.filter((s) => s.url !== url));
+  }, []);
+
+  const exportLog = useCallback(async () => {
     try {
-      const res = await api.fetchSub(subUrl, subUa, []);
-      setProfiles(res.profiles);
-      setWarnings(res.warnings);
-      if (res.profiles[0]) setSelectedId(res.profiles[0].id);
+      const path = await api.exportLog();
+      setWarnings([`Журнал сохранён: ${path}`]);
+      return path;
     } catch (e) {
       setWarnings([String(e)]);
-    } finally {
-      setBusy(false);
+      return "";
     }
-  }, [subUa, subUrl]);
+  }, []);
+
+  // refresh subscriptions twice a day, like a normal client
+  useEffect(() => {
+    if (!inTauri || !loaded) return;
+    const id = window.setInterval(() => loadSubscription(), 12 * 60 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [loaded, loadSubscription]);
 
   const importLinks = useCallback(async (text: string) => {
     if (!inTauri) {
@@ -271,16 +386,98 @@ export default function App() {
   }, []);
 
   const measurePing = useCallback(async () => {
-    if (!inTauri || profiles.length === 0) return;
+    if (!inTauri || profiles.length === 0) return undefined;
     try {
       const res = await api.probePing(profiles);
       const next: Record<string, number | null> = {};
       for (const r of res) next[r.id] = r.ms;
       setLat(next);
+      return next;
     } catch (e) {
       setWarnings([String(e)]);
+      return undefined;
     }
   }, [profiles]);
+
+  // --- global hotkey ---------------------------------------------------------
+  const toggleRef = useRef(toggleConnection);
+  toggleRef.current = toggleConnection;
+
+  useEffect(() => {
+    if (!inTauri || !hotkey.trim()) return;
+    let alive = true;
+    let stop: (() => void) | null = null;
+    (async () => {
+      try {
+        const { register, unregister } = await import("@tauri-apps/plugin-global-shortcut");
+        const { unregisterAll } = await import("@tauri-apps/plugin-global-shortcut");
+        await unregisterAll().catch(() => undefined);
+        if (!alive) return;
+        const accelerator = toAccelerator(hotkey);
+        if (!accelerator) {
+          setError("горячая клавиша записана непонятно: нужен вид Ctrl+Alt+V");
+          return;
+        }
+        await register(accelerator, (event) => {
+          if (event.state === "Pressed") toggleRef.current();
+        });
+        stop = () => {
+          unregister(accelerator).catch(() => undefined);
+        };
+      } catch (e) {
+        setError(`горячая клавиша «${hotkey}» не сработала: ${e}`);
+      }
+    })();
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [hotkey]);
+
+  // --- windows notifications -------------------------------------------------
+  const prevConn = useRef<ConnState>(conn);
+  useEffect(() => {
+    const was = prevConn.current;
+    prevConn.current = conn;
+    if (!inTauri || !notifyOn || was === conn) return;
+    if (conn !== "connected" && conn !== "error") return;
+    (async () => {
+      try {
+        const n = await import("@tauri-apps/plugin-notification");
+        let granted = await n.isPermissionGranted();
+        if (!granted) granted = (await n.requestPermission()) === "granted";
+        if (!granted) return;
+        n.sendNotification({
+          title: conn === "connected" ? "K4R Neko VPN" : "K4R Neko VPN",
+          body: conn === "connected" ? `Туннель поднят: ${selected?.city ?? ""}` : error || "Туннель не поднялся",
+        });
+      } catch {
+        /* notifications are a nicety, never block the app */
+      }
+    })();
+  }, [conn, notifyOn, selected, error]);
+
+  // --- installed programs for split tunneling --------------------------------
+  useEffect(() => {
+    if (!inTauri || !loaded) return;
+    api
+      .appsScan()
+      .then((found) => {
+        if (!found.length) return;
+        setList((prev) => {
+          const known = new Set(found.map((f) => f.exe));
+          const extra = prev.filter((p) => !known.has(p.exe));
+          const scanned: AppEntry[] = found.map((f) => ({
+            id: f.exe,
+            name: f.name.charAt(0).toUpperCase() + f.name.slice(1),
+            exe: f.exe,
+            via: prev.find((p) => p.exe === f.exe)?.via ?? true,
+          }));
+          return [...scanned, ...extra];
+        });
+      })
+      .catch(() => undefined);
+  }, [loaded]);
 
   const ctx = {
     t,
@@ -352,6 +549,16 @@ export default function App() {
               blocked={false}
               onOpenSplit={() => setScreen("split")}
               onOpenServers={() => setScreen("servers")}
+              onRefreshServers={loadSubscription}
+              onAutoPick={async () => {
+                const measured = (await measurePing()) ?? lat;
+                const best = [...viewServers].sort((a, b) => {
+                  const la = measured[a.id] ?? Number.MAX_SAFE_INTEGER;
+                  const lb = measured[b.id] ?? Number.MAX_SAFE_INTEGER;
+                  return la - lb;
+                })[0];
+                if (best) setSelectedId(best.id);
+              }}
               realCount={profiles.length}
             />
           )}
@@ -368,13 +575,18 @@ export default function App() {
               warnings={warnings}
               busy={busy}
               realCount={profiles.length}
+              subs={subs}
+              addSub={addSub}
+              removeSub={removeSub}
             />
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
           {screen === "zapret" && (
             <ZapretScreen t={t} zapretOn={zapretOn} setZapretOn={setZapretOn} initialDir={zapretDir} />
           )}
-          {screen === "logs" && <LogsScreen t={t} conn={conn} error={error} />}
+          {screen === "logs" && (
+            <LogsScreen t={t} conn={conn} error={error} onExport={exportLog} />
+          )}
           {screen === "settings" && (
             <SettingsScreen
               t={t}
@@ -386,6 +598,17 @@ export default function App() {
               setAutostart={setAutostart}
               theme={theme}
               setTheme={setTheme}
+              dnsMode={dnsMode}
+              setDnsMode={setDnsMode}
+              blockIpv6={blockIpv6}
+              setBlockIpv6={setBlockIpv6}
+              closeToTray={closeToTray}
+              setCloseToTray={setCloseToTray}
+              notifyOn={notifyOn}
+              setNotifyOn={setNotifyOn}
+              hotkey={hotkey}
+              setHotkey={setHotkey}
+              onExportLog={exportLog}
             />
           )}
         </main>

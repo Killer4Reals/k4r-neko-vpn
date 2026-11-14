@@ -18,6 +18,8 @@ type Props = {
   blocked: boolean;
   onOpenSplit: () => void;
   onOpenServers: () => void;
+  onRefreshServers: () => void;
+  onAutoPick: () => void;
   realCount: number;
   error: string;
 };
@@ -72,8 +74,8 @@ export function HomeScreen(p: Props) {
   const ss = String(uptime % 60).padStart(2, "0");
 
   return (
-    <div className="home" data-nosub={p.realCount === 0 ? "true" : undefined}>
-      {p.realCount === 0 && (
+    <div className="home" data-nosub={p.realCount === 0 && !p.error ? "true" : undefined}>
+      {p.realCount === 0 && !p.error && (
         <div className="welcome">
           <div className="welcome-copy">
             <h2>{t("welcomeTitle")}</h2>
@@ -160,7 +162,7 @@ export function HomeScreen(p: Props) {
           <h2>{t("servers")}</h2>
           <span className="count">{servers.length}</span>
           <div className="spacer" />
-          <button className="ghost-btn">
+          <button className="ghost-btn" onClick={p.onRefreshServers} title={t("refresh")}>
             <RefreshIcon size={13} />
           </button>
         </div>
@@ -193,7 +195,9 @@ export function HomeScreen(p: Props) {
         </div>
 
         <div className="panel-foot">
-          <button className="btn">{t("autoPick")}</button>
+          <button className="btn" onClick={p.onAutoPick}>
+            {t("autoPick")}
+          </button>
         </div>
       </aside>
     </div>

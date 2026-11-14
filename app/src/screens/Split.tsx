@@ -95,9 +95,7 @@ export function SplitScreen({ t, list, toggleApp }: Props) {
         </div>
       </div>
 
-      <button className="btn" style={{ width: "auto", marginTop: 14, paddingInline: 14 }}>
-        {t("addApp")}
-      </button>
+      <p className="muted" style={{ marginTop: 14 }}>{t("splitHint")}</p>
     </>
   );
 }
