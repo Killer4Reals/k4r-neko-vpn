@@ -2,11 +2,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod engine;
+mod probe;
+mod store;
 mod subscription;
 mod zapret;
 
 use serde::Serialize;
 use std::path::PathBuf;
+use probe::PingResult;
+use store::AppState;
 use subscription::{Profile, SubHeader, SubResult};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -73,6 +77,31 @@ fn core_info(app: tauri::AppHandle) -> Result<CoreInfo, String> {
         zapret_dir: zapret::detect_dir().map(|p| p.display().to_string()),
         autostart: autostart_enabled(),
     })
+}
+
+#[tauri::command]
+fn profiles_import(text: String) -> Result<Vec<Profile>, String> {
+    subscription::import_text(&text)
+}
+
+#[tauri::command]
+fn probe_ping(profiles: Vec<Profile>) -> Vec<PingResult> {
+    probe::ping_all(&profiles)
+}
+
+#[tauri::command]
+fn state_load(app: tauri::AppHandle) -> Result<AppState, String> {
+    Ok(store::load(&data_dir(&app)?))
+}
+
+#[tauri::command]
+fn state_save(app: tauri::AppHandle, state: AppState) -> Result<(), String> {
+    store::save(&data_dir(&app)?, &state)
+}
+
+#[tauri::command]
+fn logs_tail(app: tauri::AppHandle, which: String, lines: usize) -> Result<String, String> {
+    Ok(store::tail(&data_dir(&app)?, &which, lines.clamp(10, 500)))
 }
 
 #[tauri::command]
@@ -262,6 +291,11 @@ pub fn run() {
             core_info,
             set_start_with_windows,
             sub_fetch,
+            profiles_import,
+            probe_ping,
+            state_load,
+            state_save,
+            logs_tail,
             engine_start,
             engine_stop,
             engine_status,

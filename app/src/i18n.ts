@@ -44,6 +44,12 @@ const dict: Dict = {
   },
   importLink: { ru: "Импорт ссылки", en: "Import link" },
   importFile: { ru: "Импорт файла", en: "Import file" },
+  pasteLink: { ru: "Вставь ссылку vless:// (можно несколько строк)", en: "Paste vless:// link (multiple lines allowed)" },
+  checkPing: { ru: "Проверить пинг", en: "Check latency" },
+  logsEmpty: {
+    ru: "Журнал пуст. Здесь появятся записи нашего движка, когда запустишь туннель.",
+    en: "Log is empty. Engine records appear here once you start a tunnel."
+  },
   addProfile: { ru: "Добавить подписку", en: "Add subscription" },
 
   splitTitle: { ru: "Что идёт через VPN", en: "What goes through VPN" },

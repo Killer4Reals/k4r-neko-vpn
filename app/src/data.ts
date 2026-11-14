@@ -30,11 +30,3 @@ export const apps: AppEntry[] = [
   { id: "game", name: "Игра", exe: "game.exe", via: false },
   { id: "spotify", name: "Spotify", exe: "Spotify.exe", via: false },
 ];
-
-export const zapretPresets = [
-  "general ALT9 1.10.3 (game filter).txt",
-  "Default + YouTube no QUIC + wssize.txt",
-  "Default multisplit_stun.txt",
-  "ALL TCP & UDP multisplit_sni.txt",
-  "Universal V5.txt",
-];

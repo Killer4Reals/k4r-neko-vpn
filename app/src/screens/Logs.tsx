@@ -1,36 +1,54 @@
+import { useCallback, useEffect, useState } from "react";
 import type { ConnState } from "../data";
+import { api, inTauri } from "../api";
+import { RefreshIcon } from "../icons";
 
 type Props = { t: (k: string) => string; conn: ConnState; error: string };
 
-const lines = [
-  "12:41:07  core      sidecar started, pid 4812",
-  "12:41:07  tun       wintun adapter created, mtu 1350",
-  "12:41:07  route     0.0.0.0/0 -> 10.7.0.1, metric 1",
-  "12:41:07  dns       nrpt rules applied",
-  "12:41:08  zapret    winws2 started, preset \"general ALT9 1.10.3\"",
-  "12:41:08  health    dpi probe ok",
-  "12:41:08  tunnel    handshake ok, rtt 38 ms",
-  "12:41:09  split     3 apps via tunnel, 3 direct",
-];
-
 export function LogsScreen({ t, conn, error }: Props) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!inTauri) return;
+    setBusy(true);
+    try {
+      setText(await api.logsTail("engine", 200));
+    } catch {
+      setText("");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    if (!inTauri) return;
+    const id = window.setInterval(refresh, 4000);
+    return () => window.clearInterval(id);
+  }, [refresh]);
+
   return (
     <>
       <div className="page-head">
         <h1>{t("logsTitle")}</h1>
         <p>{t("logsSub")}</p>
+        <div style={{ flex: 1 }} />
+        <button className="ghost-btn" onClick={refresh}>
+          <RefreshIcon size={13} /> {busy ? "…" : t("refresh")}
+        </button>
       </div>
 
-      <div className="card" style={{ fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.9 }}>
-        {lines.map((l, i) => (
-          <div key={i} style={{ color: i === lines.length - 1 ? "var(--txt)" : "var(--txt-2)" }}>
-            {l}
-          </div>
-        ))}
-        <div style={{ color: "var(--txt-3)", marginTop: 10 }}>
-          state: {conn} · version 0.1.0
-          {error ? ` · ${error}` : ""}
-        </div>
+      <div
+        className="card logbox"
+        style={{ fontFamily: "var(--mono)", fontSize: 11.5, lineHeight: 1.7, whiteSpace: "pre-wrap" }}
+      >
+        {text ? text : <span className="muted">{t("logsEmpty")}</span>}
+      </div>
+
+      <div className="muted" style={{ marginTop: 10 }}>
+        state: {conn}
+        {error ? ` · ${error}` : ""}
       </div>
     </>
   );

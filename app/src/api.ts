@@ -65,4 +65,20 @@ export const api = {
   zapretStop: () => invoke<ZapretStatus>("zapret_stop"),
   zapretStatus: () => invoke<ZapretStatus>("zapret_status"),
   setTrayState: (state: string) => invoke<void>("set_tray_state", { state }),
+  profilesImport: (text: string) => invoke<Profile[]>("profiles_import", { text }),
+  probePing: (profiles: Profile[]) =>
+    invoke<{ id: string; ms: number | null }[]>("probe_ping", { profiles }),
+  stateLoad: () => invoke<AppState>("state_load"),
+  stateSave: (state: AppState) => invoke<void>("state_save", { state }),
+  logsTail: (which: string, lines: number) => invoke<string>("logs_tail", { which, lines }),
+};
+
+export type AppState = {
+  profiles: Profile[];
+  sub_url: string;
+  sub_ua: string;
+  selected: string;
+  split: { exe: string; via: boolean }[];
+  zapret_dir: string;
+  zapret_preset: string;
 };

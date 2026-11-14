@@ -1,5 +1,6 @@
+import { useState } from "react";
 import type { Server } from "../data";
-import { RefreshIcon } from "../icons";
+import { BoltIcon, RefreshIcon } from "../icons";
 
 type Props = {
   t: (k: string) => string;
@@ -11,6 +12,8 @@ type Props = {
   setSubUrl: (v: string) => void;
   setSubUa: (v: string) => void;
   onLoad: () => void;
+  onImport: (text: string) => Promise<void>;
+  onPing: () => Promise<void>;
   warnings: string[];
   busy: boolean;
   realCount: number;
@@ -18,6 +21,24 @@ type Props = {
 
 export function ServersScreen(p: Props) {
   const { t, servers, selectedId, setSelectedId, warnings, busy, realCount } = p;
+  const [link, setLink] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [pinging, setPinging] = useState(false);
+
+  const doImport = async () => {
+    await p.onImport(link);
+    setLink("");
+    setShowImport(false);
+  };
+
+  const doPing = async () => {
+    setPinging(true);
+    try {
+      await p.onPing();
+    } finally {
+      setPinging(false);
+    }
+  };
 
   return (
     <>
@@ -57,15 +78,48 @@ export function ServersScreen(p: Props) {
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn primary" style={{ width: "auto", paddingInline: 16 }} onClick={p.onLoad} disabled={busy}>
             <RefreshIcon size={14} />
             {busy ? "…" : t("refresh")}
           </button>
-          <button className="btn" style={{ width: "auto", paddingInline: 14 }}>{t("importLink")}</button>
-          <button className="btn" style={{ width: "auto", paddingInline: 14 }}>{t("importFile")}</button>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            onClick={() => setShowImport((v) => !v)}
+          >
+            {t("importLink")}
+          </button>
+          <button className="btn" style={{ width: "auto", paddingInline: 14 }} onClick={doPing} disabled={pinging}>
+            <BoltIcon size={14} />
+            {pinging ? "…" : t("checkPing")}
+          </button>
           <span className="muted">{realCount > 0 ? `${realCount}` : "demo"}</span>
         </div>
+
+        {showImport && (
+          <div style={{ marginTop: 12 }}>
+            <div className="field">
+              <label>{t("pasteLink")}</label>
+              <textarea
+                className="input"
+                style={{ height: 84, padding: 10, resize: "vertical", lineHeight: 1.5 }}
+                placeholder="vless://…"
+                value={link}
+                onChange={(e) => setLink(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <button
+              className="btn primary"
+              style={{ width: "auto", marginTop: 8, paddingInline: 16 }}
+              onClick={doImport}
+              disabled={!link.trim()}
+            >
+              {t("importLink")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ padding: 8 }}>

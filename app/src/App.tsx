@@ -35,7 +35,7 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
 ];
 
 const DEFAULT_SUB = "https://example.invalid/subscription";
-const DEFAULT_UA = "Happ/4.7.2";
+const DEFAULT_UA = "K4R-Neko-VPN/0.1";
 
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
@@ -50,6 +50,8 @@ export default function App() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [lat, setLat] = useState<Record<string, number | null>>({});
+  const [loaded, setLoaded] = useState(!inTauri);
   const [admin, setAdmin] = useState(true);
   const [zapretDir, setZapretDir] = useState<string | null>(null);
   const [autostart, setAutostart] = useState(false);
@@ -69,10 +71,10 @@ export default function App() {
       city: p.name || p.host,
       country: `${p.host}:${p.port}`,
       tag: (p.security === "none" ? p.network : p.security).toUpperCase(),
-      lat: 0,
+      lat: lat[p.id] ?? 0,
       quality: "good" as const,
     }));
-  }, [profiles]);
+  }, [profiles, lat]);
 
   const selected = useMemo(
     () => viewServers.find((s) => s.id === selectedId) ?? viewServers[0],
@@ -90,6 +92,47 @@ export default function App() {
       })
       .catch(() => setAdmin(true));
   }, []);
+
+  // Restore what the user had last time; the app must work with zero external programs.
+  useEffect(() => {
+    if (!inTauri) return;
+    api
+      .stateLoad()
+      .then((st) => {
+        if (st.profiles.length) setProfiles(st.profiles);
+        if (st.sub_url) setSubUrl(st.sub_url);
+        if (st.sub_ua) setSubUa(st.sub_ua);
+        if (st.selected) setSelectedId(st.selected);
+        if (st.split.length) {
+          setList((prev) =>
+            prev.map((a) => {
+              const saved = st.split.find((s) => s.exe === a.exe);
+              return saved ? { ...a, via: saved.via } : a;
+            }),
+          );
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    if (!inTauri || !loaded) return;
+    const id = window.setTimeout(() => {
+      api
+        .stateSave({
+          profiles,
+          sub_url: subUrl,
+          sub_ua: subUa,
+          selected: selectedId,
+          split: list.map((a) => ({ exe: a.exe, via: a.via })),
+          zapret_dir: zapretDir ?? "",
+          zapret_preset: "",
+        })
+        .catch(() => undefined);
+    }, 700);
+    return () => window.clearTimeout(id);
+  }, [loaded, profiles, subUrl, subUa, selectedId, list, zapretDir]);
 
   // Tray icon follows the tunnel state.
   useEffect(() => {
@@ -196,6 +239,37 @@ export default function App() {
     }
   }, [subUa, subUrl]);
 
+  const importLinks = useCallback(async (text: string) => {
+    if (!inTauri) {
+      setWarnings(["Импорт работает в приложении, а не в браузере"]);
+      return;
+    }
+    try {
+      const imported = await api.profilesImport(text);
+      setProfiles((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const merged = [...prev, ...imported.filter((p) => !seen.has(p.id))];
+        setSelectedId((cur) => (merged.some((p) => p.id === cur) ? cur : merged[0].id));
+        return merged;
+      });
+      setWarnings([]);
+    } catch (e) {
+      setWarnings([String(e)]);
+    }
+  }, []);
+
+  const measurePing = useCallback(async () => {
+    if (!inTauri || profiles.length === 0) return;
+    try {
+      const res = await api.probePing(profiles);
+      const next: Record<string, number | null> = {};
+      for (const r of res) next[r.id] = r.ms;
+      setLat(next);
+    } catch (e) {
+      setWarnings([String(e)]);
+    }
+  }, [profiles]);
+
   const ctx = {
     t,
     lang,
@@ -274,6 +348,8 @@ export default function App() {
               setSubUrl={setSubUrl}
               setSubUa={setSubUa}
               onLoad={loadSubscription}
+              onImport={importLinks}
+              onPing={measurePing}
               warnings={warnings}
               busy={busy}
               realCount={profiles.length}

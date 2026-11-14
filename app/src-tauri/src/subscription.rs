@@ -76,6 +76,46 @@ pub fn fetch(
     parse(&body)
 }
 
+/// Import from pasted text: one or many `vless://` links, plain or base64-wrapped.
+/// This is the path that makes the app work without any subscription at all.
+pub fn import_text(text: &str) -> Result<Vec<Profile>, String> {
+    let raw = text.trim();
+    if raw.is_empty() {
+        return Err("пусто: вставь ссылку vless://…".into());
+    }
+
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(raw)
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(raw))
+        .ok()
+        .and_then(|b| String::from_utf8(b).ok())
+        .unwrap_or_else(|| raw.to_string());
+
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let mut errors = Vec::new();
+
+    for token in decoded.split_whitespace() {
+        if !token.starts_with("vless://") {
+            continue;
+        }
+        match parse_link(token) {
+            Ok(p) => {
+                if seen.insert(p.id.clone()) {
+                    out.push(p);
+                }
+            }
+            Err(e) => errors.push(e),
+        }
+    }
+
+    if out.is_empty() {
+        let detail = errors.first().cloned().unwrap_or_else(|| "ссылок vless:// не найдено".into());
+        return Err(format!("не удалось импортировать: {detail}"));
+    }
+    Ok(out)
+}
+
 pub fn parse(body: &str) -> Result<SubResult, String> {
     let text = body.trim();
 
@@ -333,6 +373,31 @@ mod tests {
         assert_eq!(r.profiles.len(), 1);
         assert_eq!(r.profiles[0].host, "5.6.7.8");
         assert_eq!(r.profiles[0].public_key, "k");
+    }
+
+    #[test]
+    fn imports_several_links_and_skips_duplicates() {
+        let text = "vless://u@1.2.3.4:443?security=tls&sni=a.com#One
+                    vless://u@1.2.3.4:443?security=tls&sni=a.com#One-again
+                    vless://u2@5.6.7.8:8443?security=reality&pbk=k&sid=s#Two";
+        let list = import_text(text).unwrap();
+        assert_eq!(list.len(), 2, "duplicate must be dropped");
+        assert_eq!(list[1].host, "5.6.7.8");
+    }
+
+    #[test]
+    fn imports_base64_wrapped_links() {
+        use base64::Engine as _;
+        let plain = "vless://u@9.9.9.9:443?security=none#B64";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(plain);
+        let list = import_text(&encoded).unwrap();
+        assert_eq!(list[0].host, "9.9.9.9");
+    }
+
+    #[test]
+    fn reports_garbage_instead_of_panicking() {
+        assert!(import_text("hello world").is_err());
+        assert!(import_text("   ").is_err());
     }
 
     #[test]
