@@ -349,6 +349,7 @@ export default function App() {
               setZapretOn={setZapretOn}
               killSwitch={killSwitch}
               setKillSwitch={setKillSwitch}
+              blocked={false}
               onOpenSplit={() => setScreen("split")}
               onOpenServers={() => setScreen("servers")}
               realCount={profiles.length}

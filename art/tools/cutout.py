@@ -53,10 +53,24 @@ def cutout(src: Path, dst: Path, t_low: float = 70.0, t_high: float = 150.0,
 
 def make_app_icon(bust: Path) -> None:
     im = cutout(bust, OUT / "icon_1024.png")
-    sizes = [256, 128, 64, 48, 32, 16]
+    # breathe: the head must not touch the edges or a 16px icon turns into a blob
+    side = round(im.width / 0.84)
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    canvas.paste(im, ((side - im.width) // 2, (side - im.height) // 2))
+    im = canvas
     im.resize((512, 512), Image.LANCZOS).save(OUT / "icon_512.png")
     im.resize((256, 256), Image.LANCZOS).save(OUT / "icon_256.png")
-    im.save(OUT / "icon.ico", sizes=[(s, s) for s in sizes])
+    im.save(OUT / "icon.ico", sizes=[(s, s) for s in (16, 32, 48, 64, 128, 256)])
+
+    # what Tauri and Windows actually load
+    icons = Path(__file__).resolve().parents[1].parent / "app" / "src-tauri" / "icons"
+    for name, px in (
+        ("32x32.png", 32), ("128x128.png", 128), ("128x128@2x.png", 256),
+        ("icon.png", 512), ("Square44x44Logo.png", 44),
+        ("Square150x150Logo.png", 150), ("StoreLogo.png", 50),
+    ):
+        im.resize((px, px), Image.LANCZOS).save(icons / name)
+    im.save(icons / "icon.ico", sizes=[(s, s) for s in (16, 32, 48, 64, 128, 256)])
 
 
 def thicken(im: Image.Image, radius: int) -> Image.Image:
@@ -145,6 +159,8 @@ def make_states() -> None:
         ("state_empty_raw.png", "state_empty.png"),
         ("state_log_empty_raw.png", "state_log_empty.png"),
         ("state_wave_raw.png", "state_wave.png"),
+        ("state_laptop_raw.png", "state_laptop.png"),
+        ("state_guard_raw.png", "state_guard.png"),
         ("banner_hero_raw.png", "banner_hero.png"),
     ):
         im = cutout(RAW / src, OUT / dst, trim=False)
@@ -153,8 +169,7 @@ def make_states() -> None:
 
 
 def main() -> None:
-    cutout(RAW / "icon_bust.png", OUT / "avatar_512.png")
-    make_app_icon(RAW / "icon_bust.png")
+    make_app_icon(RAW / "icon2_bust_raw.png")
     # keep the original canvas for states: character stays in place across frames
     idle = cutout(RAW / "state_idle_sleep.png", OUT / "state_idle.png", trim=False)
     recolor_z(idle).save(OUT / "state_idle.png")

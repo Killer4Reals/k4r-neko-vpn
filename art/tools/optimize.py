@@ -14,6 +14,8 @@ JOBS = [
     ("state_empty.png", "empty.webp", 520),
     ("state_log_empty.png", "log-empty.webp", 520),
     ("state_wave.png", "wave.webp", 720),
+    ("state_laptop.png", "laptop.webp", 520),
+    ("state_guard.png", "guard.webp", 720),
     ("banner_hero.png", "banner.webp", 1100),
 ]
 

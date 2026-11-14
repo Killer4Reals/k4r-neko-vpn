@@ -14,6 +14,8 @@ type Props = {
   setZapretOn: (v: boolean) => void;
   killSwitch: boolean;
   setKillSwitch: (v: boolean) => void;
+  /** true only when traffic is really being held back (needs the WFP backend) */
+  blocked: boolean;
   onOpenSplit: () => void;
   onOpenServers: () => void;
   realCount: number;
@@ -22,6 +24,8 @@ type Props = {
 
 // sizes live in CSS: each art has a different amount of empty canvas, so the
 // per-state scale keeps the drawn character the same height everywhere
+const GUARD = "/mascot/guard.webp";
+
 const mascot: Record<ConnState, string> = {
   idle: "/mascot/idle.webp",
   connecting: "/mascot/connecting.webp",
@@ -55,9 +59,15 @@ export function HomeScreen(p: Props) {
     return () => window.clearInterval(id);
   }, [conn]);
 
-  const statusKey = conn === "connected" ? "stConnected" : conn === "connecting" ? "stConnecting" : conn === "error" ? "stError" : "stOff";
+  // Never claim "blocked" on the strength of a toggle: the guard art only
+  // appears when the backend reports real enforcement.
+  const guarded = p.blocked;
+  const statusKey = guarded
+    ? "stBlocked"
+    : conn === "connected" ? "stConnected" : conn === "connecting" ? "stConnecting" : conn === "error" ? "stError" : "stOff";
   const hintKey = conn === "connected" ? "hintConnected" : conn === "connecting" ? "hintConnecting" : "hintOff";
-  const m = mascot[conn];
+  const view = guarded ? "guard" : conn;
+  const m = guarded ? GUARD : mascot[conn];
   const mm = String(Math.floor(uptime / 60)).padStart(2, "0");
   const ss = String(uptime % 60).padStart(2, "0");
 
@@ -82,12 +92,12 @@ export function HomeScreen(p: Props) {
       <section className="hero">
         <div className="grid-lines" />
 
-        <div className="status-pill" data-state={conn}>
+        <div className="status-pill" data-state={view}>
           <span className="dot" />
           {t(statusKey)}
         </div>
 
-        <div className="orb" data-state={conn}>
+        <div className="orb" data-state={view}>
           <div className="ring" />
           <img className="mascot" src={m} alt="" draggable={false} />
           <button className="orb-hit" onClick={toggleConnection} aria-label={t(hintKey)} />
@@ -128,7 +138,13 @@ export function HomeScreen(p: Props) {
             <span className="led" />
             {t("tunnelGuard")}
           </button>
-          <button className="chip" data-on={p.killSwitch} onClick={() => p.setKillSwitch(!p.killSwitch)}>
+          <button
+            className="chip"
+            data-on={p.killSwitch}
+            data-soon="true"
+            title={t("killSwitchSoon")}
+            onClick={() => p.setKillSwitch(!p.killSwitch)}
+          >
             <span className="led" />
             {t("killSwitch")}
           </button>

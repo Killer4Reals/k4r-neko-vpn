@@ -39,6 +39,20 @@ export function SplitScreen({ t, list, toggleApp }: Props) {
         </div>
       </div>
 
+      {filtered.length === 0 && !q && (
+        <div className="card empty-box" style={{ marginBottom: 14 }}>
+          <img src="/mascot/laptop.webp" alt="" draggable={false} />
+          <div>
+            <h3>{t("noAppsTitle")}</h3>
+            <p className="muted">{t("noAppsText")}</p>
+          </div>
+        </div>
+      )}
+
+      {filtered.length === 0 && q && (
+        <p className="muted" style={{ marginBottom: 14 }}>{t("noMatches")}</p>
+      )}
+
       <div className="split">
         <div className="card">
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

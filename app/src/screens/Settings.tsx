@@ -96,6 +96,7 @@ export function SettingsScreen(p: Props) {
         <div className="row">
           <div className="txt">
             <b>{t("killSwitch")}</b>
+            <span>{t("killSwitchSoon")}</span>
           </div>
           <button className="switch" aria-checked={killSwitch} onClick={() => setKillSwitch(!killSwitch)} />
         </div>

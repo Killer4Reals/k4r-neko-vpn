@@ -29,6 +29,13 @@ const dict: Dict = {
     en: "Paste your provider link and the servers will show up here.",
   },
   welcomeCta: { ru: "Добавить подписку", en: "Add subscription" },
+  stBlocked: { ru: "Трафик заблокирован", en: "Traffic blocked" },
+  noAppsTitle: { ru: "Приложений пока нет", en: "No apps yet" },
+  noAppsText: {
+    ru: "Добавь программы, и решишь, какие идут через туннель, а какие напрямую.",
+    en: "Add programs to choose which ones go through the tunnel and which go direct.",
+  },
+  noMatches: { ru: "Ничего не нашлось.", en: "Nothing found." },
   logsEmptyTitle: { ru: "Журнал пуст", en: "Log is empty" },
   noServersTitle: { ru: "Список пуст", en: "Nothing here yet" },
   noServersText: {
@@ -45,6 +52,10 @@ const dict: Dict = {
 
   tunnelGuard: { ru: "Защита туннеля", en: "Tunnel guard" },
   killSwitch: { ru: "Блокировка при обрыве", en: "Kill switch" },
+  killSwitchSoon: {
+    ru: "Пока только запоминает выбор — сама блокировка появится в следующем обновлении",
+    en: "Only remembers the choice for now — real blocking ships in the next update",
+  },
 
   serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },
   serversSub: { ru: "Список приходит из твоей подписки", en: "The list comes from your subscription" },
