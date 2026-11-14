@@ -7,3 +7,4 @@ app/vite.log
 app/tauri.log
 *.log
 .DS_Store
+index.html.bak
