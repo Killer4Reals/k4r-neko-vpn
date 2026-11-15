@@ -150,12 +150,15 @@ export default function App() {
     return profiles.map((p) => {
       const cc = ccFromName(p.name);
       const country = nameOf(cc ?? "");
+      const title = stripCc(p.name) || p.host;
+      // вторая строка: страна, если она не повторяет название; иначе адрес сервера
+      const sub = country && country.toLowerCase() !== title.toLowerCase() ? country : `${p.host}:${p.port}`;
       return {
       id: p.id,
       cc: cc ?? "",
       flag: cc ?? "",
-      city: stripCc(p.name) || p.host,
-      country: country ? `${country} · ${p.host}:${p.port}` : `${p.host}:${p.port}`,
+      city: title,
+      country: sub,
       tag: (p.security === "none" ? p.network : p.security).toUpperCase(),
       lat: lat[p.id] ?? 0,
       quality: "good" as const,
