@@ -16,3 +16,7 @@ app/dist/
 app/src-tauri/target/
 dist/
 !docs/
+
+# чужие установщики и крупные артефакты
+DeepAI-Code-*.exe
+*.msi
