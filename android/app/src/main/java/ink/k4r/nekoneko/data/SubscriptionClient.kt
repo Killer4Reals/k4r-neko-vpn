@@ -13,7 +13,7 @@ object SubscriptionClient {
     // любому незнакомому заголовку, поэтому строку не меняем.
     private const val UA = "K4R-Neko-VPN/0.1"
 
-    fun fetch(url: String): SubResult {
+    fun fetch(url: String, hwid: String = ""): SubResult {
         val text = url.trim()
         require(text.startsWith("http://") || text.startsWith("https://")) { "адрес должен начинаться с http:// или https://" }
         val connection = (URL(text).openConnection() as HttpURLConnection).apply {
@@ -21,6 +21,8 @@ object SubscriptionClient {
             connectTimeout = 15000
             readTimeout = 20000
             setRequestProperty("User-Agent", UA)
+            // Провайдер узнаёт устройство по этому заголовку; без него — заглушка
+            if (hwid.isNotEmpty()) setRequestProperty("X-HWID", hwid)
         }
         try {
             val code = connection.responseCode

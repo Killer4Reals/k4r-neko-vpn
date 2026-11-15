@@ -121,7 +121,7 @@ fun HomeScreen(store: Store) {
         message = ""
         scope.launch {
             try {
-                val result = withContext(Dispatchers.IO) { SubscriptionClient.fetch(url) }
+                val result = withContext(Dispatchers.IO) { SubscriptionClient.fetch(url, store.hwid) }
                 if (result.profiles.isEmpty()) error(context.getString(R.string.err_no_servers))
                 store.subUrl = url.trim()
                 store.subBody = result.profiles.joinToString("\n") { it.raw }

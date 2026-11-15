@@ -150,6 +150,11 @@ pub fn fetch(
         .map_err(|e| format!("не удалось прочитать ответ: {e}"))?;
 
     let mut parsed = parse(&body)?;
+    // Заглушка вместо серверов — это отказ провайдера, а не список серверов.
+    // Возвращаем ошибку с его словами: иначе рабочий список затрётся пустышкой.
+    if let Some(reason) = placeholder_reason(&parsed.profiles) {
+        return Err(format!("провайдер: {reason}"));
+    }
     parsed.info = info;
     parsed.title = title;
     parsed.refresh_hint = refresh_hint;
@@ -244,6 +249,20 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
         refresh_hint: 0,
         format: "links".into(),
     })
+}
+
+/// Если все серверы в ответе — заглушка, возвращаем то, что провайдер написал
+/// в её имени («Достигнут предел количества устройств» и подобное).
+pub fn placeholder_reason(profiles: &[Profile]) -> Option<String> {
+    if profiles.is_empty() || !profiles.iter().all(is_placeholder) {
+        return None;
+    }
+    let text = profiles
+        .iter()
+        .map(|p| p.name.trim())
+        .find(|n| !n.is_empty())
+        .unwrap_or("серверов нет");
+    Some(text.to_string())
 }
 
 fn is_placeholder(p: &Profile) -> bool {
@@ -450,6 +469,23 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn placeholder_answer_is_an_error_not_a_server_list() {
+        // Провайдер отвечает заглушкой, когда не узнал клиента или кончились
+        // слоты устройств. Такой ответ нельзя показывать как сервер.
+        let body = "dmxlc3M6Ly8wMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDBAMC4wLjAuMDoxP2VuY3J5cHRpb249bm9uZSZ0eXBlPXRjcCZzZWN1cml0eT1ub25lIyVEMCU5NCVEMCVCRSVEMSU4MSVEMSU4MiVEMCVCOCVEMCVCMyVEMCVCRCVEMSU4MyVEMSU4MiUyMCVEMCVCRiVEMSU4MCVEMCVCNSVEMCVCNCVEMCVCNSVEMCVCQiUyMCVEMSU4MyVEMSU4MSVEMSU4MiVEMSU4MCVEMCVCRSVEMCVCOSVEMSU4MSVEMSU4MiVEMCVCMg==";
+        let parsed = parse(body).expect("тело разбирается");
+        let reason = placeholder_reason(&parsed.profiles).expect("заглушка распознана");
+        assert!(reason.contains("предел"), "причина: {reason}");
+    }
+
+    #[test]
+    fn real_servers_are_not_mistaken_for_a_placeholder() {
+        let body = "dmxlc3M6Ly8xOGM1YjkyMC0yMWE2LTQzYjEtODkzNi1lOGRjYjY5YTU0NzlAYmlzdzIyMi5heGlub2RlLnNicy4xMDEyMT9lbmNyeXB0aW9uPW5vbmUjJUQwJUE0JUQwJUI4JUQwJUJEJUQwJUJCJUQwJUI1JUQwJUJEJUQwJUI0JUQwJUI4JUQxJThG";
+        let parsed = parse(body).expect("тело разбирается");
+        assert!(placeholder_reason(&parsed.profiles).is_none());
+    }
 
     #[test]
     fn parses_plain_vless_link() {

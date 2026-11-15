@@ -24,6 +24,22 @@ class Store(context: Context) {
         get() = prefs.getString("selected", "").orEmpty()
         set(value) = prefs.edit().putString("selected", value).apply()
 
+    /**
+     * Постоянный идентификатор установки. Провайдеры (Happ, RayTun и подобные)
+     * считают по нему устройства: без заголовка X-HWID они отвечают заглушкой
+     * «приложение не поддерживается», даже если слот свободен.
+     */
+    val hwid: String
+        get() {
+            val saved = prefs.getString("hwid", "").orEmpty()
+            if (saved.isNotEmpty()) return saved
+            val fresh = (1..12)
+                .map { "0123456789ABCDEF"[kotlin.random.Random.nextInt(16)] }
+                .joinToString("")
+            prefs.edit().putString("hwid", fresh).apply()
+            return fresh
+        }
+
     /** Поднимать туннель сразу после перезагрузки телефона. */
     var autoStart: Boolean
         get() = prefs.getBoolean("auto_start", false)
