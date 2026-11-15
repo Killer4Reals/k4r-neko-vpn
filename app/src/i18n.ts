@@ -49,7 +49,7 @@ const dict: Dict = {
     ru: "Нажатие на крестик прячет окно, туннель продолжает работать",
     en: "The X hides the window, the tunnel keeps running",
   },
-  notify: { ru: "Уведомления Windows", en: "Windows notifications" },
+  notify: { ru: "Уведомления в окне", en: "Notifications in the window" },
   notifyHint: {
     ru: "Сообщать о подключении и об ошибке",
     en: "Tell me when the tunnel is up or fails",

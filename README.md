@@ -6,6 +6,26 @@ sing-box, аккуратный интерфейс на React и маскот, к
 
 > Проект личный. Пока только Windows; Android и iOS — следующие.
 
+<p align="center">
+  <img src="docs/screens/home.webp" alt="Главный экран: маскот, кнопка включения, живой сервер справа" width="880">
+</p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screens/servers.webp" alt="Серверы и подписки"></td>
+    <td width="50%"><img src="docs/screens/split.webp" alt="Разделение по программам"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Подписки и живые серверы</sub></td>
+    <td align="center"><sub>Какая программа идёт через VPN</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screens/settings.webp" alt="Настройки" width="560"><br>
+  <sub>Настройки: темы, трей, горячая клавиша, DNS, блокировка при обрыве</sub>
+</p>
+
 ## Что это умеет
 
 - **Туннель.** VLESS/Reality/gRPC, подписки (несколько сразу), выбор сервера,
