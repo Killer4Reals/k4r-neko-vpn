@@ -3,6 +3,7 @@ import "./styles.css";
 import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
+import { ccFromName, nameOf, stripCc } from "./flags";
 import type { ChosenApp } from "./api";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
@@ -146,16 +147,20 @@ export default function App() {
 
   const viewServers = useMemo<Server[]>(() => {
     if (profiles.length === 0) return demoCatalog;
-    return profiles.map((p) => ({
+    return profiles.map((p) => {
+      const cc = ccFromName(p.name);
+      const country = nameOf(cc ?? "");
+      return {
       id: p.id,
-      cc: "VPN",
-      flag: "",
-      city: p.name || p.host,
-      country: `${p.host}:${p.port}`,
+      cc: cc ?? "",
+      flag: cc ?? "",
+      city: stripCc(p.name) || p.host,
+      country: country ? `${country} · ${p.host}:${p.port}` : `${p.host}:${p.port}`,
       tag: (p.security === "none" ? p.network : p.security).toUpperCase(),
       lat: lat[p.id] ?? 0,
       quality: "good" as const,
-    }));
+      };
+    });
   }, [profiles, lat]);
 
   const selected = useMemo(

@@ -1,6 +1,6 @@
 [package]
 name = "k4r-neko-vpn"
-version = "1.1.0"
+version = "1.2.0"
 description = "K4R Neko VPN"
 authors = ["K4R"]
 edition = "2021"

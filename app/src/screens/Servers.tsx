@@ -4,6 +4,7 @@ import type { SubInfo, SubSource } from "../api";
 import { QrSheet } from "../Qr";
 import { api } from "../api";
 import { BoltIcon, RefreshIcon } from "../icons";
+import { Flag } from "../Flag";
 
 type Props = {
   t: (k: string) => string;
@@ -275,9 +276,7 @@ export function ServersScreen(p: Props) {
               onClick={() => setSelectedId(s.id)}
               style={{ gridTemplateColumns: "26px minmax(0,1fr) 90px 70px" }}
             >
-              <span className="flag-code" data-on={s.id === selectedId} style={{ width: 26, height: 19, fontSize: 10 }}>
-                {s.cc}
-              </span>
+              <Flag cc={s.flag || s.cc} />
               <span>
                 <div className="name">{s.city}</div>
                 <div className="sub">{s.country}</div>

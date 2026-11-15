@@ -12,12 +12,12 @@ export type Server = {
 };
 
 export const servers: Server[] = [
-  { id: "de1", cc: "DE", flag: "🇩🇪", city: "Франкфурт", country: "Германия", tag: "VLESS", lat: 38, quality: "good" },
-  { id: "nl1", cc: "NL", flag: "🇳🇱", city: "Амстердам", country: "Нидерланды", tag: "VLESS", lat: 51, quality: "good" },
-  { id: "fi1", cc: "FI", flag: "🇫🇮", city: "Хельсинки", country: "Финляндия", tag: "VLESS", lat: 44, quality: "good" },
-  { id: "se1", cc: "SE", flag: "🇸🇪", city: "Стокгольм", country: "Швеция", tag: "VLESS", lat: 57, quality: "mid" },
-  { id: "tr1", cc: "TR", flag: "🇹🇷", city: "Истанбул", country: "Турция", tag: "VLESS", lat: 78, quality: "mid" },
-  { id: "us1", cc: "US", flag: "🇺🇸", city: "Нью-Йорк", country: "США", tag: "VLESS", lat: 143, quality: "bad" },
+  { id: "de1", cc: "DE", flag: "", city: "Франкфурт", country: "Германия", tag: "VLESS", lat: 38, quality: "good" },
+  { id: "nl1", cc: "NL", flag: "", city: "Амстердам", country: "Нидерланды", tag: "VLESS", lat: 51, quality: "good" },
+  { id: "fi1", cc: "FI", flag: "", city: "Хельсинки", country: "Финляндия", tag: "VLESS", lat: 44, quality: "good" },
+  { id: "se1", cc: "SE", flag: "", city: "Стокгольм", country: "Швеция", tag: "VLESS", lat: 57, quality: "mid" },
+  { id: "tr1", cc: "TR", flag: "", city: "Истанбул", country: "Турция", tag: "VLESS", lat: 78, quality: "mid" },
+  { id: "us1", cc: "US", flag: "", city: "Нью-Йорк", country: "США", tag: "VLESS", lat: 143, quality: "bad" },
 ];
 
 export type AppEntry = { id: string; name: string; exe: string; via: boolean };

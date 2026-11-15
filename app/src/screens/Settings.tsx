@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
 import type { Theme } from "../App";
 import { api, inTauri } from "../api";
+import { DnsPick } from "../DnsPick";
 
 type Props = {
   t: (k: string) => string;
@@ -38,7 +39,7 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const [deviceId, setDeviceId] = useState("");
-  const [version, setVersion] = useState("1.1.0");
+  const [version, setVersion] = useState("1.2.0");
   const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error">("idle");
   const [updateNote, setUpdateNote] = useState("");
   const [updateLink, setUpdateLink] = useState("");
@@ -190,6 +191,17 @@ export function SettingsScreen(p: Props) {
             </button>
           </div>
         </div>
+        {p.dnsMode === "tunnel" && (
+          <div className="row row-top">
+            <div className="txt">
+              <b>{t("dnsServer")}</b>
+              <span>{t("dnsServerHint")}</span>
+            </div>
+          </div>
+        )}
+        {p.dnsMode === "tunnel" && (
+          <DnsPick lang={p.lang} value={p.dnsServer} onChange={p.setDnsServer} t={t} />
+        )}
         <div className="row">
           <div className="txt">
             <b>{t("subRefresh")}</b>
@@ -221,43 +233,6 @@ export function SettingsScreen(p: Props) {
             onClick={() => p.setMinimizeToTray(!p.minimizeToTray)}
           />
         </div>
-        {p.dnsMode === "tunnel" && (
-          <div className="row">
-            <div className="txt">
-              <b>{t("dnsServer")}</b>
-              <span>{t("dnsServerHint")}</span>
-            </div>
-          </div>
-        )}
-        {p.dnsMode === "tunnel" && (
-          <div className="dns-row">
-            <input
-              className="input"
-              value={p.dnsServer}
-              spellCheck={false}
-              placeholder="1.1.1.1"
-              onChange={(e) => p.setDnsServer(e.target.value)}
-              aria-label={t("dnsServer")}
-            />
-            <div className="dns-chips">
-              {[
-                ["Cloudflare", "1.1.1.1"],
-                ["Google", "8.8.8.8"],
-                ["Quad9", "https://dns.quad9.net/dns-query"],
-                ["DoH Google", "https://dns.google/dns-query"],
-              ].map(([label, value]) => (
-                <button
-                  key={value}
-                  className="chip"
-                  data-on={p.dnsServer === value}
-                  onClick={() => p.setDnsServer(value)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
         <div className="row">
           <div className="txt">
             <b>{t("ipv6")}</b>

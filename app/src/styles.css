@@ -726,8 +726,180 @@ input {
   font-size: 13px;
   z-index: 1;
 }
-.hero .server-line .flag {
+.hero .server-line /* ------ выбор DNS: категории, поиск, три способа подключения ------ */
+.dns-box {
+  display: grid;
+  gap: 14px;
+  margin: 4px 0 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-2);
+}
+.dns-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dns-head .input {
+  flex: 1 1 auto;
+}
+.dns-head .sub {
+  white-space: nowrap;
+}
+.dns-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--txt-3);
+}
+.dns-legend b {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--txt-2);
+  margin-right: 2px;
+}
+.dns-now {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+}
+.dns-now code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+.dns-group {
+  display: grid;
+  gap: 8px;
+}
+.dns-group + .dns-group {
+  margin-top: 4px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+.dns-group > header h4 {
+  margin: 0 0 2px;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.dns-group > header p {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.dns-list {
+  display: grid;
+  gap: 6px;
+}
+.dns-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--bg-1);
+}
+.dns-item[data-on="true"] {
+  border-color: var(--green-line);
+  background: var(--green-soft);
+}
+.dns-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.dns-name b {
+  font-size: 12.5px;
+  font-weight: 620;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dns-name .sub {
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.dns-star {
+  color: var(--green);
+  font-size: 11px;
+}
+.dns-proofs {
+  display: flex;
+  gap: 5px;
+}
+.dns-chip {
+  min-width: 44px;
+  justify-content: center;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-family: var(--mono);
+  letter-spacing: 0.03em;
+}
+.dns-chip[data-proto="plain"] {
+  min-width: 34px;
+}
+.dns-none {
+  font-size: 12px;
+}
+
+.flag {
   font-size: 15px;
+}
+
+/* Флаг страны вместо приписки. Картинка 4:3, скруглённая, с тонкой рамкой,
+   чтобы светлые флаги (Финляндия, Япония) не расплывались на светлом фоне. */
+.flag {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 19px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 1px var(--line);
+  background: var(--bg-3);
+}
+.flag img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.flag[data-size="sm"] {
+  width: 21px;
+  height: 16px;
+  border-radius: 3px;
+}
+.flag[data-dim="true"] img {
+  filter: grayscale(1) brightness(1.05);
+  opacity: 0.65;
+}
+.flag-globe {
+  color: var(--txt-3);
+}
+.flag-text {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--txt-2);
+}
+.flag-text[data-size="sm"] {
+  font-size: 8.5px;
 }
 
 .flag-code {

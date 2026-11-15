@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
+import { Flag } from "../Flag";
 
 type Props = {
   t: (k: string) => string;
@@ -124,7 +125,7 @@ export function HomeScreen(p: Props) {
         </button>
 
         <div className="server-line">
-          <span className="flag-code">{selected.cc}</span>
+          <Flag cc={selected.flag || selected.cc} size="sm" />
           <strong>{selected.city}</strong>
           <span>{selected.country}</span>
           <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
@@ -205,7 +206,7 @@ export function HomeScreen(p: Props) {
               aria-current={s.id === selectedId}
               onClick={() => setSelectedId(s.id)}
             >
-              <span className="flag-code" data-on={s.id === selectedId}>{s.cc}</span>
+              <Flag cc={s.flag || s.cc} size="sm" />
               <span>
                 <div className="name">{s.city}</div>
                 <div className="sub">
