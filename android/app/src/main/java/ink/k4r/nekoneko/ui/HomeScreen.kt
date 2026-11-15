@@ -73,10 +73,18 @@ fun HomeScreen(store: Store) {
     val tunnel = TunnelState.state
     var phase by remember { mutableStateOf(tunnel.value.phase) }
     var reason by remember { mutableStateOf(tunnel.value.reason) }
+    var rx by remember { mutableStateOf(tunnel.value.rx) }
+    var tx by remember { mutableStateOf(tunnel.value.tx) }
+    var rxSpeed by remember { mutableStateOf(tunnel.value.rxSpeed) }
+    var txSpeed by remember { mutableStateOf(tunnel.value.txSpeed) }
     LaunchedEffect(Unit) {
         tunnel.collect {
             phase = it.phase
             reason = it.reason
+            rx = it.rx
+            tx = it.tx
+            rxSpeed = it.rxSpeed
+            txSpeed = it.txSpeed
         }
     }
 
@@ -288,6 +296,20 @@ fun HomeScreen(store: Store) {
                         ),
                     )
                     InfoLine(stringResource(R.string.row_servers), profiles.size.toString())
+                }
+            }
+            if (phase == TunnelState.Phase.Connected) {
+                item {
+                    Panel(stringResource(R.string.panel_traffic)) {
+                        InfoLine(
+                            stringResource(R.string.row_rx),
+                            if (rx > 0) "${bytes(rx)}  ·  ${bytes(rxSpeed)}/s" else "—",
+                        )
+                        InfoLine(
+                            stringResource(R.string.row_tx),
+                            if (tx > 0) "${bytes(tx)}  ·  ${bytes(txSpeed)}/s" else "—",
+                        )
+                    }
                 }
             }
             item {

@@ -63,4 +63,7 @@
     <string name="set_start">Startup</string>
     <string name="set_autostart">Start on boot</string>
     <string name="set_autostart_hint">The tunnel comes up by itself after the phone restarts</string>
+    <string name="panel_traffic">Tunnel traffic</string>
+    <string name="row_rx">Received</string>
+    <string name="row_tx">Sent</string>
 </resources>

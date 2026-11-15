@@ -11,12 +11,26 @@ object TunnelState {
 
     enum class Phase { Idle, Connecting, Connected, Error }
 
-    data class State(val phase: Phase = Phase.Idle, val reason: String = "")
+    data class State(
+        val phase: Phase = Phase.Idle,
+        val reason: String = "",
+        /** Всего принято и отдано через туннель, байты. */
+        val rx: Long = 0,
+        val tx: Long = 0,
+        /** Скорость за последнюю секунду, байты в секунду. */
+        val rxSpeed: Long = 0,
+        val txSpeed: Long = 0,
+    )
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state
 
     fun set(phase: Phase, reason: String = "") {
         _state.value = State(phase, reason)
+    }
+
+    /** Обновляем только счётчики, не трогая состояние туннеля. */
+    fun traffic(rx: Long, tx: Long, rxSpeed: Long, txSpeed: Long) {
+        _state.value = _state.value.copy(rx = rx, tx = tx, rxSpeed = rxSpeed, txSpeed = txSpeed)
     }
 }

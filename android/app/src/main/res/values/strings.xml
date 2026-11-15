@@ -63,4 +63,7 @@
     <string name="set_start">Запуск</string>
     <string name="set_autostart">Включать при загрузке</string>
     <string name="set_autostart_hint">Туннель поднимется сам после перезагрузки телефона</string>
+    <string name="panel_traffic">Трафик туннеля</string>
+    <string name="row_rx">Принято</string>
+    <string name="row_tx">Отдано</string>
 </resources>

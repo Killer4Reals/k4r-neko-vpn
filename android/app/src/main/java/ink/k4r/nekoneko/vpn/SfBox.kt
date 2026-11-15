@@ -6,6 +6,9 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
+import io.nekohasekai.libbox.CommandClient
+import io.nekohasekai.libbox.CommandClientHandler
+import io.nekohasekai.libbox.CommandClientOptions
 import io.nekohasekai.libbox.CommandServer
 import io.nekohasekai.libbox.CommandServerHandler
 import io.nekohasekai.libbox.InterfaceUpdateListener
@@ -29,6 +32,7 @@ import java.net.Inet6Address
 class SfBox(private val service: VpnService) {
 
     private var server: CommandServer? = null
+    private var client: CommandClient? = null
 
     /** Запускает конфиг. Ошибку не глотаем: пусть вызывающий покажет её честно. */
     fun start(config: String, include: List<String>, exclude: List<String>, dns: String) {
@@ -40,9 +44,23 @@ class SfBox(private val service: VpnService) {
         // Пустой объект, а не null: ядро читает его поля сразу, без проверки
         box.startOrReloadService(config, OverrideOptions())
         server = box
+        // Счётчики трафика берём у самого ядра: файлы /sys/class/net на Android
+        // закрыты, а ядро знает свои байты точно.
+        val options = CommandClientOptions().apply {
+            statusInterval = 1000
+            addCommand(Libbox.CommandStatus)
+        }
+        val traffic = Libbox.newCommandClient(TrafficHandler(), options)
+        traffic.connect()
+        client = traffic
     }
 
     fun stop() {
+        try {
+            client?.disconnect()
+        } catch (e: Exception) {
+        }
+        client = null
         try {
             server?.closeService()
         } catch (e: Exception) {
@@ -122,7 +140,11 @@ class SfBox(private val service: VpnService) {
                 }
             }
             if (options.strictRoute) builder.setBlocking(true)
+            // Имя интерфейса система выбирает сама: запоминаем, что появилось
+            val before = Traffic.tunNames()
             val fd = builder.establish() ?: error("система не дала создать VPN-интерфейс")
+            Traffic.interfaceName = (Traffic.tunNames() - before).firstOrNull()
+                ?: Traffic.tunNames().firstOrNull()
             val raw = fd.detachFd()
             tunFd = raw
             return raw
@@ -289,6 +311,30 @@ class SfBox(private val service: VpnService) {
             throw UnsupportedOperationException("мост между приложениями не нужен")
 
         override fun clearDNSCache() {}
+    }
+
+    /** Ядро присылает счётчики раз в секунду — показываем их как есть. */
+    private class TrafficHandler : CommandClientHandler {
+        override fun writeStatus(status: io.nekohasekai.libbox.StatusMessage) {
+            if (!status.trafficAvailable) return
+            TunnelState.traffic(
+                rx = status.downlinkTotal,
+                tx = status.uplinkTotal,
+                rxSpeed = status.downlink,
+                txSpeed = status.uplink,
+            )
+        }
+
+        override fun writeLogs(logs: io.nekohasekai.libbox.LogIterator) {}
+        override fun writeConnectionEvents(events: io.nekohasekai.libbox.ConnectionEvents) {}
+        override fun writeGroups(groups: io.nekohasekai.libbox.OutboundGroupIterator) {}
+        override fun writeOutbounds(items: io.nekohasekai.libbox.OutboundGroupItemIterator) {}
+        override fun initializeClashMode(modes: StringIterator, current: String) {}
+        override fun updateClashMode(mode: String) {}
+        override fun setDefaultLogLevel(level: Int) {}
+        override fun clearLogs() {}
+        override fun connected() {}
+        override fun disconnected(message: String) {}
     }
 
     /** События от ядра: перезапуск профиля, остановка, системный прокси. */
