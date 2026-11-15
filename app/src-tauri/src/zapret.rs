@@ -230,8 +230,10 @@ pub fn poll(zapret: &Zapret) -> ZapretStatus {
 mod tests {
     use super::*;
 
+    /// Только для разработки: ищем папку Zapret в профиле текущего пользователя.
     fn owner_dir() -> PathBuf {
-        PathBuf::from(r"C:\Users\user\Documents\Zapret\Dev")
+        let home = std::env::var("USERPROFILE").unwrap_or_default();
+        PathBuf::from(home).join("Documents").join("Zapret").join("Dev")
     }
 
     #[test]

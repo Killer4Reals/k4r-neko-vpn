@@ -16,7 +16,7 @@
   и `outbounds: vless`, а также **Clash YAML** при другом User-Agent.
 - Провайдер фильтрует клиентов: чужому User-Agent отдаётся заглушка
   (`uuid: 00000000-…`, `server: 0.0.0.0:1`).
-- Zapret 2 Dev стоит в `C:\Users\user\Documents\Zapret\Dev`, активный
+- Zapret 2 Dev стоит в `Documents\Zapret\Dev` в профиле владельца, активный
   пресет `general ALT9 1.10.3 (game filter).txt`, запуск через `winws2.exe`,
   пресеты — текстовые файлы с `--new`-профилями, `--lua-desync`, hostlist.
 

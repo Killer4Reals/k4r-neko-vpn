@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Server } from "../data";
 import type { SubSource } from "../api";
 import { BoltIcon, RefreshIcon } from "../icons";
@@ -44,6 +44,13 @@ export function ServersScreen(p: Props) {
     setLink("");
     setShowImport(false);
   };
+
+  // Every visit re-checks the list: a server that died five minutes ago must not
+  // still look healthy just because it answered when the app started.
+  useEffect(() => {
+    void doPing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doPing = async () => {
     setPinging(true);

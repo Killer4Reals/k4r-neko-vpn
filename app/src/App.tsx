@@ -37,7 +37,7 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "settings", key: "navSettings", icon: GearIcon },
 ];
 
-const DEFAULT_SUB = "https://example.invalid/subscription";
+const DEFAULT_SUB = "";
 const DEFAULT_UA = "K4R-Neko-VPN/0.1";
 
 /** "Ctrl+Alt+V" -> "Control+Alt+KeyV": what the shortcut plugin understands. */
