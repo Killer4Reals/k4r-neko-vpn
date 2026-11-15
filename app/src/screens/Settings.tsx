@@ -17,6 +17,10 @@ type Props = {
   setDnsMode: (v: "tunnel" | "system") => void;
   dnsServer: string;
   setDnsServer: (v: string) => void;
+  subRefreshHours: number;
+  setSubRefreshHours: (v: number) => void;
+  updateUrl: string;
+  setUpdateUrl: (v: string) => void;
   blockIpv6: boolean;
   setBlockIpv6: (v: boolean) => void;
   closeToTray: boolean;
@@ -34,12 +38,17 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const [deviceId, setDeviceId] = useState("");
+  const [version, setVersion] = useState("0.3.0");
+  const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error">("idle");
+  const [updateNote, setUpdateNote] = useState("");
+  const [updateLink, setUpdateLink] = useState("");
   const [deviceDraft, setDeviceDraft] = useState("");
   const [hotkeyDraft, setHotkeyDraft] = useState(p.hotkey);
   const [exported, setExported] = useState("");
 
   useEffect(() => {
     if (!inTauri) return;
+    api.appVersion().then(setVersion).catch(() => undefined);
     api
       .installId()
       .then((id) => {
@@ -175,6 +184,26 @@ export function SettingsScreen(p: Props) {
         </div>
         <div className="row">
           <div className="txt">
+            <b>{t("subRefresh")}</b>
+            <span>{t("subRefreshHint")}</span>
+          </div>
+          <select
+            className="input select"
+            style={{ width: 148 }}
+            value={p.subRefreshHours}
+            onChange={(e) => p.setSubRefreshHours(Number(e.target.value))}
+            aria-label={t("subRefresh")}
+          >
+            <option value={0}>{t("subRefreshOff")}</option>
+            {[1, 3, 6, 9, 12, 24, 48].map((h) => (
+              <option key={h} value={h}>
+                {h} ч
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="row">
+          <div className="txt">
             <b>{t("minimizeToTray")}</b>
             <span>{t("minimizeToTrayHint")}</span>
           </div>
@@ -230,12 +259,71 @@ export function SettingsScreen(p: Props) {
         </div>
       </div>
 
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("updates")}</b>
+            <span>{t("updatesHint")}</span>
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: "auto", paddingInline: 16 }}
+            disabled={updateState === "busy"}
+            onClick={async () => {
+              setUpdateState("busy");
+              setUpdateNote("");
+              try {
+                const res = await api.updateCheck(p.updateUrl, version);
+                if (res) {
+                  setUpdateState("found");
+                  setUpdateNote(`${t("updateFound")} ${res.version}${res.notes ? ` — ${res.notes}` : ""}`);
+                  setUpdateLink(res.url);
+                } else {
+                  setUpdateState("latest");
+                  setUpdateNote(t("updateLatest"));
+                }
+              } catch (e) {
+                setUpdateState("error");
+                setUpdateNote(String(e));
+              }
+            }}
+          >
+            {updateState === "busy" ? "…" : t("checkUpdates")}
+          </button>
+        </div>
+        <div className="row" style={{ display: "block" }}>
+          <div className="txt" style={{ maxWidth: 520 }}>
+            <b>{t("updateUrl")}</b>
+            <span>{t("updateUrlHint")}</span>
+          </div>
+          <input
+            className="input"
+            style={{ marginTop: 8, maxWidth: 520 }}
+            value={p.updateUrl}
+            spellCheck={false}
+            placeholder="https://example.com/k4r/version.json"
+            onChange={(e) => p.setUpdateUrl(e.target.value)}
+            aria-label={t("updateUrl")}
+          />
+        </div>
+        {updateNote && (
+          <div className="muted" style={{ marginTop: 10 }}>
+            {updateNote}{" "}
+            {updateState === "found" && updateLink ? (
+              <button className="ghost-btn" onClick={() => api.openUrl(updateLink).catch(() => undefined)}>
+                {t("download")}
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+
       <div className="card">
         <dl className="kv">
           <dt>{t("about")}</dt>
           <dd>K4R Neko VPN</dd>
           <dt>{t("version")}</dt>
-          <dd>0.3.0</dd>
+          <dd>{version}</dd>
           <dt>{t("core")}</dt>
           <dd>{t("coreValue")}</dd>
           <dt>{t("deviceId")}</dt>

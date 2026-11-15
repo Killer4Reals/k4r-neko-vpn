@@ -102,6 +102,10 @@ export default function App() {
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const [subs, setSubs] = useState<SubSource[]>([]);
+  /// hours between automatic subscription refreshes, 0 = only by hand
+  const [subRefreshHours, setSubRefreshHours] = useState(12);
+  /// manifest used by the "check for updates" button; empty = not set up yet
+  const [updateUrl, setUpdateUrl] = useState("");
   const [dnsMode, setDnsMode] = useState<"tunnel" | "system">("tunnel");
   const [blockIpv6, setBlockIpv6] = useState(true);
   /// resolver inside the tunnel: "1.1.1.1", "https://dns.google/dns-query" or "tls://..."
@@ -190,6 +194,8 @@ export default function App() {
         if (typeof st.minimize_to_tray === "boolean") setMinimizeToTray(st.minimize_to_tray);
         if (st.split_mode === "all" || st.split_mode === "only") setSplitMode(st.split_mode);
         if (st.dns_server) setDnsServer(st.dns_server);
+        if (typeof st.sub_refresh_hours === "number") setSubRefreshHours(st.sub_refresh_hours);
+        if (st.update_url) setUpdateUrl(st.update_url);
         if (st.zapret_preset) setZapretPreset(st.zapret_preset);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
@@ -230,6 +236,8 @@ export default function App() {
           hwid: deviceId || undefined,
           split_mode: splitMode,
           dns_server: dnsServer,
+          sub_refresh_hours: subRefreshHours,
+          update_url: updateUrl,
         })
         .catch(() => undefined);
     }, 700);
@@ -237,7 +245,7 @@ export default function App() {
   }, [
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
-    deviceId, splitMode, dnsServer,
+    deviceId, splitMode, dnsServer, subRefreshHours, updateUrl,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -496,6 +504,30 @@ export default function App() {
     const timer = window.setTimeout(() => void measurePing(), 800);
     return () => window.clearTimeout(timer);
   }, [profiles, measurePing]);
+
+  // --- automatic subscription refresh ---------------------------------------
+  // The server list goes stale: providers rotate hosts and add servers. A timer
+  // keeps it fresh by itself when the owner asked for it.
+  const refreshing = useRef(false);
+  useEffect(() => {
+    if (!inTauri || subRefreshHours <= 0) return;
+    const due = () => {
+      if (refreshing.current || busy) return;
+      const stamp = Math.floor(Date.now() / 1000);
+      const limit = subRefreshHours * 3600;
+      const sources = subs.length ? subs : subUrl.trim() ? [{ url: subUrl, refreshed: 0 }] : [];
+      if (!sources.length) return;
+      const oldest = Math.min(...sources.map((s) => s.refreshed || 0));
+      if (stamp - oldest < limit) return;
+      refreshing.current = true;
+      void loadSubscription().finally(() => {
+        refreshing.current = false;
+      });
+    };
+    due();
+    const id = window.setInterval(due, 60_000);
+    return () => window.clearInterval(id);
+  }, [subs, subUrl, subRefreshHours, busy, loadSubscription]);
 
   // --- global hotkey ---------------------------------------------------------
   const toggleRef = useRef(toggleConnection);
@@ -770,6 +802,10 @@ export default function App() {
               setHotkey={setHotkey}
               onExportLog={exportLog}
               onDeviceId={setDeviceId}
+              subRefreshHours={subRefreshHours}
+              setSubRefreshHours={setSubRefreshHours}
+              updateUrl={updateUrl}
+              setUpdateUrl={setUpdateUrl}
             />
           )}
         </main>

@@ -60,6 +60,26 @@ const dict: Dict = {
     en: "For example Ctrl+Alt+V toggles the tunnel",
   },
   dns: { ru: "DNS", en: "DNS" },
+  updates: { ru: "Обновления", en: "Updates" },
+  updatesHint: {
+    ru: "Проверяет маленький файл с описанием новой версии. Ссылка на файл — ниже",
+    en: "Checks a small file describing the newest version. Its address is below",
+  },
+  checkUpdates: { ru: "Проверить", en: "Check" },
+  updateFound: { ru: "Доступна версия", en: "Version available" },
+  updateLatest: { ru: "У тебя последняя версия", en: "You have the newest version" },
+  download: { ru: "Скачать", en: "Download" },
+  updateUrl: { ru: "Адрес описания версии", en: "Version manifest address" },
+  updateUrlHint: {
+    ru: "Файл вида {\"version\":\"0.3.1\",\"url\":\"ссылка на установщик\",\"notes\":\"что нового\"}",
+    en: "A file like {\"version\":\"0.3.1\",\"url\":\"installer link\",\"notes\":\"what is new\"}",
+  },
+  subRefresh: { ru: "Обновление подписки", en: "Subscription refresh" },
+  subRefreshHint: {
+    ru: "Как часто приложение само перечитывает список серверов у провайдера",
+    en: "How often the app re-reads the server list from the provider",
+  },
+  subRefreshOff: { ru: "Только вручную", en: "Manually only" },
   minimizeToTray: { ru: "Кнопка «свернуть» — в трей", en: "Minimize button hides to tray" },
   minimizeToTrayHint: {
     ru: "Окно исчезает в трей, как у Zapret: значок остаётся внизу справа, туннель работает",

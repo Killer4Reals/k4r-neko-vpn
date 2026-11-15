@@ -1414,3 +1414,62 @@ input {
   letter-spacing: 0.01em;
   white-space: nowrap;
 }
+
+.input.select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 28px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--txt-3) 50%),
+    linear-gradient(135deg, var(--txt-3) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* ---- mascot life --------------------------------------------------------- */
+/* Only properties that cannot move the layout: the circle stays put, the cat
+   breathes inside it. Paused for those who asked for less motion. */
+@keyframes mascot-idle {
+  0%, 100% { transform: translateY(2px) scale(1); }
+  50% { transform: translateY(-2px) scale(1.015); }
+}
+@keyframes mascot-pulse {
+  0%, 100% { transform: translateY(1px) scale(0.99); }
+  50% { transform: translateY(-1px) scale(1.03); }
+}
+@keyframes mascot-glow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(57, 255, 20, 0.26)) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)); }
+  50% { filter: drop-shadow(0 0 24px rgba(57, 255, 20, 0.5)) drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5)); }
+}
+@keyframes mascot-alarm {
+  0%, 100% { transform: translateY(2px) scale(1); }
+  25% { transform: translateY(1px) scale(1.005) rotate(-0.4deg); }
+  75% { transform: translateY(1px) scale(1.005) rotate(0.4deg); }
+}
+
+.orb[data-state="idle"] .mascot {
+  animation: mascot-idle 7s ease-in-out infinite;
+}
+.orb[data-state="connecting"] .mascot {
+  animation: mascot-pulse 1.7s ease-in-out infinite;
+}
+.orb[data-state="connected"] .mascot,
+.orb[data-state="guard"] .mascot {
+  animation: mascot-idle 7s ease-in-out infinite, mascot-glow 3.6s ease-in-out infinite;
+}
+.orb[data-state="error"] .mascot {
+  animation: mascot-alarm 2.6s ease-in-out infinite;
+}
+
+/* the press itself is honest: the cat nods down */
+.orb:active .mascot {
+  animation-play-state: paused;
+  transform: translateY(3px) scale(0.965);
+  transition: transform 0.09s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb .mascot {
+    animation: none !important;
+  }
+}

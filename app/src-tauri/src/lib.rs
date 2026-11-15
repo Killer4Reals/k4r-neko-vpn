@@ -551,6 +551,67 @@ fn engine_stop(engine: State<'_, engine::Engine>) -> engine::EngineStatus {
     engine::stop(&engine)
 }
 
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+    url: String,
+    notes: String,
+}
+
+/// Reads a tiny manifest: {"version": "0.3.1", "url": "https://...", "notes": "..."}
+/// Returns None when the version we already have is the newest.
+#[tauri::command]
+fn update_check(manifest_url: String, current: String) -> Result<Option<UpdateInfo>, String> {
+    let url = manifest_url.trim();
+    if url.is_empty() {
+        return Err("адрес проверки обновлений не задан".into());
+    }
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(8)))
+        .user_agent("K4R-Neko-VPN/update")
+        .build()
+        .new_agent();
+    let body = agent
+        .get(url)
+        .call()
+        .map_err(|e| format!("не удалось проверить обновления: {e}"))?
+        .into_body()
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
+    let value: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("ответ не похож на описание версии: {e}"))?;
+    let version = value["version"].as_str().unwrap_or("").trim().to_string();
+    if version.is_empty() {
+        return Err("в описании версии нет поля version".into());
+    }
+    if version == current.trim() {
+        return Ok(None);
+    }
+    Ok(Some(UpdateInfo {
+        version,
+        url: value["url"].as_str().unwrap_or("").to_string(),
+        notes: value["notes"].as_str().unwrap_or("").to_string(),
+    }))
+}
+
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Opens a link in the default browser. Console stays hidden.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err("ссылка должна начинаться с http".into());
+    }
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.args(["/c", "start", "", &url]);
+    engine::hidden(&mut cmd);
+    cmd.spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 fn engine_traffic(engine: State<'_, engine::Engine>) -> engine::Traffic {
     engine::traffic(&engine)
@@ -769,6 +830,9 @@ pub fn run() {
             install_id,
             profiles_import,
             probe_ping,
+            update_check,
+            app_version,
+            open_url,
             state_load,
             state_save,
             logs_tail,

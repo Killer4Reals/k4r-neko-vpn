@@ -69,6 +69,13 @@ export const api = {
   zapretStatus: () => invoke<ZapretStatus>("zapret_status"),
   setTrayState: (state: string) => invoke<void>("set_tray_state", { state }),
   profilesImport: (text: string) => invoke<Profile[]>("profiles_import", { text }),
+  appVersion: () => invoke<string>("app_version"),
+  updateCheck: (manifestUrl: string, current: string) =>
+    invoke<{ version: string; url: string; notes: string } | null>("update_check", {
+      manifestUrl,
+      current,
+    }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
   probePing: (profiles: Profile[]) =>
     invoke<{ id: string; ms: number | null }[]>("probe_ping", { profiles }),
   stateLoad: () => invoke<AppState>("state_load"),
@@ -104,6 +111,8 @@ export type AppState = {
   minimize_to_tray?: boolean;
   split_mode?: string;
   dns_server?: string;
+  sub_refresh_hours?: number;
+  update_url?: string;
   kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;

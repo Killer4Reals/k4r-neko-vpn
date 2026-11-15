@@ -41,6 +41,10 @@ pub struct AppState {
     pub split_mode: String,
     /// resolver used inside the tunnel: plain address, https:// or tls:// URL
     pub dns_server: String,
+    /// how often to re-fetch subscriptions, hours; 0 = only by hand
+    pub sub_refresh_hours: u32,
+    /// where to look for a newer build: a small json manifest; empty = not set up
+    pub update_url: String,
     pub notify: bool,
     pub autostart: bool,
     /// 0 = written before the settings existed; bumped when defaults change
@@ -70,6 +74,8 @@ impl AppState {
             kill_switch: true,
             split_mode: "only".into(),
             dns_server: "1.1.1.1".into(),
+            sub_refresh_hours: 12,
+            update_url: String::new(),
             notify: true,
             // opt-in: a portable app must not register itself behind the owner's back
             autostart: false,
