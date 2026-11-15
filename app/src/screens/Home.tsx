@@ -94,7 +94,7 @@ export function HomeScreen(p: Props) {
               {t("welcomeCta")}
             </button>
           </div>
-          <img className="welcome-art" src="/mascot/wave.webp" alt="" draggable={false} />
+          <img className="welcome-art" src="/mascot/offer.webp" alt="" draggable={false} />
         </div>
       )}
       <section className="hero">

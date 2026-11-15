@@ -257,7 +257,7 @@ export function ServersScreen(p: Props) {
 
       {servers.length === 0 && (
         <div className="card empty-box">
-          <img src="/mascot/empty.webp" alt="" draggable={false} />
+          <img src="/mascot/offer.webp" alt="" draggable={false} />
           <div>
             <h3>{t("noServersTitle")}</h3>
             <p className="muted">{t("noServersText")}</p>

@@ -24,3 +24,5 @@ DeepAI-Code-*.exe
 # движок скачивается скриптом, а не хранится в репозитории
 app/src-tauri/resources/bin/*.exe
 app/src-tauri/resources/bin/*.dll
+__pycache__/
+*.pyc

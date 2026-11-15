@@ -42,6 +42,11 @@
     ],
     "resources": [
       "resources/bin/sing-box.exe"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "sidebarImage": "installer/sidebar.bmp"
+      }
+    }
   }
 }

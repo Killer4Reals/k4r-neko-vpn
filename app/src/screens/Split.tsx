@@ -212,7 +212,7 @@ export function SplitScreen({
 
       {!chosen.length && !query && !browse && (
         <div className="card empty-box" style={{ marginBottom: 14 }}>
-          <img src="/mascot/laptop.webp" alt="" draggable={false} />
+          <img src="/mascot/split.webp" alt="" draggable={false} />
           <div>
             <h3>{t("splitEmptyTitle")}</h3>
             <p className="muted">{t("splitEmptyText")}</p>
