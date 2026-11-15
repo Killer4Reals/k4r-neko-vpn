@@ -645,6 +645,51 @@ fn set_tray_state(app: tauri::AppHandle, state: String) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(windows)]
+mod win32 {
+    #[link(name = "user32")]
+    extern "system" {
+        pub fn IsIconic(hwnd: isize) -> i32;
+        pub fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
+    }
+    pub const SW_HIDE: i32 = 0;
+}
+
+/// Small poll instead of an event: WebView2 often swallows the minimise event,
+/// and the owner asked for the same behaviour as the close button. Tauri's own
+/// is_minimized() is not reliable here either, so Windows is asked directly.
+fn watch_minimize(app: tauri::AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(350));
+        let Some(win) = app.get_webview_window("main") else {
+            return;
+        };
+        let to_tray = data_dir(&app)
+            .map(|d| store::load(&d).minimize_to_tray)
+            .unwrap_or(true);
+        if !to_tray {
+            continue;
+        }
+        #[cfg(windows)]
+        {
+            if let Ok(hwnd) = win.hwnd() {
+                let h = hwnd.0 as isize;
+                if unsafe { win32::IsIconic(h) } != 0 {
+                    unsafe {
+                        win32::ShowWindow(h, win32::SW_HIDE);
+                    }
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            if win.is_minimized().unwrap_or(false) {
+                let _ = win.hide();
+            }
+        }
+    });
+}
+
 fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Показать окно", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
@@ -695,6 +740,7 @@ pub fn run() {
         .manage(zapret::Zapret::default())
         .setup(|app| {
             build_tray(app.handle())?;
+            watch_minimize(app.handle().clone());
             // the X button hides to tray unless the user asked for a real quit
             if let Some(win) = app.get_webview_window("main") {
                 let target = win.clone();
@@ -709,18 +755,8 @@ pub fn run() {
                             let _ = target.hide();
                         }
                     }
-                    // the minimize button behaves like the close button
-                    tauri::WindowEvent::Resized(_) => {
-                        let minimised = target.is_minimized().unwrap_or(false);
-                        if minimised {
-                            let to_tray = data_dir(&handle)
-                                .map(|d| store::load(&d).minimize_to_tray)
-                                .unwrap_or(true);
-                            if to_tray {
-                                let _ = target.hide();
-                            }
-                        }
-                    }
+                    // Windows does not reliably report the minimise as a window
+                    // event, so the watcher below does the real work.
                     _ => {}
                 });
             }

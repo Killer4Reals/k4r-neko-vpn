@@ -203,53 +203,30 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
                 Some((h, p)) => (h, format!("/{p}")),
                 None => (rest, "/dns-query".to_string()),
             };
-            let mut server = json!({ "type": "https", "tag": "remote", "server": host, "detour": "proxy" });
+            let mut server = json!({ "type": "https", "tag": "remote", "server": host, });
             if path != "/dns-query" {
                 server["path"] = json!(path);
             }
             server
         } else if let Some(rest) = raw.strip_prefix("tls://") {
-            json!({ "type": "tls", "tag": "remote", "server": rest, "detour": "proxy" })
+            json!({ "type": "tls", "tag": "remote", "server": rest, })
         } else if raw.is_empty() {
-            json!({ "type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy" })
+            json!({ "type": "https", "tag": "remote", "server": "1.1.1.1", })
         } else {
-            json!({ "type": "https", "tag": "remote", "server": raw, "detour": "proxy" })
+            json!({ "type": "https", "tag": "remote", "server": raw, })
         };
         let strategy = if opts.block_ipv6 { "ipv4_only" } else { "prefer_ipv4" };
-        if only_chosen {
-            // Only the chosen programs get the private resolver. Everything else
-            // asks the router directly — a plain "system" resolver here would ask
-            // the tunnel adapter again and loop forever.
-            let plain = if opts.gateway.trim().is_empty() {
-                json!({ "type": "local", "tag": "plain" })
-            } else {
-                json!({
-                    "type": "udp",
-                    "tag": "plain",
-                    "server": opts.gateway.trim()
-                })
-            };
-            let mut dns = json!({
-                "servers": [remote, plain],
-                "final": "plain",
-                "strategy": strategy
-            });
-            if !opts.tunnel_apps.is_empty() {
-                dns["rules"] = json!([{ "process_name": opts.tunnel_apps, "server": "remote" }]);
-            }
-            dns
-        } else {
-            json!({
-                "servers": [remote, { "type": "local", "tag": "system" }],
-                "final": "remote",
-                "strategy": strategy
-            })
-        }
+        // One encrypted resolver for every program. Resolving through the tunnel
+        // itself proved unreliable (the server may not relay DNS), and a plain
+        // "system" resolver would ask our own adapter and loop.
+        json!({
+            "servers": [remote, { "type": "local", "tag": "system" }],
+            "final": "remote",
+            "strategy": strategy
+        })
     };
     let resolver = if opts.dns_mode == "system" {
         "system"
-    } else if only_chosen {
-        "plain"
     } else {
         "remote"
     };
@@ -817,12 +794,10 @@ mod tests {
             ..NetOptions::default()
         };
         let cfg = build_config(&sample(), &[], &opts);
-        // everyone else keeps the provider's DNS, so a broken tunnel cannot take
-        // the whole machine offline
-        assert_eq!(cfg["dns"]["final"], "plain");
-        assert_eq!(cfg["dns"]["rules"][0]["process_name"][0], "telegram.exe");
-        assert_eq!(cfg["dns"]["rules"][0]["server"], "remote");
-        assert_eq!(cfg["route"]["default_domain_resolver"], "plain");
+        // one encrypted resolver, and it must not be dialled through the tunnel
+        assert_eq!(cfg["dns"]["final"], "remote");
+        assert!(cfg["dns"]["servers"][0].get("detour").is_none());
+        assert_eq!(cfg["route"]["default_domain_resolver"], "remote");
     }
 
     #[test]

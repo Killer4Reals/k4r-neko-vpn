@@ -28,10 +28,11 @@ fn main() {
         .unwrap()
         .join("ink.k4r.nekoneko.vpn");
     let st = store::load(&dir);
+    // берём сервер, который в пробах отвечал
     let Some(profile) = st
         .profiles
         .iter()
-        .find(|p| format!("{}:{}:{}", p.host, p.port, p.uuid) == st.selected)
+        .find(|p| p.host.starts_with("bisw222"))
         .or_else(|| st.profiles.first())
         .cloned()
     else {
@@ -75,7 +76,7 @@ fn main() {
             return;
         }
     }
-    std::thread::sleep(std::time::Duration::from_secs(3));
+    std::thread::sleep(std::time::Duration::from_secs(6));
 
     let tunnelled = ip_via(&copy.to_string_lossy(), true);
     let direct = ip_via(&real_curl, true);

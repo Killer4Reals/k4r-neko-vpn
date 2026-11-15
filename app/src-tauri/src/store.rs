@@ -6,6 +6,10 @@ use crate::subscription::Profile;
 /// Bumped whenever a stored file needs a one-time fix on load.
 pub const SCHEMA: u32 = 2;
 
+fn yes() -> bool {
+    true
+}
+
 /// Everything the app needs to work without any external program.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -28,6 +32,7 @@ pub struct AppState {
     pub hotkey: String,
     pub close_to_tray: bool,
     /// minimize button also hides the window to the tray, like Zapret does
+    #[serde(default = "yes")]
     pub minimize_to_tray: bool,
     /// remembered preference; the real WFP block ships later
     pub kill_switch: bool,
