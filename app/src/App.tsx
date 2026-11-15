@@ -565,9 +565,7 @@ export default function App() {
   }, [hotkey]);
 
   // --- notifications ---------------------------------------------------------
-  // Windows toasts are unreliable for an unpackaged / portable exe (they need a
-  // Start-menu shortcut with an app id), so the app always shows its own card in
-  // the corner. The toast is a bonus on top of that, never the only channel.
+  // One channel only: our own card in the corner of the window.
   const prevConn = useRef<ConnState>(conn);
   useEffect(() => {
     const was = prevConn.current;
@@ -579,19 +577,9 @@ export default function App() {
       conn === "connected"
         ? `${t("notifyOnBody")} ${selected?.city ?? ""}`.trim()
         : error || t("notifyOffBody");
+    // The owner chose one channel only: the card in the corner. Windows toasts
+    // were tried and proved unreliable for a portable exe anyway.
     setToast({ title, body });
-    if (!inTauri) return;
-    (async () => {
-      try {
-        const n = await import("@tauri-apps/plugin-notification");
-        let granted = await n.isPermissionGranted();
-        if (!granted) granted = (await n.requestPermission()) === "granted";
-        if (!granted) return;
-        n.sendNotification({ title, body });
-      } catch {
-        /* the in-app card already told the owner what happened */
-      }
-    })();
   }, [conn, notifyOn, selected, error, t]);
 
   // the card fades away by itself, like a toast should
