@@ -26,3 +26,13 @@ app/src-tauri/resources/bin/*.exe
 app/src-tauri/resources/bin/*.dll
 __pycache__/
 *.pyc
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
+*.apk
+*.aab

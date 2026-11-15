@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">K4R Neko VPN</string>
+    <string name="connect">Turn on VPN</string>
+    <string name="disconnect">Turn off VPN</string>
+    <string name="state_off">Off</string>
+    <string name="state_connecting">Connecting</string>
+    <string name="state_connected">Protected</string>
+    <string name="state_error">Error</string>
+    <string name="channel_tunnel">Tunnel</string>
+    <string name="notify_connected">Protected</string>
+    <string name="notify_connected_text">Traffic goes through the server</string>
+</resources>
