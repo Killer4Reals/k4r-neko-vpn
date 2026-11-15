@@ -81,6 +81,11 @@ pub struct NetOptions {
     /// 0 = no monitoring endpoint (probes and tests do not need one)
     pub api_port: u16,
     pub api_secret: String,
+    /// "only" = the tunnel carries just the listed programs, "all" = everything
+    /// except the programs the owner sent direct
+    pub split_mode: String,
+    /// programs that must go through the tunnel in "only" mode
+    pub tunnel_apps: Vec<String>,
 }
 
 impl Default for NetOptions {
@@ -91,6 +96,8 @@ impl Default for NetOptions {
             dns_server: "1.1.1.1".into(),
             api_port: 0,
             api_secret: String::new(),
+            split_mode: "only".into(),
+            tunnel_apps: Vec::new(),
         }
     }
 }
@@ -146,19 +153,35 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         _ => {}
     }
 
+    let only_chosen = opts.split_mode == "only";
     let mut rules = vec![
         json!({ "action": "sniff" }),
         json!({ "protocol": "dns", "action": "hijack-dns" }),
+        // the local network is always local, whatever the mode is
         json!({ "ip_is_private": true, "outbound": "direct" }),
     ];
-    if !excluded.is_empty() {
-        // First, before anything else: a program the owner sends direct keeps its
-        // own stack, including IPv6. Otherwise the IPv6 reject below would cut it.
-        rules.push(json!({ "process_name": excluded, "outbound": "direct" }));
-    }
-    if opts.block_ipv6 {
-        // IPv6 would otherwise leave outside the tunnel: that is a leak
-        rules.push(json!({ "ip_version": 6, "action": "reject" }));
+    if only_chosen {
+        if opts.block_ipv6 && !opts.tunnel_apps.is_empty() {
+            // a tunnelled program keeps no IPv6 of its own: that would leak
+            rules.push(json!({
+                "process_name": opts.tunnel_apps,
+                "ip_version": 6,
+                "action": "reject"
+            }));
+        }
+        if !opts.tunnel_apps.is_empty() {
+            rules.push(json!({ "process_name": opts.tunnel_apps, "outbound": "proxy" }));
+        }
+    } else {
+        if !excluded.is_empty() {
+            // First, before anything else: a program the owner sends direct keeps
+            // its own stack, including IPv6. Otherwise the IPv6 reject would cut it.
+            rules.push(json!({ "process_name": excluded, "outbound": "direct" }));
+        }
+        if opts.block_ipv6 {
+            // IPv6 would otherwise leave outside the tunnel: that is a leak
+            rules.push(json!({ "ip_version": 6, "action": "reject" }));
+        }
     }
 
     let dns = if opts.dns_mode == "system" {
@@ -194,7 +217,8 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         "outbounds": [outbound, { "type": "direct", "tag": "direct" }],
         "route": {
             "rules": rules,
-            "final": "proxy",
+            // "only the chosen programs" means everything else really is direct
+            "final": if only_chosen { "direct" } else { "proxy" },
             "auto_detect_interface": true,
             "default_domain_resolver": resolver
         }
@@ -666,7 +690,11 @@ mod tests {
 
     #[test]
     fn ipv6_is_rejected_when_requested() {
-        let cfg = build_config(&sample(), &[], &NetOptions::default());
+        let opts = NetOptions {
+            split_mode: "all".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
         let rules = cfg["route"]["rules"].as_array().unwrap();
         let has_v6_block = rules
             .iter()
@@ -729,7 +757,11 @@ mod tests {
 
     #[test]
     fn split_rule_reaches_direct_outbound() {
-        let cfg = build_config(&sample(), &["steam.exe".to_string()], &NetOptions::default());
+        let opts = NetOptions {
+            split_mode: "all".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &["steam.exe".to_string()], &opts);
         let rules = cfg["route"]["rules"].as_array().unwrap();
         assert!(rules.iter().any(|r| r["outbound"] == "direct" && r["process_name"][0] == "steam.exe"));
         assert_eq!(cfg["route"]["final"], "proxy");
@@ -737,5 +769,44 @@ mod tests {
         let direct_at = rules.iter().position(|r| r["outbound"] == "direct" && r.get("process_name").is_some()).unwrap();
         let v6_at = rules.iter().position(|r| r["ip_version"] == 6).unwrap();
         assert!(direct_at < v6_at, "process rule must come before the IPv6 reject");
+    }
+
+    #[test]
+    fn only_chosen_programs_go_through_the_tunnel() {
+        let opts = NetOptions {
+            split_mode: "only".into(),
+            tunnel_apps: vec!["telegram.exe".into()],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        assert_eq!(cfg["route"]["final"], "direct", "everything else must stay direct");
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let tunnel_rule = rules
+            .iter()
+            .position(|r| r["outbound"] == "proxy" && r["process_name"][0] == "telegram.exe")
+            .expect("chosen program must have a proxy rule");
+        // the local network rule comes first so LAN keeps working
+        let lan_rule = rules
+            .iter()
+            .position(|r| r["ip_is_private"] == true)
+            .expect("private networks must stay direct");
+        assert!(lan_rule < tunnel_rule);
+        // IPv6 is only refused for the tunnelled program, never for everyone
+        let v6 = rules.iter().find(|r| r["ip_version"] == 6);
+        if let Some(rule) = v6 {
+            assert!(rule.get("process_name").is_some(), "IPv6 reject must be scoped to the chosen programs");
+        }
+    }
+
+    #[test]
+    fn empty_whitelist_tunnels_nothing() {
+        let opts = NetOptions {
+            split_mode: "only".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(!rules.iter().any(|r| r["outbound"] == "proxy"));
+        assert_eq!(cfg["route"]["final"], "direct");
     }
 }

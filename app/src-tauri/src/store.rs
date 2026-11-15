@@ -31,6 +31,9 @@ pub struct AppState {
     pub minimize_to_tray: bool,
     /// remembered preference; the real WFP block ships later
     pub kill_switch: bool,
+    /// "only" = the tunnel carries just the chosen programs, "all" = everything
+    /// except the programs marked direct
+    pub split_mode: String,
     pub notify: bool,
     pub autostart: bool,
     /// 0 = written before the settings existed; bumped when defaults change
@@ -58,6 +61,7 @@ impl AppState {
             close_to_tray: true,
             minimize_to_tray: true,
             kill_switch: true,
+            split_mode: "only".into(),
             notify: true,
             // opt-in: a portable app must not register itself behind the owner's back
             autostart: false,

@@ -54,8 +54,8 @@ export const api = {
   coreInfo: () => invoke<CoreInfo>("core_info"),
   fetchSub: (url: string, userAgent: string, headers: { name: string; value: string }[]) =>
     invoke<SubResult>("sub_fetch", { url, userAgent, headers }),
-  engineStart: (profile: Profile, excluded: string[], dns: string) =>
-    invoke<EngineStatus>("engine_start", { profile, excluded, dns }),
+  engineStart: (profile: Profile, excluded: string[], dns: string, mode: string, via: string[]) =>
+    invoke<EngineStatus>("engine_start", { profile, excluded, dns, mode, via }),
   engineStop: () => invoke<EngineStatus>("engine_stop"),
   engineStatus: () => invoke<EngineStatus>("engine_status"),
   engineTraffic: () => invoke<Traffic>("engine_traffic"),
@@ -102,6 +102,7 @@ export type AppState = {
   hotkey?: string;
   close_to_tray?: boolean;
   minimize_to_tray?: boolean;
+  split_mode?: string;
   kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;

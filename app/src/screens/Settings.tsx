@@ -26,17 +26,25 @@ type Props = {
   hotkey: string;
   setHotkey: (v: string) => void;
   onExportLog: () => Promise<string>;
+  onDeviceId: (id: string) => void;
 };
 
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const [deviceId, setDeviceId] = useState("");
+  const [deviceDraft, setDeviceDraft] = useState("");
   const [hotkeyDraft, setHotkeyDraft] = useState(p.hotkey);
   const [exported, setExported] = useState("");
 
   useEffect(() => {
     if (!inTauri) return;
-    api.installId().then(setDeviceId).catch(() => undefined);
+    api
+      .installId()
+      .then((id) => {
+        setDeviceId(id);
+        setDeviceDraft(id);
+      })
+      .catch(() => undefined);
   }, []);
 
   return (
@@ -193,15 +201,29 @@ export function SettingsScreen(p: Props) {
           <dd>{t("coreValue")}</dd>
           <dt>{t("deviceId")}</dt>
           <dd>
-            {deviceId || "—"}{" "}
-            {deviceId ? (
+            <div className="id-row">
+              <input
+                className="input"
+                value={deviceDraft}
+                spellCheck={false}
+                onChange={(e) => setDeviceDraft(e.target.value)}
+                onBlur={() => {
+                  const clean = deviceDraft.trim().toUpperCase();
+                  if (clean && clean !== deviceId) {
+                    setDeviceId(clean);
+                    p.onDeviceId(clean);
+                  }
+                }}
+                aria-label={t("deviceId")}
+              />
               <button
                 className="ghost-btn"
-                onClick={() => navigator.clipboard?.writeText(deviceId).catch(() => undefined)}
+                onClick={() => navigator.clipboard?.writeText(deviceDraft || deviceId).catch(() => undefined)}
               >
                 {t("copy")}
               </button>
-            ) : null}
+            </div>
+            <div className="muted" style={{ marginTop: 6 }}>{t("deviceIdHint")}</div>
           </dd>
           <dt>{t("support")}</dt>
           <dd>

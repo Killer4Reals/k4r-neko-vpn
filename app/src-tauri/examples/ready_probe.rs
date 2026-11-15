@@ -21,6 +21,8 @@ fn main() {
         dns_server: "1.1.1.1".into(),
         api_port: engine::free_port(),
         api_secret: engine::api_secret(),
+        split_mode: "only".into(),
+        tunnel_apps: Vec::new(),
     };
     let excluded = vec![
         "deepai code.exe".to_string(),

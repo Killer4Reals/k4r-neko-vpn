@@ -4,9 +4,11 @@ import { api, inTauri, type ZapretStatus } from "../api";
 type Props = {
   t: (k: string) => string;
   initialDir: string | null;
+  savedPreset: string;
+  onPreset: (name: string) => void;
 };
 
-export function ZapretScreen({ t, initialDir }: Props) {
+export function ZapretScreen({ t, initialDir, savedPreset, onPreset }: Props) {
   const [dir, setDir] = useState(initialDir ?? "");
   const [presets, setPresets] = useState<string[]>([]);
   const [preset, setPreset] = useState("");
@@ -22,7 +24,12 @@ export function ZapretScreen({ t, initialDir }: Props) {
         setDir(found);
         const list = await api.zapretPresets(found);
         setPresets(list);
-        setPreset((p) => p || list[0] || "");
+        // keep the owner's choice: only fall back when it is gone from the folder
+        setPreset((current) => {
+          const keep = savedPreset || current;
+          if (keep && list.includes(keep)) return keep;
+          return list[0] || "";
+        });
       }
       try {
         setStatus(await api.zapretStatus());
@@ -105,7 +112,10 @@ export function ZapretScreen({ t, initialDir }: Props) {
             className="input"
             style={{ width: 320 }}
             value={preset}
-            onChange={(e) => setPreset(e.target.value)}
+            onChange={(e) => {
+              setPreset(e.target.value);
+              onPreset(e.target.value);
+            }}
           >
             {presets.length === 0 && <option value="">{t("zapretNone")}</option>}
             {presets.map((p) => (

@@ -1312,3 +1312,79 @@ input {
   border-color: var(--warn-line);
   background: var(--warn-bg);
 }
+
+/* device id: input and copy button on one line, narrow enough for an 16-char id */
+.id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.id-row .input {
+  font-family: var(--mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+  letter-spacing: 0.06em;
+  max-width: 220px;
+  text-transform: uppercase;
+}
+
+/* mode switch above the program lists */
+.split-mode {
+  margin-bottom: 14px;
+  max-width: 620px;
+}
+.split-mode p {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.banner.warn {
+  border-color: var(--warn-line, #6b4a12);
+  background: rgba(255, 176, 32, 0.08);
+  color: var(--warn-text, #ffcf70);
+}
+
+/* corner card: the notification that always works, even without Windows toasts */
+.toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 340px;
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid var(--green-line);
+  background: color-mix(in srgb, var(--bg-1) 92%, var(--green) 8%);
+  color: var(--txt);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85);
+  animation: toast-in 0.22s ease-out;
+  cursor: pointer;
+}
+.toast img {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+.toast span {
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.toast b {
+  font-size: 13px;
+  color: var(--green);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

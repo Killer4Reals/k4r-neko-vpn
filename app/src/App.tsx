@@ -83,6 +83,9 @@ export default function App() {
   const [scanning, setScanning] = useState(inTauri);
   /// routes changed while the tunnel is up: engine reads them only on start
   const [splitDirty, setSplitDirty] = useState(false);
+  /// "only" = tunnel carries just the chosen programs (the owner's default)
+  const [splitMode, setSplitMode] = useState<"only" | "all">("only");
+  const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
   /// real counters from the engine, never a made-up number
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -93,6 +96,8 @@ export default function App() {
   const [loaded, setLoaded] = useState(!inTauri);
   const [admin, setAdmin] = useState(true);
   const [zapretDir, setZapretDir] = useState<string | null>(null);
+  /// the preset the owner picked must survive a restart, not snap back to the first
+  const [zapretPreset, setZapretPreset] = useState("");
   const [autostart, setAutostart] = useState(false);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
@@ -102,6 +107,8 @@ export default function App() {
   const [hotkey, setHotkey] = useState("Ctrl+Alt+V");
   const [closeToTray, setCloseToTray] = useState(true);
   const [minimizeToTray, setMinimizeToTray] = useState(true);
+  /// device id the subscription server knows us by
+  const [deviceId, setDeviceId] = useState("");
   const [notifyOn, setNotifyOn] = useState(true);
   const timer = useRef<number | null>(null);
   const win = inTauri ? getCurrentWindow() : null;
@@ -179,6 +186,8 @@ export default function App() {
         if (st.hotkey) setHotkey(st.hotkey);
         if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
         if (typeof st.minimize_to_tray === "boolean") setMinimizeToTray(st.minimize_to_tray);
+        if (st.split_mode === "all" || st.split_mode === "only") setSplitMode(st.split_mode);
+        if (st.zapret_preset) setZapretPreset(st.zapret_preset);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
         // only what the owner picked is restored — never a full scan dump
@@ -205,7 +214,7 @@ export default function App() {
           selected: selectedId,
           split: chosen.map((c) => ({ exe: c.exe, name: c.name, via: c.via })),
           zapret_dir: zapretDir ?? "",
-          zapret_preset: "",
+          zapret_preset: zapretPreset,
           subs,
           dns_mode: dnsMode,
           block_ipv6: blockIpv6,
@@ -215,6 +224,8 @@ export default function App() {
           minimize_to_tray: minimizeToTray,
           notify: notifyOn,
           kill_switch: killSwitch,
+          hwid: deviceId || undefined,
+          split_mode: splitMode,
         })
         .catch(() => undefined);
     }, 700);
@@ -222,6 +233,7 @@ export default function App() {
   }, [
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
+    deviceId, splitMode,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -306,8 +318,15 @@ export default function App() {
         return;
       }
       const excluded = chosen.filter((a) => !a.via).map((a) => a.exe);
+      const via = chosen.filter((a) => a.via).map((a) => a.exe);
       try {
-        const st = await api.engineStart(profile, excluded, dnsMode === "tunnel" ? "1.1.1.1" : "");
+        const st = await api.engineStart(
+          profile,
+          excluded,
+          dnsMode === "tunnel" ? "1.1.1.1" : "",
+          splitMode,
+          via,
+        );
         setConn(st.state === "running" ? "connected" : "error");
         if (st.state !== "running") setError(st.message);
       } catch (e) {
@@ -501,31 +520,68 @@ export default function App() {
     };
   }, [hotkey]);
 
-  // --- windows notifications -------------------------------------------------
+  // --- notifications ---------------------------------------------------------
+  // Windows toasts are unreliable for an unpackaged / portable exe (they need a
+  // Start-menu shortcut with an app id), so the app always shows its own card in
+  // the corner. The toast is a bonus on top of that, never the only channel.
   const prevConn = useRef<ConnState>(conn);
   useEffect(() => {
     const was = prevConn.current;
     prevConn.current = conn;
-    if (!inTauri || !notifyOn || was === conn) return;
+    if (!notifyOn || was === conn) return;
     if (conn !== "connected" && conn !== "error") return;
+    const title = conn === "connected" ? t("notifyOnTitle") : t("notifyOffTitle");
+    const body =
+      conn === "connected"
+        ? `${t("notifyOnBody")} ${selected?.city ?? ""}`.trim()
+        : error || t("notifyOffBody");
+    setToast({ title, body });
+    if (!inTauri) return;
     (async () => {
       try {
         const n = await import("@tauri-apps/plugin-notification");
         let granted = await n.isPermissionGranted();
         if (!granted) granted = (await n.requestPermission()) === "granted";
         if (!granted) return;
-        n.sendNotification({
-          title: conn === "connected" ? t("notifyOnTitle") : t("notifyOffTitle"),
-          body:
-            conn === "connected"
-              ? `${t("notifyOnBody")} ${selected?.city ?? ""}`.trim()
-              : error || t("notifyOffBody"),
-        });
+        n.sendNotification({ title, body });
       } catch {
-        /* notifications are a nicety, never block the app */
+        /* the in-app card already told the owner what happened */
       }
     })();
-  }, [conn, notifyOn, selected, error]);
+  }, [conn, notifyOn, selected, error, t]);
+
+  // the card fades away by itself, like a toast should
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 4500);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+
+  // --- minimize must land in the tray ---------------------------------------
+  // The Rust side watches the window event, but WebView2 does not always report
+  // it, so we ask the window itself right after a resize.
+  useEffect(() => {
+    if (!inTauri || !win) return;
+    let stop: (() => void) | undefined;
+    let alive = true;
+    (async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const un = await getCurrentWindow().onResized(async () => {
+        if (!minimizeToTray) return;
+        try {
+          if (await getCurrentWindow().isMinimized()) await getCurrentWindow().hide();
+        } catch {
+          /* nothing to hide */
+        }
+      });
+      if (alive) stop = un;
+      else un();
+    })();
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [minimizeToTray]);
 
   // --- installed programs for split tunneling --------------------------------
   useEffect(() => {
@@ -564,6 +620,11 @@ export default function App() {
     connState: conn,
     splitDirty,
     reconnectTunnel,
+    mode: splitMode,
+    setMode: (m: "only" | "all") => {
+      setSplitMode(m);
+      setSplitDirty(true);
+    },
   };
 
   return (
@@ -658,7 +719,12 @@ export default function App() {
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
           {screen === "zapret" && (
-            <ZapretScreen t={t} initialDir={zapretDir} />
+            <ZapretScreen
+              t={t}
+              initialDir={zapretDir}
+              savedPreset={zapretPreset}
+              onPreset={setZapretPreset}
+            />
           )}
           {screen === "logs" && (
             <LogsScreen t={t} error={error} onExport={exportLog} />
@@ -687,10 +753,21 @@ export default function App() {
               hotkey={hotkey}
               setHotkey={setHotkey}
               onExportLog={exportLog}
+              onDeviceId={setDeviceId}
             />
           )}
         </main>
       </div>
+
+      {toast && (
+        <button className="toast" onClick={() => setToast(null)}>
+          <img src="/mascot/glyph-on.png" alt="" />
+          <span>
+            <b>{toast.title}</b>
+            <span>{toast.body}</span>
+          </span>
+        </button>
+      )}
     </div>
   );
 }

@@ -13,6 +13,8 @@ type Props = {
   connState: string;
   splitDirty: boolean;
   reconnectTunnel: () => void;
+  mode: "only" | "all";
+  setMode: (m: "only" | "all") => void;
 };
 
 const initials = (name: string) =>
@@ -80,6 +82,8 @@ export function SplitScreen({
   connState,
   splitDirty,
   reconnectTunnel,
+  mode,
+  setMode,
 }: Props) {
   const [q, setQ] = useState("");
   const [browse, setBrowse] = useState(false);
@@ -106,6 +110,26 @@ export function SplitScreen({
         <h1>{t("splitTitle")}</h1>
         <p>{t("splitSub")}</p>
       </div>
+
+      <div className="split-mode">
+        <div className="seg">
+          <button data-on={mode === "only"} onClick={() => setMode("only")}>
+            {mode === "only" ? "● " : ""}
+            {t("modeOnly")}
+          </button>
+          <button data-on={mode === "all"} onClick={() => setMode("all")}>
+            {mode === "all" ? "● " : ""}
+            {t("modeAll")}
+          </button>
+        </div>
+        <p className="muted">{mode === "only" ? t("modeOnlyHint") : t("modeAllHint")}</p>
+      </div>
+
+      {mode === "only" && !via.length && (
+        <div className="banner warn" style={{ borderRadius: 10, marginBottom: 12 }}>
+          <span>{t("modeOnlyEmpty")}</span>
+        </div>
+      )}
 
       <div className="field" style={{ marginBottom: 10, maxWidth: 420 }}>
         <div style={{ position: "relative" }}>
@@ -218,7 +242,7 @@ export function SplitScreen({
           </div>
         </div>
 
-        <div className="card">
+        {mode === "all" && <div className="card">
           <div className="card-cap">
             <span className="tag">{t("direct")}</span>
             <span className="muted">{direct.length}</span>
@@ -237,10 +261,12 @@ export function SplitScreen({
             ))}
             {!direct.length && <p className="muted" style={{ padding: "10px 4px" }}>{t("splitColumnEmpty")}</p>}
           </div>
-        </div>
+        </div>}
       </div>
 
-      <p className="muted" style={{ marginTop: 14 }}>{t("splitHint")}</p>
+      <p className="muted" style={{ marginTop: 14 }}>
+        {mode === "only" ? t("splitHintOnly") : t("splitHint")}
+      </p>
     </>
   );
 }

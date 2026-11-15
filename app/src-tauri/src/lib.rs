@@ -392,6 +392,8 @@ fn engine_start(
     profile: Profile,
     excluded: Vec<String>,
     dns: String,
+    mode: Option<String>,
+    via: Option<Vec<String>>,
 ) -> Result<engine::EngineStatus, String> {
     let bin = engine::sidecar_path(&resources_dir(&app));
     let log_path = data_dir(&app)?.join("logs").join("engine.log");
@@ -411,6 +413,24 @@ fn engine_start(
         },
         api_port: engine::free_port(),
         api_secret: engine::api_secret(),
+        split_mode: mode
+            .filter(|m| m == "only" || m == "all")
+            .unwrap_or_else(|| {
+                if saved.split_mode.is_empty() {
+                    "only".into()
+                } else {
+                    saved.split_mode.clone()
+                }
+            }),
+        tunnel_apps: match via {
+            Some(list) => list,
+            None => saved
+                .split
+                .iter()
+                .filter(|s| s.via)
+                .map(|s| s.exe.clone())
+                .collect(),
+        },
     };
     *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
     *engine.last_sample.lock().unwrap() = None;

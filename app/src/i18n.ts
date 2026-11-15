@@ -168,6 +168,24 @@ const dict: Dict = {
     en: "Routes are applied when the tunnel starts — reconnect to apply them",
   },
   reconnect: { ru: "Переподключить", en: "Reconnect" },
+  splitHintOnly: {
+    ru: "Выбор запоминается между запусками. Через VPN идут только программы из списка, все остальные — напрямую",
+    en: "The choice is remembered. Only the listed programs go through the VPN, everything else stays direct",
+  },
+  modeOnly: { ru: "Только выбранные", en: "Only chosen" },
+  modeAll: { ru: "Все, кроме выбранных", en: "All except chosen" },
+  modeOnlyHint: {
+    ru: "Через VPN идут только программы из списка «В VPN». Всё остальное — напрямую, своим ходом",
+    en: "Only the programs in the tunnel list go through the VPN. Everything else stays direct",
+  },
+  modeAllHint: {
+    ru: "Через VPN идут все программы, кроме тех, что отмечены «Напрямую»",
+    en: "Every program goes through the VPN except the ones marked direct",
+  },
+  modeOnlyEmpty: {
+    ru: "Список «В VPN» пуст — пока через VPN не идёт ничего. Добавь программы поиском ниже",
+    en: "The tunnel list is empty, so nothing goes through the VPN yet. Add programs with the search below",
+  },
   splitEmptyTitle: { ru: "Списки пустые", en: "Nothing added yet" },
   splitEmptyText: {
     ru: "Найди программу в поиске и выбери: через VPN или напрямую. Выбор сохранится сам.",

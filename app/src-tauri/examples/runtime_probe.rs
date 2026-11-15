@@ -102,6 +102,8 @@ fn main() {
         dns_server: "1.1.1.1".into(),
         api_port: 0,
         api_secret: String::new(),
+        split_mode: "only".into(),
+        tunnel_apps: Vec::new(),
     };
     let mut excluded = st
         .split
