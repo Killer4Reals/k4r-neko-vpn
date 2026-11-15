@@ -101,6 +101,7 @@ export type AppState = {
   reconnect?: boolean;
   hotkey?: string;
   close_to_tray?: boolean;
+  minimize_to_tray?: boolean;
   kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;

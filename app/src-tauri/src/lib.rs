@@ -200,17 +200,17 @@ Get-ItemProperty $keys | ForEach-Object {
   if($ic){ emit 'reg' ($ic -replace ',\d+$','') $_.DisplayName }
 }
 "#;
-    let Ok(res) = std::process::Command::new("powershell")
-        .args([
+    let mut scan = std::process::Command::new("powershell");
+    scan.args([
             "-NoProfile",
             "-NonInteractive",
             "-ExecutionPolicy",
             "Bypass",
-            "-Command",
-            SCRIPT,
-        ])
-        .output()
-    else {
+        "-Command",
+        SCRIPT,
+    ]);
+    engine::hidden(&mut scan);
+    let Ok(res) = scan.output() else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -417,12 +417,12 @@ fn engine_start(
 
     let config = engine::build_config(&profile, &excluded, &opts);
     let status = engine::start(&engine, &bin, &config, &log_path, &profile.name)?;
-    supervise(app, saved.reconnect);
+    supervise(app, saved.reconnect, saved.kill_switch);
     Ok(status)
 }
 
 /// Watches the engine: three silent retries, then an honest error in the UI.
-fn supervise(app: tauri::AppHandle, reconnect: bool) {
+fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
     std::thread::spawn(move || {
         let engine = app.state::<engine::Engine>();
         let mut attempts: u32 = 0;
@@ -436,6 +436,23 @@ fn supervise(app: tauri::AppHandle, reconnect: bool) {
                 engine::EngineState::Idle => break,
                 engine::EngineState::Error if reconnect && attempts < 3 => {
                     attempts += 1;
+                    let bin = engine::sidecar_path(&resources_dir(&app));
+                    let log_path = match data_dir(&app) {
+                        Ok(d) => d.join("logs").join("engine.log"),
+                        Err(_) => break,
+                    };
+                    // Kill switch: no packet may slip out in the clear while we retry.
+                    if kill_switch && engine::start_hold(&engine, &bin, &log_path) {
+                        let _ = app.emit(
+                            "engine-event",
+                            engine::EngineStatus {
+                                state: engine::EngineState::Starting,
+                                message: format!("туннель упал, интернет придержан ({attempts}/3)"),
+                                server: st.server.clone(),
+                                pid: 0,
+                            },
+                        );
+                    }
                     let _ = app.emit(
                         "engine-event",
                         engine::EngineStatus {
@@ -449,14 +466,10 @@ fn supervise(app: tauri::AppHandle, reconnect: bool) {
                     if !engine.wanted.load(std::sync::atomic::Ordering::SeqCst) {
                         break;
                     }
-                    let bin = engine::sidecar_path(&resources_dir(&app));
-                    let log_path = match data_dir(&app) {
-                        Ok(d) => d.join("logs").join("engine.log"),
-                        Err(_) => break,
-                    };
                     match engine::respawn(&engine, &bin, &log_path, &st.server) {
                         Ok(ok) => {
                             attempts = 0;
+                            engine::stop_hold(&engine);
                             let _ = app.emit("engine-event", ok);
                         }
                         Err(e) => {
@@ -473,7 +486,24 @@ fn supervise(app: tauri::AppHandle, reconnect: bool) {
                     }
                 }
                 engine::EngineState::Error => {
-                    let _ = app.emit("engine-event", st);
+                    let mut message = st.message.clone();
+                    if kill_switch {
+                        let bin = engine::sidecar_path(&resources_dir(&app));
+                        if let Ok(d) = data_dir(&app) {
+                            if engine::start_hold(&engine, &bin, &d.join("logs").join("engine.log")) {
+                                message = format!("{message}. Интернет удерживается: нажми «Отключить VPN»");
+                            }
+                        }
+                    }
+                    let _ = app.emit(
+                        "engine-event",
+                        engine::EngineStatus {
+                            state: engine::EngineState::Error,
+                            message,
+                            server: st.server.clone(),
+                            pid: 0,
+                        },
+                    );
                     break;
                 }
                 _ => {
@@ -507,12 +537,14 @@ fn app_is_admin() -> bool {
 #[tauri::command]
 fn app_relaunch_admin(app: tauri::AppHandle) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!("Start-Process -FilePath '{}' -Verb RunAs", exe.display()),
-        ])
+    let mut relaunch = std::process::Command::new("powershell");
+    relaunch.args([
+        "-NoProfile",
+        "-Command",
+        &format!("Start-Process -FilePath '{}' -Verb RunAs", exe.display()),
+    ]);
+    engine::hidden(&mut relaunch);
+    relaunch
         .spawn()
         .map_err(|e| format!("не удалось запросить повышение прав: {e}"))?;
     app.exit(0);
@@ -635,8 +667,8 @@ pub fn run() {
             if let Some(win) = app.get_webview_window("main") {
                 let target = win.clone();
                 let handle = app.handle().clone();
-                win.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                win.on_window_event(move |event| match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
                         let to_tray = data_dir(&handle)
                             .map(|d| store::load(&d).close_to_tray)
                             .unwrap_or(true);
@@ -645,6 +677,19 @@ pub fn run() {
                             let _ = target.hide();
                         }
                     }
+                    // the minimize button behaves like the close button
+                    tauri::WindowEvent::Resized(_) => {
+                        let minimised = target.is_minimized().unwrap_or(false);
+                        if minimised {
+                            let to_tray = data_dir(&handle)
+                                .map(|d| store::load(&d).minimize_to_tray)
+                                .unwrap_or(true);
+                            if to_tray {
+                                let _ = target.hide();
+                            }
+                        }
+                    }
+                    _ => {}
                 });
             }
             Ok(())

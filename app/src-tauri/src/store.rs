@@ -27,6 +27,8 @@ pub struct AppState {
     pub reconnect: bool,
     pub hotkey: String,
     pub close_to_tray: bool,
+    /// minimize button also hides the window to the tray, like Zapret does
+    pub minimize_to_tray: bool,
     /// remembered preference; the real WFP block ships later
     pub kill_switch: bool,
     pub notify: bool,
@@ -54,6 +56,7 @@ impl AppState {
             reconnect: true,
             hotkey: "Ctrl+Alt+V".into(),
             close_to_tray: true,
+            minimize_to_tray: true,
             kill_switch: true,
             notify: true,
             // opt-in: a portable app must not register itself behind the owner's back
@@ -76,12 +79,16 @@ pub struct SplitEntry {
 }
 
 /// 16 hex chars, stable for this installation, generated once.
+///
+/// A fresh install derives the id from this PC (so two people never share one),
+/// and remembers it, so reinstalling the app keeps the same id. If Windows gives
+/// us nothing to hash we fall back to a random value.
 pub fn install_id(data_dir: &Path) -> String {
     let state = load(data_dir);
     if !state.hwid.is_empty() {
         return state.hwid;
     }
-    let id = random_hex();
+    let id = machine_id().unwrap_or_else(random_hex);
     if let Ok(mut st) = std::fs::read_to_string(state_path(data_dir))
         .ok()
         .and_then(|t| serde_json::from_str::<AppState>(&t).ok())
@@ -95,6 +102,54 @@ pub fn install_id(data_dir: &Path) -> String {
     st.hwid = id.clone();
     let _ = save(data_dir, &st);
     id
+}
+
+/// What Windows says about this PC: the install GUID plus the computer name.
+/// Stable across app reinstalls, different on every machine.
+fn machine_id() -> Option<String> {
+    let mut cmd = std::process::Command::new("reg");
+    cmd.args([
+        "query",
+        r"HKLM\SOFTWARE\Microsoft\Cryptography",
+        "/v",
+        "MachineGuid",
+    ]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let guid = text
+        .lines()
+        .find(|l| l.contains("MachineGuid"))?
+        .split_whitespace()
+        .last()?
+        .to_string();
+    if guid.len() < 8 {
+        return None;
+    }
+    let host = std::env::var("COMPUTERNAME").unwrap_or_default();
+    Some(fnv_hex(&format!("{guid}|{host}")))
+}
+
+/// Two FNV-1a passes so the id is 16 hex chars, not one weak 32-bit value.
+fn fnv_hex(input: &str) -> String {
+    let mut a: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in input.as_bytes() {
+        a ^= *b as u64;
+        a = a.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let mut b: u64 = 0x9e37_79b9_7f4a_7c15;
+    for byte in input.as_bytes().iter().rev() {
+        b ^= *byte as u64;
+        b = b.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{a:016X}{b:016X}")[..16].to_string()
 }
 
 fn random_hex() -> String {
@@ -161,7 +216,7 @@ pub fn save(data_dir: &Path, state: &AppState) -> Result<(), String> {
 
 /// The engine paints its log with ANSI colour codes; the window and the
 /// exported file want plain text.
-fn strip_ansi(text: &str) -> String {
+pub fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find('\u{1b}') {

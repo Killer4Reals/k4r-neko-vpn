@@ -160,8 +160,7 @@ export function HomeScreen(p: Props) {
           <button
             className="chip"
             data-on={p.killSwitch}
-            data-soon="true"
-            title={t("killSwitchSoon")}
+            title={t("killSwitchHint")}
             onClick={p.onOpenSettings}
           >
             <span className="led" />

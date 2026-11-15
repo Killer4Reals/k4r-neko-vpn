@@ -19,6 +19,8 @@ type Props = {
   setBlockIpv6: (v: boolean) => void;
   closeToTray: boolean;
   setCloseToTray: (v: boolean) => void;
+  minimizeToTray: boolean;
+  setMinimizeToTray: (v: boolean) => void;
   notifyOn: boolean;
   setNotifyOn: (v: boolean) => void;
   hotkey: string;
@@ -143,7 +145,7 @@ export function SettingsScreen(p: Props) {
         <div className="row">
           <div className="txt">
             <b>{t("killSwitch")}</b>
-            <span>{t("killSwitchSoon")}</span>
+            <span>{t("killSwitchHint")}</span>
           </div>
           <button className="switch" aria-checked={killSwitch} onClick={() => setKillSwitch(!killSwitch)} />
         </div>
@@ -163,6 +165,17 @@ export function SettingsScreen(p: Props) {
         </div>
         <div className="row">
           <div className="txt">
+            <b>{t("minimizeToTray")}</b>
+            <span>{t("minimizeToTrayHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={p.minimizeToTray}
+            onClick={() => p.setMinimizeToTray(!p.minimizeToTray)}
+          />
+        </div>
+        <div className="row">
+          <div className="txt">
             <b>{t("ipv6")}</b>
             <span>{t("ipv6Hint")}</span>
           </div>
@@ -175,7 +188,7 @@ export function SettingsScreen(p: Props) {
           <dt>{t("about")}</dt>
           <dd>K4R Neko VPN</dd>
           <dt>{t("version")}</dt>
-          <dd>0.2.0</dd>
+          <dd>0.3.0</dd>
           <dt>{t("core")}</dt>
           <dd>{t("coreValue")}</dd>
           <dt>{t("deviceId")}</dt>

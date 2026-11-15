@@ -44,9 +44,9 @@ const dict: Dict = {
     en: "One file with the engine log — send it to support",
   },
   savedTo: { ru: "сохранено в", en: "saved to" },
-  tray: { ru: "Сворачивать в трей", en: "Minimize to tray" },
+  tray: { ru: "Крестик — в трей", en: "X button hides to tray" },
   trayHint: {
-    ru: "Крестик прячет окно, туннель продолжает работать",
+    ru: "Нажатие на крестик прячет окно, туннель продолжает работать",
     en: "The X hides the window, the tunnel keeps running",
   },
   notify: { ru: "Уведомления Windows", en: "Windows notifications" },
@@ -60,6 +60,15 @@ const dict: Dict = {
     en: "For example Ctrl+Alt+V toggles the tunnel",
   },
   dns: { ru: "DNS", en: "DNS" },
+  minimizeToTray: { ru: "Кнопка «свернуть» — в трей", en: "Minimize button hides to tray" },
+  minimizeToTrayHint: {
+    ru: "Окно исчезает в трей, как у Zapret: значок остаётся внизу справа, туннель работает",
+    en: "The window goes to the tray like Zapret: the icon stays bottom-right, tunnel keeps running",
+  },
+  deviceIdHint: {
+    ru: "Постоянный номер этой установки. Его видит сервер подписки; у другого человека он будет свой",
+    en: "Stable id of this installation. Your subscription server sees it; another person gets their own",
+  },
   ipv6: { ru: "IPv6", en: "IPv6" },
   dnsHint: {
     ru: "Через туннель — запросы идут к серверу и не видны провайдеру",
@@ -107,9 +116,17 @@ const dict: Dict = {
     ru: "Zapret уже запущен другой программой — мы его не трогаем",
     en: "Zapret is already running under another program — we leave it alone"
   },
-  killSwitchSoon: {
-    ru: "Пока только запоминает выбор — сама блокировка появится в следующем обновлении",
-    en: "Only remembers the choice for now — real blocking ships in the next update",
+  killSwitchHint: {
+    ru: "Если туннель упадёт, интернет придерживается до восстановления. Локальная сеть и принтер работают",
+    en: "If the tunnel drops, internet is held back until it is back. Your local network keeps working",
+  },
+  holdActive: {
+    ru: "Интернет придержан",
+    en: "Internet held",
+  },
+  holdHint: {
+    ru: "Туннель не поднимается, поэтому наружу ничего не уходит. Нажми «Отключить VPN», чтобы вернуть обычный интернет",
+    en: "The tunnel is down, so nothing leaves your PC. Press Disconnect to get normal internet back",
   },
 
   serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },

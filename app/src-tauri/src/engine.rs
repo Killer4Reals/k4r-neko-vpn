@@ -46,6 +46,9 @@ impl Default for EngineStatus {
 pub struct Engine {
     pub status: Mutex<EngineStatus>,
     pub child: Mutex<Option<Child>>,
+    /// The kill-switch process: holds the tunnel adapter up and rejects traffic
+    /// while we are reconnecting. Never confused with the real engine.
+    pub hold: Mutex<Option<Child>>,
     pub config_path: Mutex<Option<PathBuf>>,
     /// false when the user pressed "disconnect": the supervisor must not reconnect
     pub wanted: AtomicBool,
@@ -59,6 +62,7 @@ impl Default for Engine {
         Self {
             status: Mutex::new(EngineStatus::default()),
             child: Mutex::new(None),
+            hold: Mutex::new(None),
             config_path: Mutex::new(None),
             wanted: AtomicBool::new(false),
             api: Mutex::new(None),
@@ -308,11 +312,18 @@ pub fn sidecar_path(resource_dir: &Path) -> PathBuf {
         .unwrap_or_else(|| candidates[0].clone())
 }
 
+/// Every console program we start must be invisible: no black window may flash.
+pub fn hidden(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    cmd.creation_flags(HIDE_WINDOW);
+    cmd
+}
+
 pub fn check_config(bin: &Path, config: &Path) -> Result<(), String> {
-    let out = Command::new(bin)
-        .arg("check")
-        .arg("-c")
-        .arg(config)
+    let mut cmd = Command::new(bin);
+    cmd.arg("check").arg("-c").arg(config);
+    hidden(&mut cmd);
+    let out = cmd
         .output()
         .map_err(|e| format!("движок не запускается: {e}"))?;
     if out.status.success() {
@@ -357,6 +368,7 @@ pub fn start(
 
     check_config(bin, &cfg_path)?;
 
+    let log_offset = std::fs::metadata(log_path).map(|m| m.len()).unwrap_or(0);
     let log = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -386,6 +398,15 @@ pub fn start(
             if tail.is_empty() { String::new() } else { format!(": {tail}") }
         ));
     }
+    if !wait_tunnel_ready(log_path, log_offset, std::time::Duration::from_secs(8)) {
+        let _ = child.kill();
+        let _ = child.wait();
+        let tail = read_tail(log_path, 4);
+        return Err(format!(
+            "движок запустился, но туннель не поднялся{}",
+            if tail.is_empty() { String::new() } else { format!(": {tail}") }
+        ));
+    }
 
     let status = EngineStatus {
         state: EngineState::Running,
@@ -402,6 +423,7 @@ pub fn start(
 }
 
 pub fn stop(engine: &Engine) -> EngineStatus {
+    stop_hold(engine);
     if let Some(mut child) = engine.child.lock().unwrap().take() {
         let _ = child.kill();
         let _ = child.wait();
@@ -433,6 +455,7 @@ pub fn respawn(
         .append(true)
         .open(log_path)
         .map_err(|e| format!("не удалось открыть журнал: {e}"))?;
+    let log_offset = std::fs::metadata(log_path).map(|m| m.len()).unwrap_or(0);
     let mut cmd = Command::new(bin);
     cmd.arg("run")
         .arg("-c")
@@ -440,15 +463,18 @@ pub fn respawn(
         .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log))
         .stdin(Stdio::null());
-    // No console window may flash when the tunnel starts.
-    #[cfg(windows)]
-    cmd.creation_flags(HIDE_WINDOW);
+    hidden(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("движок не запустился: {e}"))?;
     std::thread::sleep(std::time::Duration::from_millis(900));
     if let Ok(Some(code)) = child.try_wait() {
         return Err(format!("движок завершился с кодом {code}"));
+    }
+    if !wait_tunnel_ready(log_path, log_offset, std::time::Duration::from_secs(8)) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err("движок запустился, но туннель не поднялся".into());
     }
     let mut st = engine.status.lock().unwrap();
     st.state = EngineState::Running;
@@ -459,6 +485,93 @@ pub fn respawn(
     drop(st);
     *engine.child.lock().unwrap() = Some(child);
     Ok(out)
+}
+
+/// What we run when the tunnel dropped: the adapter stays up and everything
+/// beyond the local network is refused, so no packet leaves in the clear.
+pub fn hold_config() -> Value {
+    json!({
+        "log": { "level": "info", "timestamp": true },
+        "dns": { "servers": [{ "type": "local", "tag": "local" }] },
+        "inbounds": [{
+            "type": "tun",
+            "tag": "tun-in",
+            "address": ["172.19.0.1/30"],
+            "mtu": 1350,
+            "auto_route": true,
+            "strict_route": true,
+            "stack": "mixed"
+        }],
+        "outbounds": [{ "type": "direct", "tag": "direct" }],
+        "route": {
+            // local network keeps working (printer, router, own PC), everything
+            // else is refused until the tunnel is back
+            "rules": [
+                { "ip_cidr": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "127.0.0.0/8"], "action": "route", "outbound": "direct" },
+                { "ip_cidr": ["fc00::/7", "fe80::/10", "::1/128"], "action": "route", "outbound": "direct" },
+                { "ip_cidr": ["0.0.0.0/0", "::/0"], "action": "reject" }
+            ],
+            "final": "direct",
+            "auto_detect_interface": true
+        }
+    })
+}
+
+pub fn holding(engine: &Engine) -> bool {
+    let mut guard = engine.hold.lock().unwrap();
+    if let Some(child) = guard.as_mut() {
+        if let Ok(Some(_)) = child.try_wait() {
+            *guard = None;
+            return false;
+        }
+        return true;
+    }
+    false
+}
+
+/// Brings the block up. Returns true when the process is running.
+pub fn start_hold(engine: &Engine, bin: &Path, log_path: &Path) -> bool {
+    if holding(engine) {
+        return true;
+    }
+    let cfg = hold_config();
+    let path = std::env::temp_dir().join("k4r-neko-vpn").join("hold.json");
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap_or_default()).is_err() {
+        return false;
+    }
+    let log = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+    {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut cmd = Command::new(bin);
+    cmd.arg("run")
+        .arg("-c")
+        .arg(&path)
+        .stdout(Stdio::from(log.try_clone().unwrap_or_else(|_| std::fs::File::create(log_path).unwrap())))
+        .stderr(Stdio::from(log))
+        .stdin(Stdio::null());
+    hidden(&mut cmd);
+    match cmd.spawn() {
+        Ok(child) => {
+            *engine.hold.lock().unwrap() = Some(child);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+pub fn stop_hold(engine: &Engine) {
+    if let Some(mut child) = engine.hold.lock().unwrap().take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 pub fn poll(engine: &Engine) -> EngineStatus {
@@ -485,6 +598,28 @@ pub fn poll(engine: &Engine) -> EngineStatus {
         }
     }
     engine.status.lock().unwrap().clone()
+}
+
+/// A running process is not the same as a working tunnel: sing-box happily
+/// runs a config with no tun in it. We only call it connected when the engine
+/// has really brought the adapter up.
+fn wait_tunnel_ready(log_path: &Path, from: u64, timeout: std::time::Duration) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if let Ok(mut f) = std::fs::File::open(log_path) {
+            if f.seek(SeekFrom::Start(from)).is_ok() {
+                let mut text = String::new();
+                if f.read_to_string(&mut text).is_ok() {
+                    if crate::store::strip_ansi(&text).contains("started at tun") {
+                        return true;
+                    }
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    false
 }
 
 fn read_tail(path: &Path, lines: usize) -> String {

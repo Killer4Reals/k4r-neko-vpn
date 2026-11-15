@@ -101,6 +101,7 @@ export default function App() {
   const [blockIpv6, setBlockIpv6] = useState(true);
   const [hotkey, setHotkey] = useState("Ctrl+Alt+V");
   const [closeToTray, setCloseToTray] = useState(true);
+  const [minimizeToTray, setMinimizeToTray] = useState(true);
   const [notifyOn, setNotifyOn] = useState(true);
   const timer = useRef<number | null>(null);
   const win = inTauri ? getCurrentWindow() : null;
@@ -177,6 +178,7 @@ export default function App() {
         if (typeof st.block_ipv6 === "boolean") setBlockIpv6(st.block_ipv6);
         if (st.hotkey) setHotkey(st.hotkey);
         if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
+        if (typeof st.minimize_to_tray === "boolean") setMinimizeToTray(st.minimize_to_tray);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
         // only what the owner picked is restored — never a full scan dump
@@ -210,6 +212,7 @@ export default function App() {
           reconnect: true,
           hotkey,
           close_to_tray: closeToTray,
+          minimize_to_tray: minimizeToTray,
           notify: notifyOn,
           kill_switch: killSwitch,
         })
@@ -218,7 +221,7 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
-    subs, dnsMode, blockIpv6, hotkey, closeToTray, notifyOn, killSwitch,
+    subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -677,6 +680,8 @@ export default function App() {
               setBlockIpv6={setBlockIpv6}
               closeToTray={closeToTray}
               setCloseToTray={setCloseToTray}
+              minimizeToTray={minimizeToTray}
+              setMinimizeToTray={setMinimizeToTray}
               notifyOn={notifyOn}
               setNotifyOn={setNotifyOn}
               hotkey={hotkey}

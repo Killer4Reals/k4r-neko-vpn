@@ -117,10 +117,10 @@ pub fn args_from_preset(path: &Path) -> Result<Vec<String>, String> {
 
 /// A foreign winws2 (e.g. the Zapret GUI the owner is using) must never be touched.
 pub fn external_instance_running() -> bool {
-    let Ok(out) = Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq winws2.exe", "/NH"])
-        .output()
-    else {
+    let mut cmd = Command::new("tasklist");
+    cmd.args(["/FI", "IMAGENAME eq winws2.exe", "/NH"]);
+    crate::engine::hidden(&mut cmd);
+    let Ok(out) = cmd.output() else {
         return false;
     };
     String::from_utf8_lossy(&out.stdout).to_lowercase().contains("winws2")
