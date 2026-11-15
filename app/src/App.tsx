@@ -267,6 +267,7 @@ export default function App() {
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl,
+    zapretPreset, tgProxy,
   ]);
 
   // Tray icon follows the tunnel state.

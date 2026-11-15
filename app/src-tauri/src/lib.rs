@@ -766,16 +766,21 @@ fn stats_load(app: &tauri::AppHandle) -> std::collections::BTreeMap<String, DayT
 
 /// Расход за день: прибавляем разницу счётчиков движка. Пишем по дню, потому что
 /// «сколько за неделю» человеку важнее, чем «сколько за всё время».
-#[tauri::command]
-fn stats_add(app: tauri::AppHandle, day: String, down: u64, up: u64) -> Result<(), String> {
+/// Прибавка к одному дню. Вынесено отдельно от файла, чтобы это можно было
+/// проверить тестом: арифметика дня — единственное место, где легко ошибиться.
+fn day_merge(
+    map: &mut std::collections::BTreeMap<String, DayTraffic>,
+    day: &str,
+    down: u64,
+    up: u64,
+) -> Result<(), String> {
     if down == 0 && up == 0 {
         return Ok(());
     }
-    if day.len() < 10 {
+    if day.len() != 10 || day.as_bytes().get(4) != Some(&b'-') {
         return Err("день должен быть в виде 2026-11-15".into());
     }
-    let mut map = stats_load(&app);
-    let entry = map.entry(day).or_default();
+    let entry = map.entry(day.to_string()).or_default();
     entry.down = entry.down.saturating_add(down);
     entry.up = entry.up.saturating_add(up);
     // держим два месяца: больше в окне не помещается и не нужно
@@ -787,6 +792,16 @@ fn stats_add(app: tauri::AppHandle, day: String, down: u64, up: u64) -> Result<(
             }
             None => break,
         }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn stats_add(app: tauri::AppHandle, day: String, down: u64, up: u64) -> Result<(), String> {
+    let mut map = stats_load(&app);
+    day_merge(&mut map, &day, down, up)?;
+    if down == 0 && up == 0 {
+        return Ok(());
     }
     let text = serde_json::to_string(&map).map_err(|e| e.to_string())?;
     std::fs::write(stats_path(&app)?, text).map_err(|e| format!("не смог сохранить статистику: {e}"))
@@ -1148,4 +1163,48 @@ pub fn run() {
                 let _ = zapret::stop(&zapret);
             }
         });
+}
+
+#[cfg(test)]
+mod stats_tests {
+    use super::{day_merge, DayTraffic};
+    use std::collections::BTreeMap;
+
+    fn map() -> BTreeMap<String, DayTraffic> {
+        BTreeMap::new()
+    }
+
+    #[test]
+    fn adds_to_the_same_day_and_keeps_both_directions() {
+        let mut m = map();
+        day_merge(&mut m, "2026-11-15", 1000, 200).unwrap();
+        day_merge(&mut m, "2026-11-15", 500, 50).unwrap();
+        let d = m.get("2026-11-15").unwrap();
+        assert_eq!(d.down, 1500);
+        assert_eq!(d.up, 250);
+    }
+
+    #[test]
+    fn zero_traffic_changes_nothing() {
+        let mut m = map();
+        day_merge(&mut m, "2026-11-15", 0, 0).unwrap();
+        assert!(m.is_empty());
+    }
+
+    #[test]
+    fn refuses_a_day_that_is_not_a_date() {
+        let mut m = map();
+        assert!(day_merge(&mut m, "", 1, 1).is_err());
+        assert!(day_merge(&mut m, "15.11.2026", 1, 1).is_err());
+        assert!(m.is_empty());
+    }
+
+    #[test]
+    fn keeps_two_months_and_drops_the_oldest() {
+        let mut m = map();
+        for day in 1..=70 {
+            day_merge(&mut m, &format!("2026-{:02}-01", (day % 12) + 1), 1, 1).unwrap();
+        }
+        assert!(m.len() <= 62, "в карте {} дней", m.len());
+    }
 }
