@@ -172,6 +172,11 @@ const dict: Dict = {
     ru: "Выбор запоминается между запусками. Через VPN идут только программы из списка, все остальные — напрямую",
     en: "The choice is remembered. Only the listed programs go through the VPN, everything else stays direct",
   },
+  dnsServer: { ru: "DNS-сервер туннеля", en: "Tunnel DNS server" },
+  dnsServerHint: {
+    ru: "Адрес превращается в DNS через HTTPS, поэтому провайдер не видит, какие сайты ты открываешь. Можно вставить и свой: https://… или tls://…",
+    en: "A plain address becomes DNS over HTTPS, so your provider cannot see the sites you open. You can paste your own https:// or tls:// resolver",
+  },
   modeOnly: { ru: "Только выбранные", en: "Only chosen" },
   modeAll: { ru: "Все, кроме выбранных", en: "All except chosen" },
   modeOnlyHint: {

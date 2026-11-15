@@ -34,6 +34,8 @@ pub struct AppState {
     /// "only" = the tunnel carries just the chosen programs, "all" = everything
     /// except the programs marked direct
     pub split_mode: String,
+    /// resolver used inside the tunnel: plain address, https:// or tls:// URL
+    pub dns_server: String,
     pub notify: bool,
     pub autostart: bool,
     /// 0 = written before the settings existed; bumped when defaults change
@@ -62,6 +64,7 @@ impl AppState {
             minimize_to_tray: true,
             kill_switch: true,
             split_mode: "only".into(),
+            dns_server: "1.1.1.1".into(),
             notify: true,
             // opt-in: a portable app must not register itself behind the owner's back
             autostart: false,

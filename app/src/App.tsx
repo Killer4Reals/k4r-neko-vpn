@@ -104,6 +104,8 @@ export default function App() {
   const [subs, setSubs] = useState<SubSource[]>([]);
   const [dnsMode, setDnsMode] = useState<"tunnel" | "system">("tunnel");
   const [blockIpv6, setBlockIpv6] = useState(true);
+  /// resolver inside the tunnel: "1.1.1.1", "https://dns.google/dns-query" or "tls://..."
+  const [dnsServer, setDnsServer] = useState("1.1.1.1");
   const [hotkey, setHotkey] = useState("Ctrl+Alt+V");
   const [closeToTray, setCloseToTray] = useState(true);
   const [minimizeToTray, setMinimizeToTray] = useState(true);
@@ -187,6 +189,7 @@ export default function App() {
         if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
         if (typeof st.minimize_to_tray === "boolean") setMinimizeToTray(st.minimize_to_tray);
         if (st.split_mode === "all" || st.split_mode === "only") setSplitMode(st.split_mode);
+        if (st.dns_server) setDnsServer(st.dns_server);
         if (st.zapret_preset) setZapretPreset(st.zapret_preset);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
@@ -226,6 +229,7 @@ export default function App() {
           kill_switch: killSwitch,
           hwid: deviceId || undefined,
           split_mode: splitMode,
+          dns_server: dnsServer,
         })
         .catch(() => undefined);
     }, 700);
@@ -233,7 +237,7 @@ export default function App() {
   }, [
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
-    deviceId, splitMode,
+    deviceId, splitMode, dnsServer,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -323,7 +327,7 @@ export default function App() {
         const st = await api.engineStart(
           profile,
           excluded,
-          dnsMode === "tunnel" ? "1.1.1.1" : "",
+          dnsMode === "tunnel" ? dnsServer : "",
           splitMode,
           via,
         );
@@ -742,6 +746,8 @@ export default function App() {
               setTheme={setTheme}
               dnsMode={dnsMode}
               setDnsMode={setDnsMode}
+              dnsServer={dnsServer}
+              setDnsServer={setDnsServer}
               blockIpv6={blockIpv6}
               setBlockIpv6={setBlockIpv6}
               closeToTray={closeToTray}

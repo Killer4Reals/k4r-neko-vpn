@@ -15,6 +15,8 @@ type Props = {
   setTheme: (t: Theme) => void;
   dnsMode: "tunnel" | "system";
   setDnsMode: (v: "tunnel" | "system") => void;
+  dnsServer: string;
+  setDnsServer: (v: string) => void;
   blockIpv6: boolean;
   setBlockIpv6: (v: boolean) => void;
   closeToTray: boolean;
@@ -182,6 +184,43 @@ export function SettingsScreen(p: Props) {
             onClick={() => p.setMinimizeToTray(!p.minimizeToTray)}
           />
         </div>
+        {p.dnsMode === "tunnel" && (
+          <div className="row">
+            <div className="txt">
+              <b>{t("dnsServer")}</b>
+              <span>{t("dnsServerHint")}</span>
+            </div>
+          </div>
+        )}
+        {p.dnsMode === "tunnel" && (
+          <div className="dns-row">
+            <input
+              className="input"
+              value={p.dnsServer}
+              spellCheck={false}
+              placeholder="1.1.1.1"
+              onChange={(e) => p.setDnsServer(e.target.value)}
+              aria-label={t("dnsServer")}
+            />
+            <div className="dns-chips">
+              {[
+                ["Cloudflare", "1.1.1.1"],
+                ["Google", "8.8.8.8"],
+                ["Quad9", "https://dns.quad9.net/dns-query"],
+                ["DoH Google", "https://dns.google/dns-query"],
+              ].map(([label, value]) => (
+                <button
+                  key={value}
+                  className="chip"
+                  data-on={p.dnsServer === value}
+                  onClick={() => p.setDnsServer(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="row">
           <div className="txt">
             <b>{t("ipv6")}</b>

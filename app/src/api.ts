@@ -103,6 +103,7 @@ export type AppState = {
   close_to_tray?: boolean;
   minimize_to_tray?: boolean;
   split_mode?: string;
+  dns_server?: string;
   kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;

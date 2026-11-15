@@ -1388,3 +1388,20 @@ input {
     transform: none;
   }
 }
+
+/* DNS resolver: one field plus quick choices */
+.dns-row {
+  padding: 0 0 14px;
+  display: grid;
+  gap: 10px;
+}
+.dns-row .input {
+  max-width: 360px;
+  font-family: var(--mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+  font-size: 12.5px;
+}
+.dns-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

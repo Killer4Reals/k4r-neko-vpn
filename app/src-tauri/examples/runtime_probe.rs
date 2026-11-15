@@ -104,6 +104,7 @@ fn main() {
         api_secret: String::new(),
         split_mode: "only".into(),
         tunnel_apps: Vec::new(),
+        gateway: engine::default_gateway(),
     };
     let mut excluded = st
         .split

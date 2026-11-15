@@ -23,6 +23,7 @@ fn main() {
         api_secret: engine::api_secret(),
         split_mode: "only".into(),
         tunnel_apps: Vec::new(),
+        gateway: engine::default_gateway(),
     };
     let excluded = vec![
         "deepai code.exe".to_string(),

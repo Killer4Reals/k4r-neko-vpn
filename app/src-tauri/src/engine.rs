@@ -86,6 +86,8 @@ pub struct NetOptions {
     pub split_mode: String,
     /// programs that must go through the tunnel in "only" mode
     pub tunnel_apps: Vec<String>,
+    /// router address, used as the plain resolver for everything not tunnelled
+    pub gateway: String,
 }
 
 impl Default for NetOptions {
@@ -98,6 +100,7 @@ impl Default for NetOptions {
             api_secret: String::new(),
             split_mode: "only".into(),
             tunnel_apps: Vec::new(),
+            gateway: String::new(),
         }
     }
 }
@@ -191,16 +194,65 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
             "strategy": if opts.block_ipv6 { "ipv4_only" } else { "prefer_ipv4" }
         })
     } else {
-        json!({
-            "servers": [
-                { "type": "https", "tag": "remote", "server": opts.dns_server },
-                { "type": "local", "tag": "system" }
-            ],
-            "final": "remote",
-            "strategy": if opts.block_ipv6 { "ipv4_only" } else { "prefer_ipv4" }
-        })
+        // A plain address becomes DNS over HTTPS (nobody on the way can read it),
+        // "https://" and "tls://" are taken as written, so the owner can point at
+        // any resolver they trust.
+        let raw = opts.dns_server.trim();
+        let remote = if let Some(rest) = raw.strip_prefix("https://") {
+            let (host, path) = match rest.split_once('/') {
+                Some((h, p)) => (h, format!("/{p}")),
+                None => (rest, "/dns-query".to_string()),
+            };
+            let mut server = json!({ "type": "https", "tag": "remote", "server": host, "detour": "proxy" });
+            if path != "/dns-query" {
+                server["path"] = json!(path);
+            }
+            server
+        } else if let Some(rest) = raw.strip_prefix("tls://") {
+            json!({ "type": "tls", "tag": "remote", "server": rest, "detour": "proxy" })
+        } else if raw.is_empty() {
+            json!({ "type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy" })
+        } else {
+            json!({ "type": "https", "tag": "remote", "server": raw, "detour": "proxy" })
+        };
+        let strategy = if opts.block_ipv6 { "ipv4_only" } else { "prefer_ipv4" };
+        if only_chosen {
+            // Only the chosen programs get the private resolver. Everything else
+            // asks the router directly — a plain "system" resolver here would ask
+            // the tunnel adapter again and loop forever.
+            let plain = if opts.gateway.trim().is_empty() {
+                json!({ "type": "local", "tag": "plain" })
+            } else {
+                json!({
+                    "type": "udp",
+                    "tag": "plain",
+                    "server": opts.gateway.trim()
+                })
+            };
+            let mut dns = json!({
+                "servers": [remote, plain],
+                "final": "plain",
+                "strategy": strategy
+            });
+            if !opts.tunnel_apps.is_empty() {
+                dns["rules"] = json!([{ "process_name": opts.tunnel_apps, "server": "remote" }]);
+            }
+            dns
+        } else {
+            json!({
+                "servers": [remote, { "type": "local", "tag": "system" }],
+                "final": "remote",
+                "strategy": strategy
+            })
+        }
     };
-    let resolver = if opts.dns_mode == "system" { "system" } else { "remote" };
+    let resolver = if opts.dns_mode == "system" {
+        "system"
+    } else if only_chosen {
+        "plain"
+    } else {
+        "remote"
+    };
 
     let mut config = json!({
         "log": { "level": "info", "timestamp": true },
@@ -233,6 +285,35 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         });
     }
     config
+}
+
+/// The router address, read from the routing table. Hidden, ~10 ms, no console.
+pub fn default_gateway() -> String {
+    let mut cmd = Command::new("route");
+    cmd.args(["print", "-4", "0.0.0.0"]);
+    hidden(&mut cmd);
+    let Ok(out) = cmd.output() else {
+        return String::new();
+    };
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    // Several adapters may claim a default route (Radmin, Hyper-V, a second NIC).
+    // Windows uses the one with the lowest metric, so we must too.
+    let mut best: Option<(u32, String)> = None;
+    for line in text.lines() {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() >= 5 && cols[0] == "0.0.0.0" && cols[1] == "0.0.0.0" {
+            let gw = cols[2];
+            let Ok(metric) = cols[4].parse::<u32>() else {
+                continue;
+            };
+            if gw.parse::<std::net::Ipv4Addr>().is_ok()
+                && best.as_ref().map(|(m, _)| metric < *m).unwrap_or(true)
+            {
+                best = Some((metric, gw.to_string()));
+            }
+        }
+    }
+    best.map(|(_, gw)| gw).unwrap_or_default()
 }
 
 /// Free loopback port for the monitoring endpoint.
@@ -718,9 +799,30 @@ mod tests {
 
     #[test]
     fn tunnel_dns_mode_prefers_our_resolver() {
-        let cfg = build_config(&sample(), &[], &NetOptions::default());
+        // "all traffic" mode: everything resolves through our resolver
+        let opts = NetOptions {
+            split_mode: "all".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
         assert_eq!(cfg["dns"]["final"], "remote");
         assert_eq!(cfg["dns"]["strategy"], "ipv4_only");
+    }
+
+    #[test]
+    fn whitelist_mode_resolves_privately_only_for_chosen_programs() {
+        let opts = NetOptions {
+            split_mode: "only".into(),
+            tunnel_apps: vec!["telegram.exe".into()],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        // everyone else keeps the provider's DNS, so a broken tunnel cannot take
+        // the whole machine offline
+        assert_eq!(cfg["dns"]["final"], "plain");
+        assert_eq!(cfg["dns"]["rules"][0]["process_name"][0], "telegram.exe");
+        assert_eq!(cfg["dns"]["rules"][0]["server"], "remote");
+        assert_eq!(cfg["route"]["default_domain_resolver"], "plain");
     }
 
     #[test]
@@ -769,6 +871,32 @@ mod tests {
         let direct_at = rules.iter().position(|r| r["outbound"] == "direct" && r.get("process_name").is_some()).unwrap();
         let v6_at = rules.iter().position(|r| r["ip_version"] == 6).unwrap();
         assert!(direct_at < v6_at, "process rule must come before the IPv6 reject");
+    }
+
+    #[test]
+    fn dns_server_accepts_plain_address_and_doh_url() {
+        let plain = NetOptions {
+            dns_server: "9.9.9.9".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &plain);
+        assert_eq!(cfg["dns"]["servers"][0]["type"], "https");
+        assert_eq!(cfg["dns"]["servers"][0]["server"], "9.9.9.9");
+
+        let doh = NetOptions {
+            dns_server: "https://dns.google/dns-query".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &doh);
+        assert_eq!(cfg["dns"]["servers"][0]["type"], "https");
+        assert_eq!(cfg["dns"]["servers"][0]["server"], "dns.google");
+
+        let dot = NetOptions {
+            dns_server: "tls://1.1.1.1".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &dot);
+        assert_eq!(cfg["dns"]["servers"][0]["type"], "tls");
     }
 
     #[test]

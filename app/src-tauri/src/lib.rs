@@ -406,10 +406,12 @@ fn engine_start(
     let opts = engine::NetOptions {
         dns_mode: if saved.dns_mode.is_empty() { "tunnel".into() } else { saved.dns_mode },
         block_ipv6: saved.block_ipv6,
-        dns_server: if dns.trim().is_empty() {
-            "1.1.1.1".to_string()
-        } else {
+        dns_server: if !dns.trim().is_empty() {
             dns.trim().to_string()
+        } else if !saved.dns_server.trim().is_empty() {
+            saved.dns_server.trim().to_string()
+        } else {
+            "1.1.1.1".to_string()
         },
         api_port: engine::free_port(),
         api_secret: engine::api_secret(),
@@ -422,6 +424,7 @@ fn engine_start(
                     saved.split_mode.clone()
                 }
             }),
+        gateway: engine::default_gateway(),
         tunnel_apps: match via {
             Some(list) => list,
             None => saved
@@ -434,6 +437,15 @@ fn engine_start(
     };
     *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
     *engine.last_sample.lock().unwrap() = None;
+
+    // Honesty over a pretty status: a tunnel that carries nothing must not be
+    // reported as protection. It also spares the machine a pointless adapter.
+    if opts.split_mode == "only" && opts.tunnel_apps.is_empty() {
+        return Err(
+            "список «В VPN» пуст: добавь хотя бы одну программу, иначе туннель ничего не защищает"
+                .into(),
+        );
+    }
 
     let config = engine::build_config(&profile, &excluded, &opts);
     let status = engine::start(&engine, &bin, &config, &log_path, &profile.name)?;
