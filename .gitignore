@@ -36,3 +36,7 @@ android/.idea/
 *.iml
 *.apk
 *.aab
+
+# ядро для Android собирается скриптом (30 МБ, в репозиторий не кладём)
+android/app/libs/*.aar
+_build/

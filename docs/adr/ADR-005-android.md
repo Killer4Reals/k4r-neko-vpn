@@ -60,3 +60,39 @@ Kotlin», отладка через три границы; системные в
   своя сборка. Проверить до пункта 2, а не в середине.
 - «Защита туннеля» (Zapret) — у Android другой механизм обхода DPI, отдельное
   решение, в первый релиз не входит.
+
+## Что выяснилось на деле (обновление)
+
+Собрали `libbox.aar` сами: Go 1.23.6 + JDK 17 + NDK 27.1 + `sagernet/gomobile@v0.1.13`,
+дальше `go run ./cmd/internal/build_libbox -target android -platform android/arm64`
+(скрипт `scripts/build-libbox.ps1`, файл в репозиторий не кладём — 30 МБ).
+
+Готового рецепта «подключил и работает» нет: ядро падает процессом, а не исключением,
+поэтому четыре вещи пришлось выяснить опытом и записать сюда.
+
+1. **`StartOrReloadService(config, null)` убивает процесс.** Ядро читает поля
+   `OverrideOptions` сразу, без проверки на null: `panic: nil pointer dereference`
+   в `command_server.go:204`, дальше SIGABRT. Передаём пустой объект.
+2. **Без монитора интерфейса прямой сокет уходит в собственный туннель.** Пока не
+   реализован `startDefaultInterfaceMonitor`, `auto_route` заворачивает и запросы
+   самого ядра: разрешение имён зацикливается (`UnknownHostException`), конфиг
+   поднимается через раз. Реализовали через `ConnectivityManager`
+   (`registerDefaultNetworkCallback` → `updateDefaultInterface(name, index, …)`).
+3. **`getInterfaces()` обязан отдавать адреса без зоны.** `fe80::1%dummy0/64`
+   роняет ядро на `netip.MustParsePrefix` («IPv6 zones cannot be present in a
+   prefix»). Зону срезаем.
+4. **Любое исключение из `PlatformInterface` — это не ошибка, а смерть процесса.**
+   JNI превращает `UnsupportedOperationException` в `JNI DETECTED ERROR IN
+   APPLICATION` и SIGABRT. Поэтому `readWIFIState`, `findConnectionOwner`,
+   `lookupUser` возвращают пустые значения, а не бросают.
+
+Отдельно про честность состояния: «Защищено» ставится не по `startOrReloadService`,
+а после живого запроса через туннель. Мёртвый сервер даёт «Ошибка» с причиной.
+
+Проверено живьём (эмулятор Pixel 6, Android 15, настоящая подписка): туннель
+поднимается, `api.ipify.org` через туннель отдаёт адрес сервера (178.17.61.170),
+без туннеля — домашний адрес провайдера.
+
+Что осталось из плана: автозапуск, плитка, счётчики трафика, переключатель языка
+внутри приложения (сейчас — язык системы), сборка `arm64` для реальных телефонов
+(сейчас собран только `amd64` под эмулятор).

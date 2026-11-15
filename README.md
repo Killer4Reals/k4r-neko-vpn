@@ -4,7 +4,8 @@
 sing-box, аккуратный интерфейс на React и маскот, который живёт в интерфейсе, а
 не висит картинкой в углу.
 
-> **1.1.0** — релиз для Windows. Android и iOS — следующие.
+> **1.2.0** — релиз для Windows. Android — рабочая сборка **0.1.0** (туннель уже
+> настоящий, см. ниже). iOS — следующий.
 > Что менялось: [CHANGELOG.md](CHANGELOG.md).
 
 <p align="center">
@@ -36,6 +37,47 @@ sing-box, аккуратный интерфейс на React и маскот, к
 <p align="center">
   <sub>Все скриншоты — настоящий запущенный клиент, ссылка подписки, адреса и пути заменены на вымышленные</sub>
 </p>
+
+
+## Android
+
+Тот же клиент нативно на Kotlin + Compose, ядро — тот же `sing-box`, но
+библиотекой (`libbox.aar`, собран из исходников, см. `scripts/build-libbox.ps1`).
+`VpnService`, разрешение на VPN, постоянное уведомление — родные API Android,
+поэтому здесь нет ни WebView, ни прослойки JNI.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screens/android_home.webp" alt="Главная на Android"></td>
+    <td width="33%"><img src="docs/screens/android_split.webp" alt="Разделение по программам"></td>
+    <td width="33%"><img src="docs/screens/android_settings.webp" alt="Настройки и каталог DNS"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Маскот, состояние, подписка, «Твой IP»</sub></td>
+    <td align="center"><sub>Живой список программ с иконками</sub></td>
+    <td align="center"><sub>Три темы и каталог DNS</sub></td>
+  </tr>
+</table>
+
+Что уже работает: туннель VLESS/REALITY через `sing-box` (проверено на настоящей
+подписке — внешний адрес меняется на адрес сервера), честное состояние
+«Защищено» только после живого ответа через туннель, подписка с разбором
+`subscription-userinfo`, выбор сервера, разделение по приложениям, каталог DNS,
+три темы, блокировка IPv6.
+
+Чего пока нет: автозапуска, плитки в шторке, счётчиков трафика на экране и
+переключателя языка внутри приложения (язык берётся из системы). Сборка `arm64`
+для реальных телефонов — один шаг, `libbox` под неё собирается тем же скриптом.
+
+Сборка:
+
+```
+cd android
+./gradlew assembleDebug     # нужен Android SDK 35, NDK не требуется
+```
+
+Перед сборкой положить `libbox.aar` в `android/app/libs/` (в репозитории его нет):
+`powershell -ExecutionPolicy Bypass -File scripts/build-libbox.ps1`.
 
 ## Что это умеет
 
