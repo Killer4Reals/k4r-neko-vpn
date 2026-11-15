@@ -8,3 +8,11 @@ app/tauri.log
 *.log
 .DS_Store
 index.html.bak
+
+# личные сборки и артефакты
+*.bundle
+app/build.log
+app/dist/
+app/src-tauri/target/
+dist/
+!docs/
