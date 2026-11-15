@@ -18,6 +18,8 @@ const dict: Dict = {
   stConnected: { ru: "Защищено", en: "Protected" },
   stError: { ru: "Ошибка", en: "Error" },
 
+  connect: { ru: "Включить VPN", en: "Connect VPN" },
+  disconnect: { ru: "Отключить VPN", en: "Disconnect VPN" },
   hintOff: { ru: "Нажми, чтобы включить", en: "Tap to connect" },
   hintConnecting: { ru: "Поднимаем туннель", en: "Bringing tunnel up" },
   hintConnected: { ru: "Нажми, чтобы выключить", en: "Tap to disconnect" },
@@ -140,6 +142,10 @@ const dict: Dict = {
     ru: "Помнится между запусками. Всё, что не добавлено в списки, идёт через VPN — как обычно.",
     en: "Remembered between launches. Anything not listed goes through the VPN, as usual.",
   },
+  notifyOnTitle: { ru: "Туннель подключён", en: "Tunnel connected" },
+  notifyOnBody: { ru: "Защищено:", en: "Protected:" },
+  notifyOffTitle: { ru: "Туннель не поднялся", en: "Tunnel failed" },
+  notifyOffBody: { ru: "Проверь журнал в приложении", en: "Check the log in the app" },
   splitNeedsReconnect: {
     ru: "Маршруты применяются при запуске туннеля — переподключись, чтобы они заработали",
     en: "Routes are applied when the tunnel starts — reconnect to apply them",

@@ -488,8 +488,11 @@ export default function App() {
         if (!granted) granted = (await n.requestPermission()) === "granted";
         if (!granted) return;
         n.sendNotification({
-          title: conn === "connected" ? "K4R Neko VPN" : "K4R Neko VPN",
-          body: conn === "connected" ? `Туннель поднят: ${selected?.city ?? ""}` : error || "Туннель не поднялся",
+          title: conn === "connected" ? t("notifyOnTitle") : t("notifyOffTitle"),
+          body:
+            conn === "connected"
+              ? `${t("notifyOnBody")} ${selected?.city ?? ""}`.trim()
+              : error || t("notifyOffBody"),
         });
       } catch {
         /* notifications are a nicety, never block the app */

@@ -56,7 +56,8 @@ impl AppState {
             close_to_tray: true,
             kill_switch: true,
             notify: true,
-            autostart: true,
+            // opt-in: a portable app must not register itself behind the owner's back
+            autostart: false,
             schema: SCHEMA,
             ..Self::default()
         }
@@ -158,6 +159,26 @@ pub fn save(data_dir: &Path, state: &AppState) -> Result<(), String> {
         .map_err(|e| format!("не удалось заменить настройки: {e}"))
 }
 
+/// The engine paints its log with ANSI colour codes; the window and the
+/// exported file want plain text.
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find('\u{1b}') {
+        out.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        match tail.find('m') {
+            Some(end) => rest = &tail[end + 1..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Last `lines` lines of one of our own log files. Never reads foreign programs.
 pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
     let name = match which {
@@ -168,6 +189,7 @@ pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
     let Ok(text) = std::fs::read_to_string(path) else {
         return String::new();
     };
+    let text = strip_ansi(&text);
     let all: Vec<&str> = text.lines().collect();
     let start = all.len().saturating_sub(lines);
     all[start..].join("\n")
@@ -242,6 +264,13 @@ mod tests {
         save(&dir, &next).unwrap();
         assert_eq!(load(&dir).split.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn log_colours_are_stripped() {
+        let raw = "\u{1b}[36mINFO\u{1b}[0m plain \u{1b}[38;5;105m1234\u{1b}[0m end";
+        assert_eq!(strip_ansi(raw), "INFO plain 1234 end");
+        assert_eq!(strip_ansi("no codes here"), "no codes here");
     }
 
     #[test]

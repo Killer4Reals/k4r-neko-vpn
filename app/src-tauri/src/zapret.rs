@@ -1,6 +1,9 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::sync::Mutex;
 
 use crate::engine::is_elevated;
@@ -168,12 +171,16 @@ pub fn start(
         .open(log_path)
         .map_err(|e| format!("не удалось открыть журнал Zapret: {e}"))?;
 
-    let mut child = Command::new(dir.join("exe").join(exe_name))
-        .args(&args)
+    let mut cmd = Command::new(dir.join("exe").join(exe_name));
+    cmd.args(&args)
         .current_dir(dir)
         .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log))
-        .stdin(Stdio::null())
+        .stdin(Stdio::null());
+    // winws2 opens a console by itself: keep it off the desktop
+    #[cfg(windows)]
+    cmd.creation_flags(crate::engine::HIDE_WINDOW);
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("winws2 не запустился: {e}"))?;
 

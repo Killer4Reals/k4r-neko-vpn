@@ -100,11 +100,24 @@ export function HomeScreen(p: Props) {
           {t(statusKey)}
         </div>
 
-        <div className="orb" data-state={view}>
-          <div className="ring" />
+        <button
+          className="orb"
+          data-state={view}
+          onClick={toggleConnection}
+          aria-label={t(hintKey)}
+          title={t(hintKey)}
+        >
+          <span className="ring" />
           <img className="mascot" src={m} alt="" draggable={false} />
-          <button className="orb-hit" onClick={toggleConnection} aria-label={t(hintKey)} />
-        </div>
+        </button>
+
+        <button
+          className="btn primary connect-btn"
+          onClick={toggleConnection}
+          disabled={conn === "connecting"}
+        >
+          {conn === "connected" ? t("disconnect") : t("connect")}
+        </button>
 
         <div className="server-line">
           <span className="flag-code">{selected.cc}</span>

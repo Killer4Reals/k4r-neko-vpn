@@ -664,6 +664,15 @@ pub fn run() {
             apps_scan,
             export_log
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running K4R Neko VPN");
+        .build(tauri::generate_context!())
+        .expect("error while building K4R Neko VPN")
+        .run(|app, event| {
+            // Leaving the app must not leave a tunnel or a DPI bypass running.
+            if let tauri::RunEvent::Exit = event {
+                let engine = app.state::<engine::Engine>();
+                let _ = engine::stop(&engine);
+                let zapret = app.state::<zapret::Zapret>();
+                let _ = zapret::stop(&zapret);
+            }
+        });
 }

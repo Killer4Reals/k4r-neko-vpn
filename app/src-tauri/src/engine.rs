@@ -8,6 +8,13 @@ use std::sync::Mutex;
 
 use crate::subscription::Profile;
 
+/// CREATE_NO_WINDOW: a console child must never flash a black window on screen.
+#[cfg(windows)]
+pub const HIDE_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum EngineState {
@@ -268,13 +275,17 @@ pub fn start(
         .open(log_path)
         .map_err(|e| format!("не удалось открыть журнал: {e}"))?;
 
-    let mut child = Command::new(bin)
-        .arg("run")
+    let mut cmd = Command::new(bin);
+    cmd.arg("run")
         .arg("-c")
         .arg(&cfg_path)
         .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log))
-        .stdin(Stdio::null())
+        .stdin(Stdio::null());
+    // No console window may flash when the tunnel starts.
+    #[cfg(windows)]
+    cmd.creation_flags(HIDE_WINDOW);
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("движок не запустился: {e}"))?;
 
@@ -334,13 +345,17 @@ pub fn respawn(
         .append(true)
         .open(log_path)
         .map_err(|e| format!("не удалось открыть журнал: {e}"))?;
-    let mut child = Command::new(bin)
-        .arg("run")
+    let mut cmd = Command::new(bin);
+    cmd.arg("run")
         .arg("-c")
         .arg(&cfg_path)
         .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log))
-        .stdin(Stdio::null())
+        .stdin(Stdio::null());
+    // No console window may flash when the tunnel starts.
+    #[cfg(windows)]
+    cmd.creation_flags(HIDE_WINDOW);
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("движок не запустился: {e}"))?;
     std::thread::sleep(std::time::Duration::from_millis(900));
