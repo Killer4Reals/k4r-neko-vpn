@@ -8,6 +8,8 @@ type Props = {
   servers: Server[];
   selectedId: string;
   setSelectedId: (id: string) => void;
+  /** id -> ms of the last health check, null = no answer */
+  lat: Record<string, number | null>;
   subUrl: string;
   subUa: string;
   setSubUrl: (v: string) => void;
@@ -197,12 +199,18 @@ export function ServersScreen(p: Props) {
               </span>
               <span className="sub" style={{ fontFamily: "var(--mono)" }}>{s.tag}</span>
               <span className="lat" style={{ justifyContent: "flex-end" }}>
-                <span className="bars" data-q={s.quality}>
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                {s.lat === 0 ? "—" : s.lat}
+                {p.lat[s.id] === null ? (
+                  <span className="dead">{t("serverDead")}</span>
+                ) : (
+                  <>
+                    <span className="bars" data-q={s.quality}>
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    {p.lat[s.id] ?? (s.lat === 0 ? "—" : s.lat)}
+                  </>
+                )}
               </span>
             </button>
           ))}

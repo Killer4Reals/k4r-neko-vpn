@@ -27,13 +27,22 @@ pub fn ping(host: &str, port: u16, attempts: u8) -> Option<u32> {
     best
 }
 
+/// Checks every server at once: a list of ten must not take half a minute when
+/// several of them are dead.
 pub fn ping_all(profiles: &[Profile]) -> Vec<PingResult> {
-    profiles
-        .iter()
-        .map(|p| PingResult {
-            id: p.id.clone(),
-            ms: ping(&p.host, p.port, 2),
-        })
+    let mut handles = Vec::with_capacity(profiles.len());
+    for profile in profiles {
+        let host = profile.host.clone();
+        let port = profile.port;
+        let id = profile.id.clone();
+        handles.push(std::thread::spawn(move || PingResult {
+            id,
+            ms: ping(&host, port, 1),
+        }));
+    }
+    handles
+        .into_iter()
+        .filter_map(|h| h.join().ok())
         .collect()
 }
 

@@ -129,6 +129,7 @@ const dict: Dict = {
     en: "The tunnel is down, so nothing leaves your PC. Press Disconnect to get normal internet back",
   },
 
+  serverDead: { ru: "не отвечает", en: "no answer" },
   serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },
   serversSub: { ru: "Список приходит из твоей подписки", en: "The list comes from your subscription" },
   subUrl: { ru: "Ссылка подписки", en: "Subscription URL" },

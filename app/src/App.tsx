@@ -489,6 +489,14 @@ export default function App() {
     }
   }, [profiles]);
 
+  // A server that does not answer must be visible as such, not discovered by a
+  // failed connection. Runs once per server list, in the background.
+  useEffect(() => {
+    if (!inTauri || profiles.length === 0) return;
+    const timer = window.setTimeout(() => void measurePing(), 800);
+    return () => window.clearTimeout(timer);
+  }, [profiles, measurePing]);
+
   // --- global hotkey ---------------------------------------------------------
   const toggleRef = useRef(toggleConnection);
   toggleRef.current = toggleConnection;
@@ -611,6 +619,8 @@ export default function App() {
     t,
     lang,
     conn,
+    /// id -> ms, null means the server did not answer at all
+    lat,
     toggleConnection,
     selected,
     servers: viewServers,
