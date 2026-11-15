@@ -60,4 +60,7 @@
     <string name="panel_sub_link">Subscription</string>
     <string name="panel_servers">Servers: %1$d</string>
     <string name="split_none">Nothing checked — every app goes through the tunnel</string>
+    <string name="set_start">Startup</string>
+    <string name="set_autostart">Start on boot</string>
+    <string name="set_autostart_hint">The tunnel comes up by itself after the phone restarts</string>
 </resources>

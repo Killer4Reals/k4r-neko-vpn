@@ -24,6 +24,11 @@ class Store(context: Context) {
         get() = prefs.getString("selected", "").orEmpty()
         set(value) = prefs.edit().putString("selected", value).apply()
 
+    /** Поднимать туннель сразу после перезагрузки телефона. */
+    var autoStart: Boolean
+        get() = prefs.getBoolean("auto_start", false)
+        set(value) = prefs.edit().putBoolean("auto_start", value).apply()
+
     /** night / neon / day — как три темы на ПК. */
     var theme: String
         get() = prefs.getString("theme", "night").orEmpty()

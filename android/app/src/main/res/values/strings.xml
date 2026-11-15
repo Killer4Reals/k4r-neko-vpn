@@ -60,4 +60,7 @@
     <string name="panel_sub_link">Подписка</string>
     <string name="panel_servers">Серверы: %1$d</string>
     <string name="split_none">Ничего не отмечено — через туннель идут все программы</string>
+    <string name="set_start">Запуск</string>
+    <string name="set_autostart">Включать при загрузке</string>
+    <string name="set_autostart_hint">Туннель поднимется сам после перезагрузки телефона</string>
 </resources>

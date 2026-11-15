@@ -45,6 +45,7 @@ fun SettingsScreen(store: Store, theme: String, onTheme: (String) -> Unit) {
     var dns by remember { mutableStateOf(store.dns) }
     var ipv6 by remember { mutableStateOf(store.blockIpv6) }
     var own by remember { mutableStateOf("") }
+    var autoStart by remember { mutableStateOf(store.autoStart) }
 
     val groups = DnsCatalog.groups
 
@@ -151,6 +152,33 @@ fun SettingsScreen(store: Store, theme: String, onTheme: (String) -> Unit) {
                         onCheckedChange = {
                             ipv6 = it
                             store.blockIpv6 = it
+                        },
+                    )
+                }
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
+            Panel(stringResource(R.string.set_start)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.set_autostart),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                        )
+                        Text(
+                            text = stringResource(R.string.set_autostart_hint),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 10.sp,
+                        )
+                    }
+                    Switch(
+                        checked = autoStart,
+                        onCheckedChange = {
+                            autoStart = it
+                            store.autoStart = it
                         },
                     )
                 }

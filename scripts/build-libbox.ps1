@@ -1,24 +1,33 @@
 # Собирает libbox.aar (ядро sing-box для Android) из исходников.
 #
-# Зачем скрипт, а не готовый файл: libbox.aar весит около 30 МБ, у каждого он
-# свой под свою версию sing-box, и в репозитории такому файлу не место.
+# Почему скрипт, а не готовый файл: libbox.aar весит около 47 МБ на две
+# архитектуры, и в репозитории такому файлу не место.
 #
 # Что нужно:
-#   * Go 1.22+                     (у нас 1.23.6)
-#   * JDK 17                       (с JDK 21 сборка libbox падает)
-#   * Android NDK 27.1.12297006    (ставится через sdkmanager)
-#   * gomobile от sagernet          github.com/sagernet/gomobile@v0.1.13
+#   * Go 1.23                     (у нас 1.23.6)
+#   * JDK 17                      (с JDK 21 сборка libbox падает на проверке версии)
+#   * Android SDK + NDK 27.1.12297006
+#   * gomobile от sagernet        github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
+#                                 github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+#
+# Три вещи, без которых сборка не проходит (проверено на своей шкуре):
+#   1. -ldflags "-checklinkname=0" — иначе линковка падает с
+#      "invalid reference to os.checkPidfdOnce" (Go 1.23 проверяет linkname);
+#   2. без тега with_naive_outbound — иначе arm64 не линкуется:
+#      "unknown relocation (315)" в предсобранной libcronet.a;
+#   3. официальные флаги (версия, godebugDefault, -s -w) — иначе ядро
+#      отличается от релизного.
 #
 # Использование:
 #   powershell -ExecutionPolicy Bypass -File scripts/build-libbox.ps1
-#   powershell -ExecutionPolicy Bypass -File scripts/build-libbox.ps1 -Platforms android/arm64,android/amd64
+#   powershell -ExecutionPolicy Bypass -File scripts/build-libbox.ps1 -Platforms android/arm64
 
 param(
     [string]$SingBoxTag = "v1.14.4",
-    [string]$Platforms = "android/arm64",
+    [string]$Platforms = "android/arm64,android/amd64",
     [string]$Tools = "$env:LOCALAPPDATA\Android\tools",
     [string]$Sdk = "$env:LOCALAPPDATA\Android\Sdk",
-    [string]$Work = "E:\DeepAICodeProject\_build"
+    [string]$Work = "$PSScriptRoot\..\_build"
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,26 +43,47 @@ $env:ANDROID_NDK_HOME = Join-Path $Sdk "ndk\27.1.12297006"
 $env:GOPATH = Join-Path $Tools "gopath"
 $env:PATH = "$($env:GOPATH)\bin;" + (Join-Path $Tools "go\bin") + ";" + $env:PATH
 
-# мёртвый системный прокси ломает загрузку модулей
+# мёртвый системный прокси ломает загрузку модулей Go
 $env:HTTP_PROXY = ""
 $env:HTTPS_PROXY = ""
+$env:http_proxy = ""
+$env:https_proxy = ""
 
 $src = Join-Path $Work "sing-box"
 if (-not (Test-Path $src)) {
     git clone --depth 1 --branch $SingBoxTag https://github.com/SagerNet/sing-box.git $src
 }
 
+$tags = @(
+    "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_clash_api",
+    "with_usbip", "with_openvpn", "with_openconnect",
+    "badlinkname", "tfogo_checklinkname0"
+) -join ","
+
+$ldflags = "-X github.com/sagernet/sing-box/constant.Version=$SingBoxTag " +
+           "-X runtime.godebugDefault=multipathtcp=0,tlssha1=1 " +
+           "-checklinkname=0 -s -w -buildid="
+
+$out = Join-Path $Work "libbox.aar"
 Push-Location $src
 try {
-    & $go run ./cmd/internal/build_libbox -target android -platform $Platforms
-    $aar = Join-Path $src "libbox.aar"
-    if (-not (Test-Path $aar)) { throw "сборка не дала libbox.aar" }
+    & (Join-Path $env:GOPATH "bin\gomobile.exe") bind `
+        -v `
+        -o $out `
+        -target $Platforms `
+        -androidapi 24 `
+        -javapkg=io.nekohasekai `
+        -libname=box `
+        -ldflags=$ldflags `
+        -tags $tags `
+        ./experimental/libbox
+    if (-not (Test-Path $out)) { throw "сборка не дала libbox.aar" }
 
-    $libs = "E:\DeepAICodeProject\android\app\libs"
+    $libs = Join-Path $PSScriptRoot "..\android\app\libs"
     New-Item -ItemType Directory -Force -Path $libs | Out-Null
-    Copy-Item $aar (Join-Path $libs "libbox.aar") -Force
-    $size = [math]::Round((Get-Item $aar).Length / 1MB, 1)
-    Write-Host "готово: libbox.aar $size МБ скопирован в android/app/libs"
+    Copy-Item $out (Join-Path $libs "libbox.aar") -Force
+    $size = [math]::Round((Get-Item $out).Length / 1MB, 1)
+    Write-Host "готово: libbox.aar $size МБ ($Platforms) в android/app/libs"
 } finally {
     Pop-Location
 }
