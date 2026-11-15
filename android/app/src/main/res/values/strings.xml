@@ -66,4 +66,14 @@
     <string name="panel_traffic">Трафик туннеля</string>
     <string name="row_rx">Принято</string>
     <string name="row_tx">Отдано</string>
+    <string name="err_blocked">%1$s. Трафик заблокирован, чтобы не ушёл напрямую — выключи VPN, чтобы вернуть интернет</string>
+    <string name="notify_blocked">Трафик заблокирован</string>
+    <string name="set_kill">Защита при обрыве</string>
+    <string name="set_killswitch">Не пускать трафик напрямую</string>
+    <string name="set_killswitch_hint">Если туннель упадёт, интернет останется выключенным, пока не выключишь VPN</string>
+    <string name="err_bad_url">Это не похоже на ссылку подписки. Нужен адрес вида https://…/sub</string>
+    <string name="err_no_host">Не нашёл такой сервер: %1$s</string>
+    <string name="err_timeout">Сервер не ответил вовремя — проверь интернет и ссылку</string>
+    <string name="err_network">Сеть не пустила запрос: %1$s</string>
+    <string name="unblock">Вернуть интернет</string>
 </resources>

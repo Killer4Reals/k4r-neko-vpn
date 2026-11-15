@@ -32,6 +32,7 @@ import java.net.Inet6Address
 class SfBox(private val service: VpnService) {
 
     private var server: CommandServer? = null
+    private var hole: android.os.ParcelFileDescriptor? = null
     private var client: CommandClient? = null
 
     /** Запускает конфиг. Ошибку не глотаем: пусть вызывающий покажет её честно. */
@@ -57,6 +58,11 @@ class SfBox(private val service: VpnService) {
 
     fun stop() {
         try {
+            hole?.close()
+        } catch (e: Exception) {
+        }
+        hole = null
+        try {
             client?.disconnect()
         } catch (e: Exception) {
         }
@@ -71,6 +77,35 @@ class SfBox(private val service: VpnService) {
         } catch (e: Exception) {
         }
         server = null
+    }
+
+    /**
+     * Kill switch: поднимаем VPN без ядра. Маршруты забирают весь трафик,
+     * а читать из интерфейса некому — значит пакеты просто пропадают.
+     * Так человек не уходит «в открытое море» после обрыва туннеля.
+     */
+    fun blackhole(include: List<String>, exclude: List<String>) {
+        stop()
+        val builder = service.Builder()
+            .setSession("K4R Neko VPN (блокировка)")
+            .addAddress("172.19.0.1", 30)
+            .addRoute("0.0.0.0", 0)
+            .addRoute("::", 0)
+            .setMtu(1350)
+            .setBlocking(true)
+        for (pkg in include) {
+            try {
+                builder.addAllowedApplication(pkg)
+            } catch (e: Exception) {
+            }
+        }
+        for (pkg in exclude) {
+            try {
+                builder.addDisallowedApplication(pkg)
+            } catch (e: Exception) {
+            }
+        }
+        hole = builder.establish()
     }
 
     fun version(): String = try {

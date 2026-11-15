@@ -66,4 +66,14 @@
     <string name="panel_traffic">Tunnel traffic</string>
     <string name="row_rx">Received</string>
     <string name="row_tx">Sent</string>
+    <string name="err_blocked">%1$s. Traffic is blocked so it cannot leak — turn the VPN off to bring the internet back</string>
+    <string name="notify_blocked">Traffic blocked</string>
+    <string name="set_kill">On disconnect</string>
+    <string name="set_killswitch">Never send traffic direct</string>
+    <string name="set_killswitch_hint">If the tunnel drops, the internet stays off until you turn the VPN off</string>
+    <string name="err_bad_url">That does not look like a subscription link. It should start with https://</string>
+    <string name="err_no_host">Cannot resolve the host: %1$s</string>
+    <string name="err_timeout">The server did not answer in time — check the connection and the link</string>
+    <string name="err_network">The network refused the request: %1$s</string>
+    <string name="unblock">Bring the internet back</string>
 </resources>

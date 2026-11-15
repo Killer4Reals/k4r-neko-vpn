@@ -35,6 +35,9 @@ class TunnelService : VpnService() {
 
     private var engine: SfBox? = null
 
+    /** Блокировка трафика после обрыва: держим ссылку, иначе её нечем снять. */
+    private var blocker: SfBox? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> start()
@@ -61,19 +64,17 @@ class TunnelService : VpnService() {
                 // Как на ПК: «защищено» — не по факту запуска, а по живому ответу
                 // из интернета через туннель.
                 var alive = false
-                for (attempt in 1..8) {
-                    delay(1200)
+                // Не держим человека в «Подключении» дольше полуминуты:
+                // четыре попытки по ~4 секунды — уже понятный вердикт.
+                for (attempt in 1..4) {
+                    delay(900)
                     if (reachable()) {
                         alive = true
                         break
                     }
                 }
                 if (!alive) {
-                    box.stop()
-                    engine = null
-                    TunnelState.set(TunnelState.Phase.Error, getString(R.string.err_no_answer))
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    fail(getString(R.string.err_no_answer), include, exclude)
                     return@launch
                 }
                 TunnelState.set(TunnelState.Phase.Connected)
@@ -81,18 +82,40 @@ class TunnelService : VpnService() {
             } catch (e: Throwable) {
                 android.util.Log.d("K4R-service", "сбой запуска: ${e.javaClass.simpleName}: ${e.message}")
                 // Честно: не «защищено», а ошибка с причиной
-                engine?.stop()
-                engine = null
-                TunnelState.set(TunnelState.Phase.Error, e.message ?: e.javaClass.simpleName)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                fail(e.message ?: e.javaClass.simpleName, emptyList(), emptyList())
             }
         }
+    }
+
+    /**
+     * Туннель не поднялся. Если включён kill switch — оставляем VPN, который
+     * ничего не пропускает, и говорим об этом прямо. Иначе отпускаем трафик.
+     */
+    private fun fail(reason: String, include: List<String>, exclude: List<String>) {
+        engine?.stop()
+        engine = null
+        val store = Store(this)
+        if (store.killSwitch) {
+            try {
+                blocker?.stop()
+                blocker = SfBox(this).also { it.blackhole(include, exclude) }
+                TunnelState.setBlocked(getString(R.string.err_blocked, reason))
+                updateNotification(getString(R.string.notify_blocked), reason)
+                return
+            } catch (e: Throwable) {
+                android.util.Log.d("K4R-service", "блокировку не поставить: ${e.message}")
+            }
+        }
+        TunnelState.set(TunnelState.Phase.Error, reason)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun stop() {
         engine?.stop()
         engine = null
+        blocker?.stop()
+        blocker = null
         TunnelState.set(TunnelState.Phase.Idle)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -101,6 +124,10 @@ class TunnelService : VpnService() {
     override fun onDestroy() {
         engine?.stop()
         engine = null
+        // Без этого блокировка пережила бы остановку службы и оставила
+        // человека без интернета до перезагрузки.
+        blocker?.stop()
+        blocker = null
         if (TunnelState.state.value.phase != TunnelState.Phase.Error) {
             TunnelState.set(TunnelState.Phase.Idle)
         }
@@ -113,20 +140,36 @@ class TunnelService : VpnService() {
         super.onRevoke()
     }
 
-    /** Простой живой запрос: прошёл — значит трафик действительно идёт. */
+    /**
+     * Живой ли туннель. Проверяем не «открылся ли сокет» — ядро принимает
+     * соединение само и отвечает согласием даже когда сервер мёртв, — а пришли
+     * ли настоящие данные. Запрос идёт по адресу, без DNS: иначе мёртвый
+     * туннель подвешивает разрешение имени на десятки секунд.
+     */
     private fun reachable(): Boolean = try {
-        android.util.Log.d("K4R-ready", "пробую api.ipify.org")
-        val connection = (URL("https://api.ipify.org").openConnection() as HttpURLConnection).apply {
-            connectTimeout = 4000
-            readTimeout = 4000
-            setRequestProperty("User-Agent", "K4R-Neko-VPN/0.1")
+        val task = java.util.concurrent.Executors.newSingleThreadExecutor().submit<Boolean> {
+            val connection = (URL("http://1.1.1.1/cdn-cgi/trace").openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4000
+                readTimeout = 4000
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "K4R-Neko-VPN/0.1")
+            }
+            try {
+                val code = connection.responseCode
+                code in 200..399 && connection.inputStream.read() >= 0
+            } finally {
+                connection.disconnect()
+            }
         }
-        connection.inputStream.bufferedReader().use { it.readText() }.isNotBlank()
+        try {
+            task.get(5, java.util.concurrent.TimeUnit.SECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            task.cancel(true)
+            false
+        }
     } catch (e: Throwable) {
         android.util.Log.d("K4R-ready", "нет ответа: ${e.javaClass.simpleName}: ${e.message}")
         false
-    } finally {
-        // соединение закрывается сборщиком; отдельный disconnect не нужен
     }
 
     private fun channel(): String {

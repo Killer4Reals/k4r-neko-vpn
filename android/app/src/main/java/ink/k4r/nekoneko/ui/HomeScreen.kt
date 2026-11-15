@@ -75,12 +75,14 @@ fun HomeScreen(store: Store) {
     var reason by remember { mutableStateOf(tunnel.value.reason) }
     var rx by remember { mutableStateOf(tunnel.value.rx) }
     var tx by remember { mutableStateOf(tunnel.value.tx) }
+    var blocked by remember { mutableStateOf(tunnel.value.blocked) }
     var rxSpeed by remember { mutableStateOf(tunnel.value.rxSpeed) }
     var txSpeed by remember { mutableStateOf(tunnel.value.txSpeed) }
     LaunchedEffect(Unit) {
         tunnel.collect {
             phase = it.phase
             reason = it.reason
+            blocked = it.blocked
             rx = it.rx
             tx = it.tx
             rxSpeed = it.rxSpeed
@@ -150,7 +152,7 @@ fun HomeScreen(store: Store) {
                 }
                 message = context.getString(R.string.sub_loaded, profiles.size)
             } catch (e: Throwable) {
-                message = e.message ?: e.javaClass.simpleName
+                message = explain(context, e)
             } finally {
                 busy = false
             }
@@ -237,7 +239,11 @@ fun HomeScreen(store: Store) {
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = {
-                if (phase == TunnelState.Phase.Connected || phase == TunnelState.Phase.Connecting) {
+                if (blocked) {
+                    context.startService(
+                        Intent(context, TunnelService::class.java).setAction(TunnelService.ACTION_STOP)
+                    )
+                } else if (phase == TunnelState.Phase.Connected || phase == TunnelState.Phase.Connecting) {
                     context.startService(
                         Intent(context, TunnelService::class.java).setAction(TunnelService.ACTION_STOP)
                     )
@@ -245,7 +251,7 @@ fun HomeScreen(store: Store) {
                     startTunnel()
                 }
             },
-            enabled = profiles.isNotEmpty() || phase == TunnelState.Phase.Connected,
+            enabled = blocked || profiles.isNotEmpty() || phase == TunnelState.Phase.Connected,
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -255,8 +261,12 @@ fun HomeScreen(store: Store) {
         ) {
             Text(
                 text = stringResource(
-                    if (phase == TunnelState.Phase.Connected || phase == TunnelState.Phase.Connecting)
-                        R.string.disconnect else R.string.connect
+                    when {
+                        blocked -> R.string.unblock
+                        phase == TunnelState.Phase.Connected ||
+                            phase == TunnelState.Phase.Connecting -> R.string.disconnect
+                        else -> R.string.connect
+                    }
                 ),
                 color = if (profiles.isEmpty() && phase == TunnelState.Phase.Idle)
                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -412,6 +422,19 @@ private fun ServerRow(profile: Profile, active: Boolean, onClick: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * Ошибка сети словами человека. Java-сообщения вида «For input string: "8099http:"»
+ * ничего не объясняют, поэтому переводим частые случаи, остальное оставляем как есть.
+ */
+private fun explain(context: android.content.Context, e: Throwable): String = when (e) {
+    is java.net.MalformedURLException, is IllegalArgumentException ->
+        context.getString(R.string.err_bad_url)
+    is java.net.UnknownHostException -> context.getString(R.string.err_no_host, e.message.orEmpty())
+    is java.net.SocketTimeoutException -> context.getString(R.string.err_timeout)
+    is java.io.IOException -> context.getString(R.string.err_network, e.message.orEmpty())
+    else -> e.message ?: e.javaClass.simpleName
 }
 
 private fun fetchIp(): String {

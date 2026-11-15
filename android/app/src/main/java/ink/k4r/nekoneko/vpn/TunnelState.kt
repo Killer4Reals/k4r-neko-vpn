@@ -20,6 +20,8 @@ object TunnelState {
         /** Скорость за последнюю секунду, байты в секунду. */
         val rxSpeed: Long = 0,
         val txSpeed: Long = 0,
+        /** Туннель упал, но VPN держим: трафик никуда не идёт (kill switch). */
+        val blocked: Boolean = false,
     )
 
     private val _state = MutableStateFlow(State())
@@ -27,6 +29,11 @@ object TunnelState {
 
     fun set(phase: Phase, reason: String = "") {
         _state.value = State(phase, reason)
+    }
+
+    /** Туннель упал, а мы при этом держим блокировку трафика. */
+    fun setBlocked(reason: String) {
+        _state.value = State(Phase.Error, reason, blocked = true)
     }
 
     /** Обновляем только счётчики, не трогая состояние туннеля. */

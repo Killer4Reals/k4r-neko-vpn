@@ -40,6 +40,14 @@ class Store(context: Context) {
             return fresh
         }
 
+    /**
+     * Не выпускать трафик напрямую, если туннель упал. Пока выключено, обрыв
+     * означает «интернет снова как обычно, но уже без защиты».
+     */
+    var killSwitch: Boolean
+        get() = prefs.getBoolean("kill_switch", true)
+        set(value) = prefs.edit().putBoolean("kill_switch", value).apply()
+
     /** Поднимать туннель сразу после перезагрузки телефона. */
     var autoStart: Boolean
         get() = prefs.getBoolean("auto_start", false)
