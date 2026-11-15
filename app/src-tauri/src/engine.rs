@@ -49,6 +49,9 @@ pub struct Engine {
     pub config_path: Mutex<Option<PathBuf>>,
     /// false when the user pressed "disconnect": the supervisor must not reconnect
     pub wanted: AtomicBool,
+    /// where the engine reports its own counters, and the last sample we took
+    pub api: Mutex<Option<(u16, String)>>,
+    pub last_sample: Mutex<Option<(u64, u64, std::time::Instant)>>,
 }
 
 impl Default for Engine {
@@ -58,6 +61,8 @@ impl Default for Engine {
             child: Mutex::new(None),
             config_path: Mutex::new(None),
             wanted: AtomicBool::new(false),
+            api: Mutex::new(None),
+            last_sample: Mutex::new(None),
         }
     }
 }
@@ -69,6 +74,9 @@ pub struct NetOptions {
     pub dns_mode: String,
     pub block_ipv6: bool,
     pub dns_server: String,
+    /// 0 = no monitoring endpoint (probes and tests do not need one)
+    pub api_port: u16,
+    pub api_secret: String,
 }
 
 impl Default for NetOptions {
@@ -77,6 +85,8 @@ impl Default for NetOptions {
             dns_mode: "tunnel".into(),
             block_ipv6: true,
             dns_server: "1.1.1.1".into(),
+            api_port: 0,
+            api_secret: String::new(),
         }
     }
 }
@@ -165,7 +175,7 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
     };
     let resolver = if opts.dns_mode == "system" { "system" } else { "remote" };
 
-    json!({
+    let mut config = json!({
         "log": { "level": "info", "timestamp": true },
         "dns": dns,
         "inbounds": [{
@@ -184,7 +194,85 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
             "auto_detect_interface": true,
             "default_domain_resolver": resolver
         }
-    })
+    });
+    if opts.api_port != 0 {
+        // Our own loopback endpoint: the only way to read real traffic counters.
+        config["experimental"] = json!({
+            "clash_api": {
+                "external_controller": format!("127.0.0.1:{}", opts.api_port),
+                "secret": opts.api_secret
+            }
+        });
+    }
+    config
+}
+
+/// Free loopback port for the monitoring endpoint.
+pub fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|l| l.local_addr())
+        .map(|a| a.port())
+        .unwrap_or(9090)
+}
+
+/// Short random secret so nothing else on the machine can read our counters.
+pub fn api_secret() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    );
+    format!("{:016x}", h.finish())
+}
+
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct Traffic {
+    /// bytes per second, measured between two polls
+    pub down: f64,
+    pub up: f64,
+    pub total_down: u64,
+    pub total_up: u64,
+}
+
+/// Reads the counters the engine keeps for us. Never touches anyone else's API.
+pub fn traffic(engine: &Engine) -> Traffic {
+    let Some((port, secret)) = engine.api.lock().unwrap().clone() else {
+        return Traffic::default();
+    };
+    let url = format!("http://127.0.0.1:{port}/connections");
+    let body = match ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_millis(1500)))
+        .build()
+        .new_agent()
+        .get(&url)
+        .header("Authorization", &format!("Bearer {secret}"))
+        .call()
+    {
+        Ok(res) => res.into_body().read_to_string().unwrap_or_default(),
+        Err(_) => return Traffic::default(),
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return Traffic::default();
+    };
+    let down = value["downloadTotal"].as_u64().unwrap_or(0);
+    let up = value["uploadTotal"].as_u64().unwrap_or(0);
+
+    let mut last = engine.last_sample.lock().unwrap();
+    let mut out = Traffic {
+        total_down: down,
+        total_up: up,
+        ..Traffic::default()
+    };
+    if let Some((prev_down, prev_up, at)) = *last {
+        let secs = at.elapsed().as_secs_f64().max(0.2);
+        out.down = down.saturating_sub(prev_down) as f64 / secs;
+        out.up = up.saturating_sub(prev_up) as f64 / secs;
+    }
+    *last = Some((down, up, std::time::Instant::now()));
+    out
 }
 
 pub fn is_elevated() -> bool {
@@ -457,6 +545,7 @@ mod tests {
             dns_mode: "system".into(),
             block_ipv6: true,
             dns_server: "1.1.1.1".into(),
+            ..NetOptions::default()
         };
         let cfg = build_config(&sample(), &[], &opts);
         assert_eq!(cfg["dns"]["final"], "system");

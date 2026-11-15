@@ -28,6 +28,8 @@ export type EngineStatus = {
   pid: number;
 };
 
+export type Traffic = { down: number; up: number; total_down: number; total_up: number };
+
 export type CoreInfo = {
   name: string;
   version: string;
@@ -56,6 +58,7 @@ export const api = {
     invoke<EngineStatus>("engine_start", { profile, excluded, dns }),
   engineStop: () => invoke<EngineStatus>("engine_stop"),
   engineStatus: () => invoke<EngineStatus>("engine_status"),
+  engineTraffic: () => invoke<Traffic>("engine_traffic"),
   isAdmin: () => invoke<boolean>("app_is_admin"),
   relaunchAdmin: () => invoke<void>("app_relaunch_admin"),
   setStartWithWindows: (enabled: boolean) => invoke<boolean>("set_start_with_windows", { enabled }),

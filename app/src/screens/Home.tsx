@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
 
@@ -13,6 +13,9 @@ type Props = {
   /** real state of the guard, not a wish: off / running / external / error */
   zapretState: "off" | "running" | "external" | "error";
   killSwitch: boolean;
+  /** bytes per second measured by the engine */
+  down: number;
+  up: number;
   /** true only when traffic is really being held back (needs the WFP backend) */
   blocked: boolean;
   onOpenSplit: () => void;
@@ -36,29 +39,24 @@ const mascot: Record<ConnState, string> = {
   error: "/mascot/error.webp",
 };
 
-const fmt = (n: number) => n.toFixed(1);
+/** bytes per second -> "12.4"; small traffic keeps one decimal, not "0.0" */
+const fmt = (bytesPerSec: number) => {
+  const mb = bytesPerSec / (1024 * 1024);
+  if (!Number.isFinite(mb) || mb <= 0) return "0.0";
+  if (mb < 0.1) return "<0.1";
+  return mb.toFixed(mb < 10 ? 1 : 0);
+};
 
 export function HomeScreen(p: Props) {
   const { t, conn, toggleConnection, selected, servers, selectedId, setSelectedId } = p;
-  const [down, setDown] = useState(0);
-  const [up, setUp] = useState(0);
   const [uptime, setUptime] = useState(0);
-  const seed = useRef(1);
 
   useEffect(() => {
     if (conn !== "connected") {
-      setDown(0);
-      setUp(0);
       setUptime(0);
       return;
     }
-    const id = window.setInterval(() => {
-      seed.current += 0.7;
-      const jitter = Math.sin(seed.current) * 1.6;
-      setDown(Math.max(0.4, 12.4 + jitter));
-      setUp(Math.max(0.2, 4.1 + jitter * 0.5));
-      setUptime((v) => v + 1);
-    }, 1000);
+    const id = window.setInterval(() => setUptime((v) => v + 1), 1000);
     return () => window.clearInterval(id);
   }, [conn]);
 
@@ -132,13 +130,13 @@ export function HomeScreen(p: Props) {
           <div className="stat">
             <div className="k">{t("down")}</div>
             <div className="v">
-              {fmt(down)} <small>MB/s</small>
+              {fmt(p.down)} <small>MB/s</small>
             </div>
           </div>
           <div className="stat">
             <div className="k">{t("up")}</div>
             <div className="v">
-              {fmt(up)} <small>MB/s</small>
+              {fmt(p.up)} <small>MB/s</small>
             </div>
           </div>
           <div className="stat">

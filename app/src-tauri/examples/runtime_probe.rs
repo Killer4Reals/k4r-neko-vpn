@@ -100,6 +100,8 @@ fn main() {
         dns_mode: st.dns_mode.clone(),
         block_ipv6: st.block_ipv6,
         dns_server: "1.1.1.1".into(),
+        api_port: 0,
+        api_secret: String::new(),
     };
     let mut excluded = st
         .split

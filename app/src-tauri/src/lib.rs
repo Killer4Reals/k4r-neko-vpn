@@ -409,7 +409,11 @@ fn engine_start(
         } else {
             dns.trim().to_string()
         },
+        api_port: engine::free_port(),
+        api_secret: engine::api_secret(),
     };
+    *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
+    *engine.last_sample.lock().unwrap() = None;
 
     let config = engine::build_config(&profile, &excluded, &opts);
     let status = engine::start(&engine, &bin, &config, &log_path, &profile.name)?;
@@ -483,6 +487,11 @@ fn supervise(app: tauri::AppHandle, reconnect: bool) {
 #[tauri::command]
 fn engine_stop(engine: State<'_, engine::Engine>) -> engine::EngineStatus {
     engine::stop(&engine)
+}
+
+#[tauri::command]
+fn engine_traffic(engine: State<'_, engine::Engine>) -> engine::Traffic {
+    engine::traffic(&engine)
 }
 
 #[tauri::command]
@@ -653,6 +662,7 @@ pub fn run() {
             engine_start,
             engine_stop,
             engine_status,
+            engine_traffic,
             app_is_admin,
             app_relaunch_admin,
             zapret_detect,

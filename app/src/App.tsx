@@ -83,6 +83,8 @@ export default function App() {
   const [scanning, setScanning] = useState(inTauri);
   /// routes changed while the tunnel is up: engine reads them only on start
   const [splitDirty, setSplitDirty] = useState(false);
+  /// real counters from the engine, never a made-up number
+  const [traffic, setTraffic] = useState({ down: 0, up: 0 });
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState(initial.get("error") ?? "");
@@ -253,6 +255,28 @@ export default function App() {
       }
     }, 2000);
     return () => window.clearInterval(id);
+  }, [conn]);
+
+  useEffect(() => {
+    if (!inTauri) return;
+    if (conn !== "connected") {
+      setTraffic({ down: 0, up: 0 });
+      return;
+    }
+    let alive = true;
+    const read = () =>
+      api
+        .engineTraffic()
+        .then((t) => {
+          if (alive) setTraffic({ down: t.down, up: t.up });
+        })
+        .catch(() => undefined);
+    read();
+    const id = window.setInterval(read, 1000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
   }, [conn]);
 
   const stopTunnel = useCallback(async () => {
@@ -590,6 +614,8 @@ export default function App() {
               {...ctx}
               error={error}
               zapretState={zapretState}
+              down={traffic.down}
+              up={traffic.up}
               killSwitch={killSwitch}
               blocked={false}
               onOpenSplit={() => setScreen("split")}
