@@ -38,7 +38,7 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const [deviceId, setDeviceId] = useState("");
-  const [version, setVersion] = useState("1.0.0");
+  const [version, setVersion] = useState("1.1.0");
   const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error">("idle");
   const [updateNote, setUpdateNote] = useState("");
   const [updateLink, setUpdateLink] = useState("");
