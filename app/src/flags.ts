@@ -79,6 +79,15 @@ function ccFromRegional(text: string): string | null {
   return known.has(cc) ? cc : null;
 }
 
+/**
+ * Префикс похож на код страны, только если после него идёт имя собственное:
+ * «FI Финляндия», «DE Germany». Иначе «It works» теряло бы первое слово,
+ * а «No logs» превращалось в Норвегию.
+ */
+function looksLikeCode(rest: string): boolean {
+  return rest.length > 0 && !/^[a-z]/.test(rest);
+}
+
 /** Код страны из имени сервера или null, если не разобрали. */
 export function ccFromName(name: string): string | null {
   const raw = (name ?? "").trim();
@@ -87,8 +96,8 @@ export function ccFromName(name: string): string | null {
   if (regional) return regional;
   const text = raw.replace(LEAD_EMOJI, "").trim();
   if (!text) return null;
-  const prefix = text.match(/^([A-Za-z]{2})(?![A-Za-z])/);
-  if (prefix) {
+  const prefix = text.match(/^([A-Za-z]{2})(?![A-Za-z])\s*[-–—·:]?\s*(.*)$/);
+  if (prefix && looksLikeCode(prefix[2])) {
     const cc = prefix[1].toLowerCase();
     if (known.has(cc)) return cc;
   }
@@ -105,7 +114,7 @@ export function stripCc(name: string): string {
   if (regional) text = text.replace(/^[\u{1F1E6}-\u{1F1FF}]{2}/u, "").trim();
   text = text.replace(LEAD_EMOJI, "").trim();
   const m = text.match(/^([A-Za-z]{2})(?![A-Za-z])\s*[-–—·:]?\s*(.+)$/);
-  if (m && known.has(m[1].toLowerCase()) && m[2].trim()) text = m[2].trim();
+  if (m && known.has(m[1].toLowerCase()) && looksLikeCode(m[2])) text = m[2].trim();
   // и хвост вроде огонька после названия
   text = text.replace(TAIL_EMOJI, "").trim();
   return text;
