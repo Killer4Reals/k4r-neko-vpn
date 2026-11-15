@@ -10,13 +10,14 @@ type Props = {
   servers: Server[];
   selectedId: string;
   setSelectedId: (id: string) => void;
-  zapretOn: boolean;
-  setZapretOn: (v: boolean) => void;
+  /** real state of the guard, not a wish: off / running / external / error */
+  zapretState: "off" | "running" | "external" | "error";
   killSwitch: boolean;
-  setKillSwitch: (v: boolean) => void;
   /** true only when traffic is really being held back (needs the WFP backend) */
   blocked: boolean;
   onOpenSplit: () => void;
+  onOpenZapret: () => void;
+  onOpenSettings: () => void;
   onOpenServers: () => void;
   onRefreshServers: () => void;
   onAutoPick: () => void;
@@ -136,7 +137,12 @@ export function HomeScreen(p: Props) {
         </div>
 
         <div className="quick">
-          <button className="chip" data-on={p.zapretOn} onClick={() => p.setZapretOn(!p.zapretOn)}>
+          <button
+            className="chip"
+            data-on={p.zapretState === "running" || p.zapretState === "external"}
+            title={t("zapretRealState")}
+            onClick={p.onOpenZapret}
+          >
             <span className="led" />
             {t("tunnelGuard")}
           </button>
@@ -145,7 +151,7 @@ export function HomeScreen(p: Props) {
             data-on={p.killSwitch}
             data-soon="true"
             title={t("killSwitchSoon")}
-            onClick={() => p.setKillSwitch(!p.killSwitch)}
+            onClick={p.onOpenSettings}
           >
             <span className="led" />
             {t("killSwitch")}

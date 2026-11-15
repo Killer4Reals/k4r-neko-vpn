@@ -1146,6 +1146,69 @@ input {
   color: var(--txt-3);
 }
 
+.app-list.tall {
+  max-height: 300px;
+}
+.app-choice {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.app-choice .chip {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-3);
+  border-radius: 999px;
+}
+.app-choice .chip.on {
+  border-color: var(--green-line);
+  background: var(--green-soft);
+  color: var(--green);
+}
+.app-choice .chip.ghost {
+  border-color: transparent;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.app-choice .chip.ghost:hover {
+  color: var(--danger);
+}
+.tag.via {
+  color: var(--green);
+  border-color: var(--green-line);
+  background: var(--green-soft);
+}
+.card-cap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+.split-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.linkbtn {
+  font-size: 12px;
+  color: var(--txt-2);
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 1px;
+}
+.linkbtn:hover {
+  color: var(--txt);
+}
+.linkbtn:disabled {
+  opacity: 0.45;
+  border-bottom-color: transparent;
+}
+
 .banner {
   display: flex;
   align-items: center;

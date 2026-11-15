@@ -101,6 +101,8 @@ fn state_save(app: tauri::AppHandle, mut state: AppState) -> Result<(), String> 
     if state.hwid.is_empty() {
         state.hwid = store::install_id(&dir);
     }
+    // the UI never sends a schema: whatever it saves is already current
+    state.schema = store::SCHEMA;
     store::save(&dir, &state)
 }
 
@@ -117,40 +119,95 @@ pub struct InstalledApp {
     pub running: bool,
 }
 
-/// Running process names, lowercased. Empty when tasklist is unavailable.
-fn running_processes() -> std::collections::HashSet<String> {
-    let mut out = std::collections::HashSet::new();
-    let Ok(res) = std::process::Command::new("tasklist")
-        .args(["/fo", "csv", "/nh"])
-        .output()
-    else {
-        return out;
-    };
-    for line in String::from_utf8_lossy(&res.stdout).lines() {
-        if let Some(first) = line.split("\",\"").next() {
-            let name = first.trim_matches('"').trim().to_lowercase();
-            if !name.is_empty() {
-                out.insert(name);
-            }
-        }
+/// Exe names that are never a program the user wants to route.
+const NOISE_EXE: [&str; 18] = [
+    "unins", "uninstall", "setup", "update", "updater", "vcredist", "dotnet", "crashpad",
+    "crashreporter", "node.exe", "python.exe", "wscript.exe", "jucheck", "jusched",
+    "vctip", "oemdrv", "googleupdate", "msedgewebview2",
+];
+
+const NOISE_NAME: [&str; 9] = [
+    "update", "updater", "installer", "uninstall", "telemetry", "improvement",
+    "redistributable", "crashpad", "не обновля",
+];
+
+fn looks_like_program(path: &str, name: &str) -> bool {
+    let lower = path.to_lowercase();
+    if !lower.ends_with(".exe") || lower.contains(r"\windows\") || lower.contains(r"\temp\") {
+        return false;
     }
-    out
+    let exe = lower.rsplit('\\').next().unwrap_or(&lower);
+    if exe.len() < 5 || exe == "k4r neko vpn.exe" {
+        return false;
+    }
+    if NOISE_EXE.iter().any(|n| exe.starts_with(n)) {
+        return false;
+    }
+    let n = name.to_lowercase();
+    !NOISE_NAME.iter().any(|bad| n.contains(bad))
 }
 
-/// Executables Windows itself knows about (App Paths), plus what is running now.
-#[tauri::command]
-fn apps_scan() -> Vec<InstalledApp> {
-    scan_installed()
+/// Readable program name: "discord.exe" -> "Discord", "Google Chrome" stays as is.
+fn pretty_name(name: &str, exe: &str) -> String {
+    let trimmed = name.trim().trim_matches('"');
+    let source = if trimmed.is_empty() {
+        exe.trim_end_matches(".exe")
+    } else {
+        trimmed
+    };
+    let mut chars = source.chars();
+    match chars.next() {
+        Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+        None => exe.trim_end_matches(".exe").to_string(),
+    }
 }
 
-/// Programs the user actually has open: what split tunneling is about.
-fn running_apps() -> Vec<(String, String)> {
+struct CatalogRow {
+    running: bool,
+    from_menu: bool,
+    path: String,
+    name: String,
+}
+
+/// Everything Windows knows to be installed: running processes, Start Menu
+/// shortcuts and uninstall entries. One PowerShell pass, tab separated.
+fn windows_catalog() -> Vec<CatalogRow> {
+    const SCRIPT: &str = r#"
+$ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding=[System.Text.Encoding]::UTF8
+$seen=@{}
+function emit($kind,$exe,$name){
+  if(-not $exe){return}
+  $x=$exe.Trim('"')
+  if($x -notmatch '(?i)\.exe$'){return}
+  $k=$x.ToLower()
+  if($seen.ContainsKey($k)){return}
+  $seen[$k]=1
+  "$kind`t$x`t$name"
+}
+Get-Process | Where-Object { $_.Path } | ForEach-Object { emit 'run' $_.Path $_.Description }
+$ws=New-Object -ComObject WScript.Shell
+$menus=@("$env:ProgramData\Microsoft\Windows\Start Menu\Programs","$env:APPDATA\Microsoft\Windows\Start Menu\Programs")
+foreach($m in $menus){
+  Get-ChildItem -LiteralPath $m -Filter *.lnk -Recurse -File | ForEach-Object {
+    $t=$ws.CreateShortcut($_.FullName).TargetPath
+    if($t){ emit 'menu' $t $_.BaseName }
+  }
+}
+$keys=@('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*')
+Get-ItemProperty $keys | ForEach-Object {
+  $ic=$_.DisplayIcon
+  if($ic){ emit 'reg' ($ic -replace ',\d+$','') $_.DisplayName }
+}
+"#;
     let Ok(res) = std::process::Command::new("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
             "-Command",
-            "Get-Process | Where-Object { $_.Path } | Select-Object -ExpandProperty Path -Unique",
+            SCRIPT,
         ])
         .output()
     else {
@@ -158,34 +215,66 @@ fn running_apps() -> Vec<(String, String)> {
     };
     let mut out = Vec::new();
     for line in String::from_utf8_lossy(&res.stdout).lines() {
-        let path = line.trim();
-        let lower = path.to_lowercase();
-        if !lower.ends_with(".exe") || lower.contains("\\windows\\") {
-            continue; // system processes are noise, never the user's apps
+        let mut parts = line.split('\t');
+        let kind = parts.next().unwrap_or("").trim().to_string();
+        let path = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
+        let name = parts.next().unwrap_or("").trim().to_string();
+        if path.is_empty() {
+            continue;
         }
-        let exe = path.rsplit('\\').next().unwrap_or(path).to_lowercase();
-        out.push((exe, path.to_string()));
+        out.push(CatalogRow {
+            running: kind == "run",
+            from_menu: kind == "menu",
+            path,
+            name,
+        });
     }
     out
 }
 
+/// Programs the user can route: installed ones plus whatever is running now.
+#[tauri::command]
+fn apps_scan() -> Vec<InstalledApp> {
+    scan_installed()
+}
+
 pub fn scan_installed() -> Vec<InstalledApp> {
     use std::collections::BTreeMap;
-    let running = running_processes();
     let mut found: BTreeMap<String, InstalledApp> = BTreeMap::new();
+    let mut names: BTreeMap<String, String> = BTreeMap::new();
+    let mut menu_names: BTreeMap<String, String> = BTreeMap::new();
 
-    for (exe, path) in running_apps() {
-        found.entry(exe.clone()).or_insert(InstalledApp {
-            running: true,
-            name: exe.trim_end_matches(".exe").to_string(),
-            exe,
-            path,
+    for row in windows_catalog() {
+        if !looks_like_program(&row.path, &row.name) || !std::path::Path::new(&row.path).is_file() {
+            continue;
+        }
+        let exe = row.path.rsplit('\\').next().unwrap_or(&row.path).to_lowercase();
+        if !row.name.is_empty() {
+            if row.from_menu {
+                // the Start Menu label is what the owner sees in the Start menu
+                menu_names.entry(exe.clone()).or_insert(row.name);
+            } else {
+                names.entry(exe.clone()).or_insert(row.name);
+            }
+        }
+        let entry = found.entry(exe.clone()).or_insert_with(|| InstalledApp {
+            running: false,
+            name: String::new(),
+            exe: exe.clone(),
+            path: row.path.clone(),
         });
+        entry.running |= row.running;
     }
 
     let roots = [
-        (winreg::enums::HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
-        (winreg::enums::HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"),
+        (
+            winreg::enums::HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+        ),
+        (
+            winreg::enums::HKEY_CURRENT_USER,
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+        ),
     ];
     for (root, key_path) in roots {
         let Ok(key) = RegKey::predef(root).open_subkey(key_path) else {
@@ -194,19 +283,39 @@ pub fn scan_installed() -> Vec<InstalledApp> {
         for sub in key.enum_keys().flatten() {
             let Ok(app) = key.open_subkey(&sub) else { continue };
             let path: String = app.get_value::<String, _>("").unwrap_or_default();
+            let path = path.trim().trim_matches('"').to_string();
             let exe = sub.to_lowercase();
-            if !exe.ends_with(".exe") || path.trim().is_empty() {
+            if !exe.ends_with(".exe") || !looks_like_program(&path, "") {
                 continue;
             }
             found.entry(exe.clone()).or_insert(InstalledApp {
-                running: running.contains(&exe),
-                name: exe.trim_end_matches(".exe").to_string(),
+                running: false,
+                name: String::new(),
                 exe,
                 path,
             });
         }
     }
-    found.into_values().collect()
+
+    let mut list: Vec<InstalledApp> = found
+        .into_iter()
+        .map(|(exe, mut app)| {
+            let known = menu_names
+                .get(&exe)
+                .or_else(|| names.get(&exe))
+                .map(String::as_str)
+                .unwrap_or("");
+            app.name = pretty_name(known, &exe);
+            app
+        })
+        .collect();
+    list.sort_by(|a, b| {
+        b.running
+            .cmp(&a.running)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.exe.cmp(&b.exe))
+    });
+    list
 }
 
 /// One readable file the user can hand over when something breaks.

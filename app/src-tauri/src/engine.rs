@@ -130,12 +130,14 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         json!({ "protocol": "dns", "action": "hijack-dns" }),
         json!({ "ip_is_private": true, "outbound": "direct" }),
     ];
+    if !excluded.is_empty() {
+        // First, before anything else: a program the owner sends direct keeps its
+        // own stack, including IPv6. Otherwise the IPv6 reject below would cut it.
+        rules.push(json!({ "process_name": excluded, "outbound": "direct" }));
+    }
     if opts.block_ipv6 {
         // IPv6 would otherwise leave outside the tunnel: that is a leak
         rules.push(json!({ "ip_version": 6, "action": "reject" }));
-    }
-    if !excluded.is_empty() {
-        rules.push(json!({ "process_name": excluded, "outbound": "direct" }));
     }
 
     let dns = if opts.dns_mode == "system" {
@@ -492,5 +494,9 @@ mod tests {
         let rules = cfg["route"]["rules"].as_array().unwrap();
         assert!(rules.iter().any(|r| r["outbound"] == "direct" && r["process_name"][0] == "steam.exe"));
         assert_eq!(cfg["route"]["final"], "proxy");
+        // direct wins over the IPv6 reject, or an excluded app would lose its stack
+        let direct_at = rules.iter().position(|r| r["outbound"] == "direct" && r.get("process_name").is_some()).unwrap();
+        let v6_at = rules.iter().position(|r| r["ip_version"] == 6).unwrap();
+        assert!(direct_at < v6_at, "process rule must come before the IPv6 reject");
     }
 }

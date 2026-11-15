@@ -175,7 +175,7 @@ export function SettingsScreen(p: Props) {
           <dt>{t("about")}</dt>
           <dd>K4R Neko VPN</dd>
           <dt>{t("version")}</dt>
-          <dd>0.1.0</dd>
+          <dd>0.2.0</dd>
           <dt>{t("core")}</dt>
           <dd>{t("coreValue")}</dd>
           <dt>{t("deviceId")}</dt>

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
-import { apps as appCatalog, servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
+import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
+import type { ChosenApp } from "./api";
 import type { SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -75,9 +76,13 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
   const [conn, setConn] = useState<ConnState>((initial.get("state") as ConnState) || "idle");
   const [selectedId, setSelectedId] = useState(demoCatalog[0].id);
-  const [zapretOn, setZapretOn] = useState(true);
+  const [zapretState, setZapretState] = useState<"off" | "running" | "external" | "error">("off");
   const [killSwitch, setKillSwitch] = useState(true);
-  const [list, setList] = useState<AppEntry[]>(appCatalog);
+  const [catalog, setCatalog] = useState<AppEntry[]>([]);
+  const [chosen, setChosen] = useState<ChosenApp[]>([]);
+  const [scanning, setScanning] = useState(inTauri);
+  /// routes changed while the tunnel is up: engine reads them only on start
+  const [splitDirty, setSplitDirty] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState(initial.get("error") ?? "");
@@ -124,6 +129,25 @@ export default function App() {
     [viewServers, selectedId],
   );
 
+  // The guard chip shows what is really running; we only ever read it.
+  useEffect(() => {
+    if (!inTauri) return;
+    let alive = true;
+    const read = () =>
+      api
+        .zapretStatus()
+        .then((st) => {
+          if (alive) setZapretState(st.state);
+        })
+        .catch(() => undefined);
+    read();
+    const id = window.setInterval(read, 15000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
   useEffect(() => {
     if (!inTauri) return;
     api
@@ -152,14 +176,15 @@ export default function App() {
         if (st.hotkey) setHotkey(st.hotkey);
         if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
-        if (st.split.length) {
-          setList((prev) =>
-            prev.map((a) => {
-              const saved = st.split.find((s) => s.exe === a.exe);
-              return saved ? { ...a, via: saved.via } : a;
-            }),
-          );
-        }
+        if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
+        // only what the owner picked is restored — never a full scan dump
+        setChosen(
+          (st.split ?? []).map((s) => ({
+            exe: s.exe,
+            name: s.name || s.exe.replace(/\.exe$/i, ""),
+            via: s.via,
+          })),
+        );
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
@@ -174,7 +199,7 @@ export default function App() {
           sub_url: subUrl,
           sub_ua: subUa,
           selected: selectedId,
-          split: list.map((a) => ({ exe: a.exe, via: a.via })),
+          split: chosen.map((c) => ({ exe: c.exe, name: c.name, via: c.via })),
           zapret_dir: zapretDir ?? "",
           zapret_preset: "",
           subs,
@@ -184,13 +209,14 @@ export default function App() {
           hotkey,
           close_to_tray: closeToTray,
           notify: notifyOn,
+          kill_switch: killSwitch,
         })
         .catch(() => undefined);
     }, 700);
     return () => window.clearTimeout(id);
   }, [
-    loaded, profiles, subUrl, subUa, selectedId, list, zapretDir,
-    subs, dnsMode, blockIpv6, hotkey, closeToTray, notifyOn,
+    loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
+    subs, dnsMode, blockIpv6, hotkey, closeToTray, notifyOn, killSwitch,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -252,7 +278,7 @@ export default function App() {
         setError("нет серверов: сначала загрузи подписку на экране «Серверы»");
         return;
       }
-      const excluded = list.filter((a) => !a.via).map((a) => a.exe);
+      const excluded = chosen.filter((a) => !a.via).map((a) => a.exe);
       try {
         const st = await api.engineStart(profile, excluded, dnsMode === "tunnel" ? "1.1.1.1" : "");
         setConn(st.state === "running" ? "connected" : "error");
@@ -266,7 +292,7 @@ export default function App() {
 
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setConn("connected"), 1500);
-  }, [list, profiles, selectedId, dnsMode]);
+  }, [chosen, profiles, selectedId, dnsMode]);
 
   const toggleConnection = useCallback(() => {
     if (busy) return;
@@ -275,8 +301,22 @@ export default function App() {
     run.finally(() => setBusy(false));
   }, [busy, conn, startTunnel, stopTunnel]);
 
-  const toggleApp = (id: string) =>
-    setList((prev) => prev.map((a) => (a.id === id ? { ...a, via: !a.via } : a)));
+  /** Puts one program on a route; the list stays short because it holds choices only. */
+  const assignApp = (exe: string, name: string, via: boolean) => {
+    setChosen((prev) => [...prev.filter((c) => c.exe !== exe), { exe, name, via }]);
+    if (conn === "connected") setSplitDirty(true);
+  };
+  const unassignApp = (exe: string) => {
+    setChosen((prev) => prev.filter((c) => c.exe !== exe));
+    if (conn === "connected") setSplitDirty(true);
+  };
+
+  /** New routes need a fresh tunnel: the engine reads the list on start only. */
+  const reconnectTunnel = useCallback(async () => {
+    setSplitDirty(false);
+    await stopTunnel();
+    await startTunnel();
+  }, [stopTunnel, startTunnel]);
 
   /** Fetches every subscription and merges the servers, keeping the selection. */
   const loadSubscription = useCallback(async () => {
@@ -460,23 +500,21 @@ export default function App() {
   // --- installed programs for split tunneling --------------------------------
   useEffect(() => {
     if (!inTauri || !loaded) return;
+    setScanning(true);
     api
       .appsScan()
       .then((found) => {
-        if (!found.length) return;
-        setList((prev) => {
-          const known = new Set(found.map((f) => f.exe));
-          const extra = prev.filter((p) => !known.has(p.exe));
-          const scanned: AppEntry[] = found.map((f) => ({
+        setCatalog(
+          found.map((f) => ({
             id: f.exe,
-            name: f.name.charAt(0).toUpperCase() + f.name.slice(1),
+            name: f.name || f.exe.replace(/\.exe$/i, ""),
             exe: f.exe,
-            via: prev.find((p) => p.exe === f.exe)?.via ?? true,
-          }));
-          return [...scanned, ...extra];
-        });
+            via: false,
+          })),
+        );
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setScanning(false));
   }, [loaded]);
 
   const ctx = {
@@ -488,8 +526,14 @@ export default function App() {
     servers: viewServers,
     selectedId,
     setSelectedId,
-    list,
-    toggleApp,
+    catalog,
+    chosen,
+    assignApp,
+    unassignApp,
+    scanning,
+    connState: conn,
+    splitDirty,
+    reconnectTunnel,
   };
 
   return (
@@ -542,12 +586,12 @@ export default function App() {
             <HomeScreen
               {...ctx}
               error={error}
-              zapretOn={zapretOn}
-              setZapretOn={setZapretOn}
+              zapretState={zapretState}
               killSwitch={killSwitch}
-              setKillSwitch={setKillSwitch}
               blocked={false}
               onOpenSplit={() => setScreen("split")}
+              onOpenZapret={() => setScreen("zapret")}
+              onOpenSettings={() => setScreen("settings")}
               onOpenServers={() => setScreen("servers")}
               onRefreshServers={loadSubscription}
               onAutoPick={async () => {
@@ -582,10 +626,10 @@ export default function App() {
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
           {screen === "zapret" && (
-            <ZapretScreen t={t} zapretOn={zapretOn} setZapretOn={setZapretOn} initialDir={zapretDir} />
+            <ZapretScreen t={t} initialDir={zapretDir} />
           )}
           {screen === "logs" && (
-            <LogsScreen t={t} conn={conn} error={error} onExport={exportLog} />
+            <LogsScreen t={t} error={error} onExport={exportLog} />
           )}
           {screen === "settings" && (
             <SettingsScreen

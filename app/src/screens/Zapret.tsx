@@ -3,12 +3,10 @@ import { api, inTauri, type ZapretStatus } from "../api";
 
 type Props = {
   t: (k: string) => string;
-  zapretOn: boolean;
-  setZapretOn: (v: boolean) => void;
   initialDir: string | null;
 };
 
-export function ZapretScreen({ t, zapretOn, setZapretOn, initialDir }: Props) {
+export function ZapretScreen({ t, initialDir }: Props) {
   const [dir, setDir] = useState(initialDir ?? "");
   const [presets, setPresets] = useState<string[]>([]);
   const [preset, setPreset] = useState("");
@@ -34,31 +32,37 @@ export function ZapretScreen({ t, zapretOn, setZapretOn, initialDir }: Props) {
     })();
   }, [initialDir]);
 
+  // The switch reflects the real process, never a wish: an outside copy of
+  // Zapret (someone else's winws2) is shown as running and left alone.
+  const on = status?.state === "running" || status?.state === "external";
+  const foreign = status?.state === "external";
+
   const toggle = async () => {
     setError("");
+    if (!inTauri || foreign) return;
     setBusy(true);
-    if (!inTauri) {
-      setZapretOn(!zapretOn);
-      setBusy(false);
-      return;
-    }
     try {
-      if (zapretOn) {
+      if (status?.state === "running") {
         setStatus(await api.zapretStop());
-        setZapretOn(false);
       } else {
         const st = await api.zapretStart(dir, preset);
         setStatus(st);
-        setZapretOn(st.state === "running");
         if (st.state === "external") setError(st.message);
       }
     } catch (e) {
       setError(String(e));
-      setZapretOn(false);
     } finally {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!inTauri) return;
+    const id = window.setInterval(() => {
+      api.zapretStatus().then(setStatus).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const stateLabel =
     status?.state === "running"
@@ -85,8 +89,9 @@ export function ZapretScreen({ t, zapretOn, setZapretOn, initialDir }: Props) {
           </div>
           <button
             className="switch"
-            aria-checked={zapretOn}
-            disabled={busy}
+            aria-checked={on}
+            disabled={busy || foreign}
+            title={foreign ? t("zapretForeignHint") : undefined}
             onClick={toggle}
           />
         </div>

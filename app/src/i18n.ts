@@ -83,6 +83,11 @@ const dict: Dict = {
     en: "Refresh the subscription or paste a server link manually.",
   },
   servers: { ru: "Серверы", en: "Servers" },
+  serversCount: { ru: "из подписки", en: "from the subscription" },
+  serversDemo: {
+    ru: "это пример списка — нажми «Обновить», чтобы загрузить свои серверы",
+    en: "this is a sample list — press Refresh to load your own servers",
+  },
   refresh: { ru: "Обновить", en: "Refresh" },
   updated: { ru: "обновлено", en: "updated" },
 
@@ -92,6 +97,14 @@ const dict: Dict = {
 
   tunnelGuard: { ru: "Защита туннеля", en: "Tunnel guard" },
   killSwitch: { ru: "Блокировка при обрыве", en: "Kill switch" },
+  zapretRealState: {
+    ru: "Показано реальное состояние: запущен / не запущен. Открыть настройку",
+    en: "Shows the real state: running or not. Opens the settings"
+  },
+  zapretForeignHint: {
+    ru: "Zapret уже запущен другой программой — мы его не трогаем",
+    en: "Zapret is already running under another program — we leave it alone"
+  },
   killSwitchSoon: {
     ru: "Пока только запоминает выбор — сама блокировка появится в следующем обновлении",
     en: "Only remembers the choice for now — real blocking ships in the next update",
@@ -110,8 +123,8 @@ const dict: Dict = {
   pasteLink: { ru: "Вставь ссылку vless:// (можно несколько строк)", en: "Paste vless:// link (multiple lines allowed)" },
   checkPing: { ru: "Проверить пинг", en: "Check latency" },
   logsEmpty: {
-    ru: "Журнал пуст. Здесь появятся записи нашего движка, когда запустишь туннель.",
-    en: "Log is empty. Engine records appear here once you start a tunnel."
+    ru: "Здесь появятся записи нашего движка, когда запустишь туннель.",
+    en: "Engine records appear here once you start a tunnel."
   },
   addProfile: { ru: "Добавить подписку", en: "Add subscription" },
 
@@ -124,9 +137,29 @@ const dict: Dict = {
   direct: { ru: "Напрямую", en: "Direct" },
   searchApp: { ru: "Поиск приложения", en: "Search apps" },
   splitHint: {
-    ru: "Список собран из установленных программ Windows. Всё, что выключено, идёт напрямую.",
-    en: "Built from the programs installed on this PC. Anything switched off goes direct.",
+    ru: "Помнится между запусками. Всё, что не добавлено в списки, идёт через VPN — как обычно.",
+    en: "Remembered between launches. Anything not listed goes through the VPN, as usual.",
   },
+  splitNeedsReconnect: {
+    ru: "Маршруты применяются при запуске туннеля — переподключись, чтобы они заработали",
+    en: "Routes are applied when the tunnel starts — reconnect to apply them",
+  },
+  reconnect: { ru: "Переподключить", en: "Reconnect" },
+  splitEmptyTitle: { ru: "Списки пустые", en: "Nothing added yet" },
+  splitEmptyText: {
+    ru: "Найди программу в поиске и выбери: через VPN или напрямую. Выбор сохранится сам.",
+    en: "Search for a program and pick a route: through the VPN or direct. The choice is saved.",
+  },
+  splitColumnEmpty: { ru: "пока пусто", en: "empty" },
+  toVpn: { ru: "В VPN", en: "Via VPN" },
+  toDirect: { ru: "Напрямую", en: "Direct" },
+  removeApp: { ru: "Убрать", en: "Remove" },
+  showAll: { ru: "Показать все программы", en: "Show all programs" },
+  hideAll: { ru: "Скрыть список", en: "Hide the list" },
+  allApps: { ru: "Все программы на компьютере", en: "All programs on this PC" },
+  foundApps: { ru: "Результаты поиска", en: "Search results" },
+  scanning: { ru: "Ищу программы…", en: "Looking for programs…" },
+  scanEmpty: { ru: "программы не найдены", en: "no programs found" },
 
   zapretTitle: { ru: "Защита туннеля", en: "Tunnel guard" },
   zapretSub: {
@@ -156,7 +189,7 @@ const dict: Dict = {
   about: { ru: "О приложении", en: "About" },
   version: { ru: "Версия", en: "Version" },
   core: { ru: "Ядро", en: "Core" },
-  coreValue: { ru: "Rust + sidecar (0.1)", en: "Rust + sidecar (0.1)" },
+  coreValue: { ru: "Rust + sing-box 1.14", en: "Rust + sing-box 1.14" },
   deviceId: { ru: "ID устройства", en: "Device ID" },
 
   logsTitle: { ru: "Журнал", en: "Log" },

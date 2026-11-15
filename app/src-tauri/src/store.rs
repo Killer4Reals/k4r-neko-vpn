@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use crate::subscription::Profile;
 
+/// Bumped whenever a stored file needs a one-time fix on load.
+pub const SCHEMA: u32 = 2;
+
 /// Everything the app needs to work without any external program.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -24,6 +27,8 @@ pub struct AppState {
     pub reconnect: bool,
     pub hotkey: String,
     pub close_to_tray: bool,
+    /// remembered preference; the real WFP block ships later
+    pub kill_switch: bool,
     pub notify: bool,
     pub autostart: bool,
     /// 0 = written before the settings existed; bumped when defaults change
@@ -49,17 +54,23 @@ impl AppState {
             reconnect: true,
             hotkey: "Ctrl+Alt+V".into(),
             close_to_tray: true,
+            kill_switch: true,
             notify: true,
             autostart: true,
-            schema: 1,
+            schema: SCHEMA,
             ..Self::default()
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct SplitEntry {
+    /// file name the engine matches, e.g. "discord.exe"
     pub exe: String,
+    /// readable label kept even if the program is uninstalled later
+    pub name: String,
+    /// true = through the tunnel, false = direct
     pub via: bool,
 }
 
@@ -119,9 +130,15 @@ pub fn load(data_dir: &Path) -> AppState {
         st.block_ipv6 = d.block_ipv6;
         st.reconnect = d.reconnect;
         st.close_to_tray = d.close_to_tray;
+        st.kill_switch = d.kill_switch;
         st.notify = d.notify;
         st.autostart = d.autostart;
         st.schema = 1;
+    }
+    if st.schema < 2 {
+        // 0.1 wrote every scanned program into the list, so nothing there was a real choice
+        st.split.clear();
+        st.schema = SCHEMA;
     }
     if st.dns_mode.is_empty() {
         st.dns_mode = "tunnel".into();
@@ -183,12 +200,13 @@ mod tests {
     fn round_trips_state() {
         let dir = std::env::temp_dir().join("k4r-state-test");
         let _ = std::fs::remove_dir_all(&dir);
-        let mut st = AppState::default();
+        let mut st = AppState::with_defaults();
         st.profiles.push(sample());
         st.sub_ua = "K4R-Neko-VPN/0.1".into();
         st.hwid = "abc123".into();
         st.split.push(SplitEntry {
             exe: "steam.exe".into(),
+            name: "Steam".into(),
             via: false,
         });
         save(&dir, &st).unwrap();
@@ -197,7 +215,32 @@ mod tests {
         assert_eq!(back.profiles.len(), 1);
         assert_eq!(back.sub_ua, "K4R-Neko-VPN/0.1");
         assert_eq!(back.split[0].exe, "steam.exe");
+        assert_eq!(back.split[0].name, "Steam");
         assert!(!back.split[0].via);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_scan_dump_is_dropped_once() {
+        let dir = std::env::temp_dir().join("k4r-split-migration");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = r#"{"schema":1,"split":[{"exe":"discord.exe","via":true},{"exe":"steam.exe","via":false}]}"#;
+        std::fs::write(state_path(&dir), old).unwrap();
+
+        let st = load(&dir);
+        assert!(st.split.is_empty(), "0.1 auto-filled the whole scan, nothing was chosen");
+        assert_eq!(st.schema, 2);
+
+        // the owner's own picks survive the next launch
+        let mut next = st.clone();
+        next.split.push(SplitEntry {
+            exe: "steam.exe".into(),
+            name: "Steam".into(),
+            via: false,
+        });
+        save(&dir, &next).unwrap();
+        assert_eq!(load(&dir).split.len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

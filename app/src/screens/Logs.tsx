@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ConnState } from "../data";
 import { api, inTauri } from "../api";
 import { RefreshIcon } from "../icons";
 
 type Props = {
   t: (k: string) => string;
-  conn: ConnState;
   error: string;
   onExport: () => Promise<string>;
 };
 
-export function LogsScreen({ t, conn, error, onExport }: Props) {
+export function LogsScreen({ t, error, onExport }: Props) {
   const [saved, setSaved] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,11 +70,16 @@ export function LogsScreen({ t, conn, error, onExport }: Props) {
         </div>
       )}
 
-      <div className="muted" style={{ marginTop: 10 }}>
-        state: {conn}
-        {error ? ` · ${error}` : ""}
-        {saved ? <div>{t("savedTo")} {saved}</div> : null}
-      </div>
+      {(error || saved) && (
+        <div className="muted" style={{ marginTop: 10 }}>
+          {error ? <div>{error}</div> : null}
+          {saved ? (
+            <div>
+              {t("savedTo")} {saved}
+            </div>
+          ) : null}
+        </div>
+      )}
     </>
   );
 }

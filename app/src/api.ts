@@ -78,6 +78,9 @@ export const api = {
 
 export type InstalledApp = { exe: string; name: string; path: string; running: boolean };
 
+/// A program the owner routed explicitly: through the tunnel or straight out.
+export type ChosenApp = { exe: string; name: string; via: boolean };
+
 export type SubSource = { url: string; ua: string; name: string; refreshed: number };
 
 export type AppState = {
@@ -87,7 +90,7 @@ export type AppState = {
   sub_ua: string;
   subs?: SubSource[];
   selected: string;
-  split: { exe: string; via: boolean }[];
+  split: ChosenApp[];
   zapret_dir: string;
   zapret_preset: string;
   dns_mode?: string;
@@ -95,6 +98,7 @@ export type AppState = {
   reconnect?: boolean;
   hotkey?: string;
   close_to_tray?: boolean;
+  kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;
 };

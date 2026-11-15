@@ -137,7 +137,9 @@ export function ServersScreen(p: Props) {
             <BoltIcon size={14} />
             {pinging ? "…" : t("checkPing")}
           </button>
-          <span className="muted">{realCount > 0 ? `${realCount}` : "demo"}</span>
+          <span className="muted">
+            {realCount > 0 ? `${realCount} ${t("serversCount")}` : t("serversDemo")}
+          </span>
         </div>
 
         {showImport && (
