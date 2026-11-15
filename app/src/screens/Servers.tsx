@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Server } from "../data";
-import type { SubSource } from "../api";
+import type { SubInfo, SubSource } from "../api";
+import { QrSheet } from "../Qr";
+import { api } from "../api";
 import { BoltIcon, RefreshIcon } from "../icons";
 
 type Props = {
@@ -33,11 +35,44 @@ const shortUrl = (u: string) => {
   }
 };
 
+
+function gb(bytes: number): string {
+  if (!bytes) return "";
+  const g = bytes / 1024 / 1024 / 1024;
+  return g >= 100 ? `${Math.round(g)} ГБ` : `${g.toFixed(1)} ГБ`;
+}
+
+/// Providers announce the allowance; we show it as it is, including "unknown".
+function subUsage(s: { info?: SubInfo | null } | null | undefined, t: (k: string) => string): string {
+  const info = s?.info;
+  if (!info || (!info.total && !info.expire && !info.download && !info.upload)) return "";
+  const parts: string[] = [];
+  const used = (info.upload || 0) + (info.download || 0);
+  if (info.total) {
+    const left = Math.max(0, info.total - used);
+    parts.push(`${t("trafficLeft")} ${gb(left)} ${t("ofTotal")} ${gb(info.total)}`);
+  } else if (used > 0) {
+    // провайдер не ограничивает объём, но расход честно показывает
+    parts.push(`${t("trafficUsed")} ${gb(used)} (${t("noLimit")})`);
+  }
+  if (info.expire) {
+    const date = new Date(info.expire * 1000);
+    const days = Math.ceil((date.getTime() - Date.now()) / 86_400_000);
+    const when = date.toLocaleDateString();
+    parts.push(days >= 0 ? `${t("until")} ${when} (${days} ${t("days")})` : `${t("expired")} ${when}`);
+  }
+  return parts.join(" · ");
+}
+
 export function ServersScreen(p: Props) {
   const { t, servers, selectedId, setSelectedId, warnings, busy, realCount } = p;
   const [link, setLink] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [speed, setSpeed] = useState<{ mbytes_per_second: number; bytes: number } | null>(null);
+  const [speedBusy, setSpeedBusy] = useState(false);
+  const [speedNote, setSpeedNote] = useState("");
 
   const doImport = async () => {
     await p.onImport(link);
@@ -103,6 +138,7 @@ export function ServersScreen(p: Props) {
                       ? `${t("updated")} ${new Date(s.refreshed * 1000).toLocaleString()}`
                       : t("neverUpdated")}
                   </div>
+                  {subUsage(s, t) && <div className="sub usage">{subUsage(s, t)}</div>}
                 </span>
                 <button className="ghost-btn danger" onClick={() => p.removeSub(s.url)} aria-label={t("remove")}>
                   ×
@@ -110,6 +146,14 @@ export function ServersScreen(p: Props) {
               </div>
             ))}
           </div>
+        )}
+
+        {showQr && (
+          <QrSheet
+            t={t}
+            value={p.subUrl}
+            onCopy={() => navigator.clipboard?.writeText(p.subUrl).catch(() => undefined)}
+          />
         )}
 
         {warnings.length > 0 && (
@@ -135,6 +179,14 @@ export function ServersScreen(p: Props) {
           <button
             className="btn"
             style={{ width: "auto", paddingInline: 14 }}
+            onClick={() => setShowQr((v) => !v)}
+            data-on={showQr}
+          >
+            {t("qrTitle")}
+          </button>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
             onClick={() => {
               if (p.subUrl.trim()) p.addSub(p.subUrl, p.subUa, "");
             }}
@@ -146,6 +198,32 @@ export function ServersScreen(p: Props) {
             <BoltIcon size={14} />
             {pinging ? "…" : t("checkPing")}
           </button>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            disabled={speedBusy}
+            title={t("speedHint")}
+            onClick={async () => {
+              setSpeedBusy(true);
+              setSpeedNote("");
+              try {
+                setSpeed(await api.speedTest());
+              } catch (e) {
+                setSpeed(null);
+                setSpeedNote(String(e));
+              } finally {
+                setSpeedBusy(false);
+              }
+            }}
+          >
+            {speedBusy ? "…" : t("speedTest")}
+          </button>
+          {speed && (
+            <span className="muted speed-out">
+              {speed.mbytes_per_second.toFixed(1)} МБ/с · {Math.round(speed.bytes / 1024 / 1024)} МБ
+            </span>
+          )}
+          {speedNote && <span className="muted warn-txt">{speedNote}</span>}
           <span className="muted">
             {realCount > 0 ? `${realCount} ${t("serversCount")}` : t("serversDemo")}
           </span>

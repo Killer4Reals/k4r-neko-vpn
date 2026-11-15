@@ -23,6 +23,7 @@ winreg = "0.55"
 percent-encoding = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
+rusqlite = { version = "0.43.0", features = ["bundled"] }
 
 [profile.release]
 codegen-units = 1

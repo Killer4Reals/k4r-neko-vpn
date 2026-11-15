@@ -88,6 +88,9 @@ pub struct NetOptions {
     pub tunnel_apps: Vec<String>,
     /// router address, used as the plain resolver for everything not tunnelled
     pub gateway: String,
+    /// Local SOCKS5 port inside the tunnel, so Telegram (and any other client
+    /// that knows proxies) can be routed by hand. 0 = off.
+    pub tg_port: u16,
 }
 
 impl Default for NetOptions {
@@ -101,6 +104,7 @@ impl Default for NetOptions {
             split_mode: "only".into(),
             tunnel_apps: Vec::new(),
             gateway: String::new(),
+            tg_port: 0,
         }
     }
 }
@@ -252,6 +256,25 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
             "default_domain_resolver": resolver
         }
     });
+    if opts.tg_port != 0 {
+        // Zapret solves Telegram with a local proxy on 1353; we do the same, only
+        // the traffic goes through the tunnel instead of a separate MTProto link.
+        config["inbounds"]
+            .as_array_mut()
+            .expect("inbounds is an array")
+            .push(json!({
+                "type": "mixed",
+                "tag": "socks-in",
+                "listen": "127.0.0.1",
+                "listen_port": opts.tg_port
+            }));
+        let rules = config["route"]["rules"]
+            .as_array_mut()
+            .expect("rules is an array");
+        // everything that arrives on the local proxy is tunnelled, otherwise the
+        // split rules would send it direct and the proxy would be pointless
+        rules.insert(0, json!({ "inbound": ["socks-in"], "outbound": "proxy" }));
+    }
     if opts.api_port != 0 {
         // Our own loopback endpoint: the only way to read real traffic counters.
         config["experimental"] = json!({

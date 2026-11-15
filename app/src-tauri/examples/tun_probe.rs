@@ -6,7 +6,6 @@
 
 use k4r_neko_vpn_lib::engine;
 use k4r_neko_vpn_lib::subscription::{self, SubHeader};
-use std::io::Write;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 

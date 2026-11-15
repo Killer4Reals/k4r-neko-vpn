@@ -70,6 +70,7 @@ fn main() {
         split_mode: "only".into(),
         tunnel_apps: vec!["curltest.exe".into()],
         gateway: gateway.clone(),
+        tg_port: 0,
     };
     let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
     let log = dir.join("logs").join("engine.log");

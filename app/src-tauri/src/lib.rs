@@ -380,6 +380,106 @@ async fn sub_fetch(
     .map_err(|e| format!("задача упала: {e}"))?
 }
 
+/// Копия настроек одним файлом: переезд на другой компьютер без потери списков.
+/// Пишем в «Загрузки» — понятное место, которое человек найдёт без подсказок.
+#[tauri::command]
+fn state_export(app: tauri::AppHandle) -> Result<String, String> {
+    let state = store::load(&data_dir(&app)?);
+    let text = serde_json::to_string_pretty(&state).map_err(|e| format!("не смог собрать файл: {e}"))?;
+    let home = std::env::var("USERPROFILE").map_err(|_| "не нашёл папку пользователя".to_string())?;
+    let dir = std::path::PathBuf::from(home).join("Downloads");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = dir.join(format!("k4r-neko-settings-{stamp}.json"));
+    std::fs::write(&path, text).map_err(|e| format!("не смог записать файл: {e}"))?;
+    Ok(path.display().to_string())
+}
+
+/// Возврат настроек из файла. Принимаем текст, а не путь: человек может вставить
+/// содержимое прямо в окно, если файл далеко.
+#[tauri::command]
+fn state_import(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    let mut parsed: store::AppState =
+        serde_json::from_str(&text).map_err(|e| format!("это не файл настроек: {e}"))?;
+    if parsed.profiles.is_empty() && parsed.sub_url.is_empty() {
+        return Err("в файле нет ни серверов, ни подписки — похоже, это не наши настройки".into());
+    }
+    let dir = data_dir(&app)?;
+    // чужой идентификатор устройства не подставляем: он привязан к машине
+    parsed.hwid = store::install_id(&dir);
+    parsed.schema = store::SCHEMA;
+    store::save(&dir, &parsed)
+}
+
+/// Проверка утечек DNS без чужих сервисов: `whoami.akamai.net` всегда отвечает
+/// адресом того резолвера, который его спросил. Значит, если мы видим адрес
+/// Cloudflare — запросы идут через наш шифрованный резолвер, а если адрес
+/// провайдера — DNS течёт мимо туннеля.
+#[tauri::command]
+async fn dns_leak() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        use std::net::ToSocketAddrs as _;
+        let resolver = ("whoami.akamai.net", 80u16)
+            .to_socket_addrs()
+            .map_err(|e| format!("не удалось спросить резолвер: {e}"))?
+            .next()
+            .map(|a| a.ip().to_string())
+            .ok_or_else(|| "резолвер не ответил".to_string())?;
+
+        // и адрес, которым нас видит интернет: без него проверка неполная
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(8)))
+            .build()
+            .into();
+        let mut egress = String::new();
+        if let Ok(mut resp) = agent.get("https://api.ipify.org").call() {
+            use std::io::Read as _;
+            let mut body = String::new();
+            let _ = resp.body_mut().as_reader().take(64).read_to_string(&mut body);
+            egress = body.trim().to_string();
+        }
+        Ok(serde_json::json!({ "resolver": resolver, "egress": egress }))
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
+/// Скачивает установщик новой версии и запускает его. Проверку версии делает
+/// окно, сюда приходит уже готовый адрес.
+#[tauri::command]
+async fn update_download(url: String) -> Result<String, String> {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("ссылка должна начинаться с http:// или https://".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(600)))
+            .build()
+            .into();
+        let mut resp = agent
+            .get(&url)
+            .header("User-Agent", "K4R-Neko-VPN/update")
+            .call()
+            .map_err(|e| format!("не удалось скачать: {e}"))?;
+        let path = std::env::temp_dir().join("k4r-neko-update.exe");
+        let mut file = std::fs::File::create(&path).map_err(|e| format!("не смог создать файл: {e}"))?;
+        std::io::copy(&mut resp.body_mut().as_reader(), &mut file)
+            .map_err(|e| format!("скачивание прервалось: {e}"))?;
+        let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        if size < 1024 * 1024 {
+            let _ = std::fs::remove_file(&path);
+            return Err("файл слишком маленький — похоже, это не установщик".into());
+        }
+        drop(file);
+        launch_detached(&path)?;
+        Ok(path.display().to_string())
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
 #[tauri::command]
 fn install_id(app: tauri::AppHandle) -> Result<String, String> {
     Ok(store::install_id(&data_dir(&app)?))
@@ -425,6 +525,9 @@ fn engine_start(
                 }
             }),
         gateway: engine::default_gateway(),
+        // Telegram-style manual proxy: fixed port so the app can tell the user
+        // exactly what to type into the messenger, and only when asked for
+        tg_port: if saved.tg_proxy { saved.tg_port } else { 0 },
         tunnel_apps: match via {
             Some(list) => list,
             None => saved
@@ -594,6 +697,37 @@ fn update_check(manifest_url: String, current: String) -> Result<Option<UpdateIn
     }))
 }
 
+/// The address the internet sees right now. While the tunnel is up the whole
+/// machine goes through it, so this is the VPN address; when it is down it is the
+/// provider's. No guessing: if the request fails, the caller shows nothing.
+#[tauri::command]
+async fn my_ip() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(8)))
+            .build()
+            .into();
+        let mut resp = agent
+            .get("https://api.ipify.org")
+            .call()
+            .map_err(|e| format!("не удалось узнать адрес: {e}"))?;
+        let mut body = String::new();
+        use std::io::Read as _;
+        resp.body_mut()
+            .as_reader()
+            .take(64)
+            .read_to_string(&mut body)
+            .map_err(|e| format!("не удалось прочитать ответ: {e}"))?;
+        let ip = body.trim().to_string();
+        if ip.is_empty() {
+            return Err("сервис не вернул адрес".into());
+        }
+        Ok(ip)
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
 #[tauri::command]
 fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -610,6 +744,149 @@ fn open_url(url: String) -> Result<(), String> {
     engine::hidden(&mut cmd);
     cmd.spawn().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone)]
+struct DayTraffic {
+    down: u64,
+    up: u64,
+}
+
+fn stats_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(data_dir(app)?.join("stats.json"))
+}
+
+fn stats_load(app: &tauri::AppHandle) -> std::collections::BTreeMap<String, DayTraffic> {
+    stats_path(app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// Расход за день: прибавляем разницу счётчиков движка. Пишем по дню, потому что
+/// «сколько за неделю» человеку важнее, чем «сколько за всё время».
+#[tauri::command]
+fn stats_add(app: tauri::AppHandle, day: String, down: u64, up: u64) -> Result<(), String> {
+    if down == 0 && up == 0 {
+        return Ok(());
+    }
+    if day.len() < 10 {
+        return Err("день должен быть в виде 2026-11-15".into());
+    }
+    let mut map = stats_load(&app);
+    let entry = map.entry(day).or_default();
+    entry.down = entry.down.saturating_add(down);
+    entry.up = entry.up.saturating_add(up);
+    // держим два месяца: больше в окне не помещается и не нужно
+    while map.len() > 62 {
+        let oldest = map.keys().next().cloned();
+        match oldest {
+            Some(k) => {
+                map.remove(&k);
+            }
+            None => break,
+        }
+    }
+    let text = serde_json::to_string(&map).map_err(|e| e.to_string())?;
+    std::fs::write(stats_path(&app)?, text).map_err(|e| format!("не смог сохранить статистику: {e}"))
+}
+
+#[tauri::command]
+fn stats_read(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let map = stats_load(&app);
+    let mut days: Vec<serde_json::Value> = map
+        .into_iter()
+        .map(|(day, v)| serde_json::json!({ "day": day, "down": v.down, "up": v.up }))
+        .collect();
+    days.reverse();
+    Ok(serde_json::Value::Array(days))
+}
+
+/// Что настроено в самом Zapret: DNS и прокси для Telegram. Только чтение — мы
+/// никогда не меняем чужие настройки, но человеку полезно видеть оба клиента.
+#[tauri::command]
+fn zapret_settings(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let saved = store::load(&data_dir(&app)?);
+    let dir = if saved.zapret_dir.trim().is_empty() {
+        zapret::detect_dir().unwrap_or_default()
+    } else {
+        std::path::PathBuf::from(saved.zapret_dir.trim())
+    };
+    if dir.as_os_str().is_empty() || !dir.exists() {
+        return Err("папка Zapret не найдена — укажи её на вкладке «Защита туннеля»".into());
+    }
+    let rows = zapret::read_settings(&dir);
+    let json_of = |section: &str| -> serde_json::Value {
+        rows.iter()
+            .find(|(name, _)| name == section)
+            .and_then(|(_, payload)| serde_json::from_str::<serde_json::Value>(payload).ok())
+            .unwrap_or(serde_json::Value::Null)
+    };
+    let dns = json_of("dns");
+    let tg = json_of("telegram_proxy");
+    Ok(serde_json::json!({
+        "dir": dir.display().to_string(),
+        "dns": {
+            "doh_enabled": dns.get("doh_enabled").cloned().unwrap_or(serde_json::Value::Bool(false)),
+            "custom_servers": dns.get("custom_servers").cloned().unwrap_or(serde_json::json!([])),
+        },
+        "telegram": {
+            "enabled": tg.get("enabled").cloned().unwrap_or(serde_json::Value::Bool(false)),
+            "mode": tg.get("mode").cloned().unwrap_or(serde_json::Value::Null),
+            "port": tg.get("port").cloned().unwrap_or(serde_json::Value::Null),
+            "host": tg.get("host").cloned().unwrap_or(serde_json::Value::Null),
+        }
+    }))
+}
+
+/// Замер скорости честный: качаем настоящий файл и считаем байты в секунду.
+/// Пока туннель поднят, запрос идёт через него — значит скорость его и мерим.
+#[tauri::command]
+async fn speed_test() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(5)))
+            .build()
+            .into();
+        // маленький прогрев: TLS-рукопожатие не должно попасть в замер
+        let _ = agent.get("https://speed.cloudflare.com/__down?bytes=1000").call();
+        let started = std::time::Instant::now();
+        let mut resp = agent
+            .get("https://speed.cloudflare.com/__down?bytes=10000000")
+            .call()
+            .map_err(|e| format!("не удалось скачать: {e}"))?;
+        let mut buf = vec![0u8; 64 * 1024];
+        let mut total: u64 = 0;
+        use std::io::Read as _;
+        let mut reader = resp.body_mut().as_reader();
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => total += n as u64,
+                Err(e) => return Err(format!("скачивание прервалось: {e}")),
+            }
+        }
+        let secs = started.elapsed().as_secs_f64().max(0.001);
+        let mbps = total as f64 / 1024.0 / 1024.0 / secs;
+        Ok(serde_json::json!({
+            "bytes": total,
+            "seconds": secs,
+            "mbytes_per_second": mbps,
+        }))
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
+/// Запускает файл отвязанно от нашего процесса: установщик не должен умереть
+/// вместе с клиентом, который его скачал.
+fn launch_detached(path: &std::path::Path) -> Result<(), String> {
+    let mut cmd = std::process::Command::new(path);
+    engine::hidden(&mut cmd);
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("не смог запустить установщик: {e}"))
 }
 
 #[tauri::command]
@@ -831,6 +1108,15 @@ pub fn run() {
             profiles_import,
             probe_ping,
             update_check,
+            my_ip,
+            state_export,
+            state_import,
+            dns_leak,
+            update_download,
+            speed_test,
+            zapret_settings,
+            stats_add,
+            stats_read,
             app_version,
             open_url,
             state_load,

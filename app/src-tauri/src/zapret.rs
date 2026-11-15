@@ -271,3 +271,28 @@ mod tests {
         let _ = std::fs::remove_file(&p);
     }
 }
+
+/// Настройки самого Zapret из его базы: DNS и прокси для Telegram.
+/// Читаем копию файла, чтобы не мешать Zapret и не ловить блокировку базы.
+pub fn read_settings(dir: &Path) -> Vec<(String, String)> {
+    let db = dir.join("user").join("settings.sqlite3");
+    if !db.exists() {
+        return Vec::new();
+    }
+    let copy = std::env::temp_dir().join(format!("k4r-zapret-{}.sqlite3", std::process::id()));
+    if std::fs::copy(&db, &copy).is_err() {
+        return Vec::new();
+    }
+    let rows = (|| -> Result<Vec<(String, String)>, rusqlite::Error> {
+        let conn = rusqlite::Connection::open_with_flags(
+            &copy,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        let mut stmt = conn.prepare("select section, payload from settings_sections")?;
+        let mapped = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        mapped.collect()
+    })()
+    .unwrap_or_default();
+    let _ = std::fs::remove_file(&copy);
+    rows
+}

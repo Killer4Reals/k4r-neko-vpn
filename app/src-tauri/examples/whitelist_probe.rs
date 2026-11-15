@@ -57,6 +57,7 @@ fn main() {
         split_mode: "only".into(),
         tunnel_apps: vec!["curltest.exe".into()],
         gateway: engine::default_gateway(),
+        tg_port: 0,
     };
     let cfg = engine::build_config(&profile, &[], &opts);
     let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");

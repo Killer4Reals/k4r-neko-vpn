@@ -4,7 +4,7 @@ import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import type { ChosenApp } from "./api";
-import type { SubSource } from "./api";
+import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
   CloseIcon,
@@ -88,6 +88,24 @@ export default function App() {
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
   /// real counters from the engine, never a made-up number
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
+  const [tgProxy, setTgProxy] = useState(false);
+  // накопленное с последней записи в статистику, байты
+  const statsPending = useRef({ down: 0, up: 0 });
+  const prevTotals = useRef<{ down: number; up: number } | null>(null);
+  const [ip, setIp] = useState("");
+  const [ipBusy, setIpBusy] = useState(false);
+
+  const checkIp = async () => {
+    if (!inTauri) return;
+    setIpBusy(true);
+    try {
+      setIp(await api.myIp());
+    } catch {
+      setIp("");
+    } finally {
+      setIpBusy(false);
+    }
+  };
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState(initial.get("error") ?? "");
@@ -197,6 +215,7 @@ export default function App() {
         if (typeof st.sub_refresh_hours === "number") setSubRefreshHours(st.sub_refresh_hours);
         if (st.update_url) setUpdateUrl(st.update_url);
         if (st.zapret_preset) setZapretPreset(st.zapret_preset);
+        if (typeof st.tg_proxy === "boolean") setTgProxy(st.tg_proxy);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
         // only what the owner picked is restored — never a full scan dump
@@ -224,6 +243,8 @@ export default function App() {
           split: chosen.map((c) => ({ exe: c.exe, name: c.name, via: c.via })),
           zapret_dir: zapretDir ?? "",
           zapret_preset: zapretPreset,
+          tg_proxy: tgProxy,
+          tg_port: 1354,
           subs,
           dns_mode: dnsMode,
           block_ipv6: blockIpv6,
@@ -295,7 +316,17 @@ export default function App() {
       api
         .engineTraffic()
         .then((t) => {
-          if (alive) setTraffic({ down: t.down, up: t.up });
+          if (!alive) return;
+          setTraffic({ down: t.down, up: t.up });
+          // копим прирост суммарных счётчиков: down/up — это байты в секунду,
+          // для «сколько за день» они не годятся
+          if (prevTotals.current) {
+            const dDown = t.total_down - prevTotals.current.down;
+            const dUp = t.total_up - prevTotals.current.up;
+            if (dDown > 0) statsPending.current.down += dDown;
+            if (dUp > 0) statsPending.current.up += dUp;
+          }
+          prevTotals.current = { down: t.total_down, up: t.total_up };
         })
         .catch(() => undefined);
     read();
@@ -305,6 +336,31 @@ export default function App() {
       window.clearInterval(id);
     };
   }, [conn]);
+
+  // раз в минуту сбрасываем накопленное в дневную статистику
+  useEffect(() => {
+    if (!inTauri) return;
+    const flush = async () => {
+      const { down, up } = statsPending.current;
+      if (!down && !up) return;
+      statsPending.current = { down: 0, up: 0 };
+      const now = new Date();
+      const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+        now.getDate(),
+      ).padStart(2, "0")}`;
+      try {
+        await api.statsAdd(day, down, up);
+      } catch {
+        statsPending.current.down += down;
+        statsPending.current.up += up;
+      }
+    };
+    const id = window.setInterval(flush, 60_000);
+    return () => {
+      window.clearInterval(id);
+      void flush();
+    };
+  }, []);
 
   const stopTunnel = useCallback(async () => {
     setError("");
@@ -321,6 +377,7 @@ export default function App() {
   const startTunnel = useCallback(async () => {
     setError("");
     setConn("connecting");
+    prevTotals.current = null;
     const profile = profiles.find((p) => p.id === selectedId);
 
     if (inTauri) {
@@ -400,6 +457,7 @@ export default function App() {
     const notes: string[] = [];
     const stamp = Math.floor(Date.now() / 1000);
     const refreshed: Record<string, number> = {};
+    const infos: Record<string, SubInfo | null> = {};
 
     for (const src of sources) {
       try {
@@ -407,6 +465,7 @@ export default function App() {
         merged.push(...res.profiles);
         notes.push(...res.warnings);
         refreshed[src.url] = stamp;
+        infos[src.url] = res.info ?? null;
       } catch (e) {
         const msg = String(e);
         notes.push(
@@ -424,7 +483,11 @@ export default function App() {
     setProfiles(unique);
     setWarnings(notes);
     setSubs((prev) =>
-      prev.map((s) => (refreshed[s.url] ? { ...s, refreshed: refreshed[s.url] } : s)),
+      prev.map((s) =>
+        refreshed[s.url]
+          ? { ...s, refreshed: refreshed[s.url], info: infos[s.url] ?? s.info ?? null }
+          : s,
+      ),
     );
     if (unique.length) {
       setSelectedId((cur) => (unique.some((p) => p.id === cur) ? cur : unique[0].id));
@@ -716,6 +779,9 @@ export default function App() {
               up={traffic.up}
               killSwitch={killSwitch}
               blocked={false}
+              ip={ip}
+              ipBusy={ipBusy}
+              onCheckIp={checkIp}
               onOpenSplit={() => setScreen("split")}
               onOpenZapret={() => setScreen("zapret")}
               onOpenSettings={() => setScreen("settings")}
@@ -758,6 +824,9 @@ export default function App() {
               initialDir={zapretDir}
               savedPreset={zapretPreset}
               onPreset={setZapretPreset}
+              tgProxy={tgProxy}
+              setTgProxy={setTgProxy}
+              tgPort={1354}
             />
           )}
           {screen === "logs" && (

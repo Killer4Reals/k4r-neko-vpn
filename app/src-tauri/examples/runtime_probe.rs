@@ -105,6 +105,7 @@ fn main() {
         split_mode: "only".into(),
         tunnel_apps: Vec::new(),
         gateway: engine::default_gateway(),
+        tg_port: 0,
     };
     let mut excluded = st
         .split

@@ -26,6 +26,10 @@ type Props = {
   onOpenServers: () => void;
   onRefreshServers: () => void;
   onAutoPick: () => void;
+  /** address the internet sees right now, "" until measured */
+  ip: string;
+  ipBusy: boolean;
+  onCheckIp: () => void;
   realCount: number;
   error: string;
 };
@@ -147,6 +151,14 @@ export function HomeScreen(p: Props) {
               {mm}:{ss}
             </div>
           </div>
+        </div>
+
+        <div className="server-line ip-line">
+          <span className="k">{t("myIp")}</span>
+          <strong className="ip">{p.ip || "—"}</strong>
+          <button className="ghost-btn" onClick={p.onCheckIp} disabled={p.ipBusy} title={t("myIpHint")}>
+            {p.ipBusy ? "…" : t("ipCheck")}
+          </button>
         </div>
 
         <div className="quick">

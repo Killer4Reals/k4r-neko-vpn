@@ -45,6 +45,12 @@ pub struct AppState {
     pub sub_refresh_hours: u32,
     /// where to look for a newer build: a small json manifest; empty = not set up
     pub update_url: String,
+    /// local SOCKS5 proxy inside the tunnel, for Telegram and friends
+    #[serde(default)]
+    pub tg_proxy: bool,
+    /// its port; kept fixed so the address stays the same between runs
+    #[serde(default = "default_tg_port")]
+    pub tg_port: u16,
     pub notify: bool,
     pub autostart: bool,
     /// 0 = written before the settings existed; bumped when defaults change
@@ -59,6 +65,15 @@ pub struct SubSource {
     pub name: String,
     /// unix seconds of the last successful refresh
     pub refreshed: u64,
+    /// remaining traffic and expiry, as the provider last reported them
+    #[serde(default)]
+    pub info: Option<crate::subscription::SubInfo>,
+}
+
+/// Zapret uses 1353 for its Telegram proxy; we stay out of its way and take the
+/// next port, so both can run at once without a fight.
+pub fn default_tg_port() -> u16 {
+    1354
 }
 
 impl AppState {
@@ -68,6 +83,8 @@ impl AppState {
             dns_mode: "tunnel".into(),
             block_ipv6: true,
             reconnect: true,
+            tg_proxy: false,
+            tg_port: default_tg_port(),
             hotkey: "Ctrl+Alt+V".into(),
             close_to_tray: true,
             minimize_to_tray: true,

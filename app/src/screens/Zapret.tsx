@@ -6,15 +6,26 @@ type Props = {
   initialDir: string | null;
   savedPreset: string;
   onPreset: (name: string) => void;
+  /** прокси для Telegram внутри нашего туннеля */
+  tgProxy: boolean;
+  setTgProxy: (v: boolean) => void;
+  tgPort: number;
 };
 
-export function ZapretScreen({ t, initialDir, savedPreset, onPreset }: Props) {
+type ZapSettings = {
+  dir: string;
+  dns: { doh_enabled: boolean; custom_servers: unknown };
+  telegram: { enabled: boolean; mode: string | null; port: number | null; host: string | null };
+};
+
+export function ZapretScreen({ t, initialDir, savedPreset, onPreset, tgProxy, setTgProxy, tgPort }: Props) {
   const [dir, setDir] = useState(initialDir ?? "");
   const [presets, setPresets] = useState<string[]>([]);
   const [preset, setPreset] = useState("");
   const [status, setStatus] = useState<ZapretStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [zp, setZp] = useState<ZapSettings | null>(null);
 
   useEffect(() => {
     if (!inTauri) return;
@@ -35,6 +46,11 @@ export function ZapretScreen({ t, initialDir, savedPreset, onPreset }: Props) {
         setStatus(await api.zapretStatus());
       } catch {
         /* engine status is optional information */
+      }
+      try {
+        setZp(await api.zapretSettings());
+      } catch {
+        /* нет папки Zapret — блок просто не показываем */
       }
     })();
   }, [initialDir]);
@@ -138,6 +154,46 @@ export function ZapretScreen({ t, initialDir, savedPreset, onPreset }: Props) {
       </div>
 
       {error && <div className="notice" style={{ marginBottom: 14 }}>{error}</div>}
+
+      {zp && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="zp-head">{t("zpCompare")}</div>
+          <dl className="kv">
+            <dt>Zapret · DNS</dt>
+            <dd>
+              {zp.dns.doh_enabled ? t("zpDohOn") : t("zpDohOff")}
+              {Array.isArray(zp.dns.custom_servers) && zp.dns.custom_servers.length > 0
+                ? ` · ${t("zpOwnServers")}: ${(zp.dns.custom_servers as string[]).join(", ")}`
+                : ""}
+            </dd>
+            <dt>{t("zpOurDns")}</dt>
+            <dd className="muted">{t("zpOurDnsHint")}</dd>
+            <dt>Zapret · Telegram</dt>
+            <dd>
+              {zp.telegram.enabled
+                ? `${zp.telegram.mode ?? "socks5"} · ${zp.telegram.host ?? "0.0.0.0"}:${zp.telegram.port ?? "—"}`
+                : t("zpTgOff")}
+            </dd>
+            <dt>{t("zpOurTg")}</dt>
+            <dd>
+              <div className="tg-row">
+                <button
+                  className="switch"
+                  aria-checked={tgProxy}
+                  onClick={() => setTgProxy(!tgProxy)}
+                  aria-label={t("zpOurTg")}
+                />
+                <span className="muted">
+                  {tgProxy
+                    ? `127.0.0.1:${tgPort} · ${t("zpOurTgOn")}`
+                    : t("zpOurTgOff")}
+                </span>
+              </div>
+              {tgProxy && <div className="muted tg-hint">{t("zpOurTgHint")}</div>}
+            </dd>
+          </dl>
+        </div>
+      )}
 
       <div className="card">
         <dl className="kv">

@@ -19,6 +19,7 @@ export type SubResult = {
   profiles: Profile[];
   warnings: string[];
   format: string;
+  info?: SubInfo | null;
 };
 
 export type EngineStatus = {
@@ -70,6 +71,22 @@ export const api = {
   setTrayState: (state: string) => invoke<void>("set_tray_state", { state }),
   profilesImport: (text: string) => invoke<Profile[]>("profiles_import", { text }),
   appVersion: () => invoke<string>("app_version"),
+  myIp: () => invoke<string>("my_ip"),
+  stateExport: () => invoke<string>("state_export"),
+  stateImport: (text: string) => invoke<void>("state_import", { text }),
+  dnsLeak: () => invoke<{ resolver: string; egress: string }>("dns_leak"),
+  updateDownload: (url: string) => invoke<string>("update_download", { url }),
+  zapretSettings: () =>
+    invoke<{
+      dir: string;
+      dns: { doh_enabled: boolean; custom_servers: unknown };
+      telegram: { enabled: boolean; mode: string | null; port: number | null; host: string | null };
+    }>("zapret_settings"),
+  statsAdd: (day: string, down: number, up: number) =>
+    invoke<void>("stats_add", { day, down: Math.round(down), up: Math.round(up) }),
+  statsRead: () => invoke<{ day: string; down: number; up: number }[]>("stats_read"),
+  speedTest: () =>
+    invoke<{ bytes: number; seconds: number; mbytes_per_second: number }>("speed_test"),
   updateCheck: (manifestUrl: string, current: string) =>
     invoke<{ version: string; url: string; notes: string } | null>("update_check", {
       manifestUrl,
@@ -91,7 +108,21 @@ export type InstalledApp = { exe: string; name: string; path: string; running: b
 /// A program the owner routed explicitly: through the tunnel or straight out.
 export type ChosenApp = { exe: string; name: string; via: boolean };
 
-export type SubSource = { url: string; ua: string; name: string; refreshed: number };
+export type SubInfo = {
+  upload: number;
+  download: number;
+  total: number;
+  expire: number;
+};
+
+export type SubSource = {
+  url: string;
+  ua: string;
+  name: string;
+  refreshed: number;
+  /** Remaining traffic and expiry as the provider reported them. */
+  info?: SubInfo | null;
+};
 
 export type AppState = {
   hwid?: string;
@@ -112,6 +143,8 @@ export type AppState = {
   split_mode?: string;
   dns_server?: string;
   sub_refresh_hours?: number;
+  tg_proxy?: boolean;
+  tg_port?: number;
   update_url?: string;
   kill_switch?: boolean;
   notify?: boolean;

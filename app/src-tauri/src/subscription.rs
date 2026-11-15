@@ -30,12 +30,64 @@ pub struct Profile {
     pub path: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct SubInfo {
+    /// Bytes already spent, as reported by the provider.
+    pub upload: u64,
+    pub download: u64,
+    /// Total allowance in bytes, 0 when the provider does not say.
+    pub total: u64,
+    /// Expiry as unix seconds, 0 when the provider does not say.
+    pub expire: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SubResult {
     pub profiles: Vec<Profile>,
     /// Non-fatal notes shown to the user (e.g. provider returned placeholders).
     pub warnings: Vec<String>,
     pub format: String,
+    /// Remaining traffic and expiry from the `subscription-userinfo` header.
+    pub info: Option<SubInfo>,
+    /// Human name of the subscription, if the provider sends one.
+    pub title: String,
+    /// How often the provider suggests refreshing, in hours (0 = no opinion).
+    pub refresh_hint: u32,
+}
+
+/// Providers announce the allowance in a header: `upload=..; download=..;
+/// total=..; expire=..`. Values are bytes and unix seconds; anything missing
+/// simply stays zero, because a made-up number is worse than no number.
+/// `profile-title` is either plain text or `base64:<encoded utf-8>`.
+pub fn parse_title(raw: &str) -> String {
+    let raw = raw.trim();
+    let decoded = raw
+        .strip_prefix("base64:")
+        .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b.trim()).ok())
+        .or_else(|| base64::engine::general_purpose::STANDARD.decode(raw).ok())
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_else(|| raw.to_string());
+    decoded.trim().to_string()
+}
+
+pub fn parse_userinfo(raw: &str) -> SubInfo {
+    let mut info = SubInfo::default();
+    for part in raw.split(';') {
+        let mut it = part.splitn(2, '=');
+        let (Some(key), Some(value)) = (it.next(), it.next()) else {
+            continue;
+        };
+        let value = value.trim().trim_end_matches(|c: char| !c.is_ascii_digit());
+        let Ok(num) = value.parse::<u64>() else { continue };
+        match key.trim().to_ascii_lowercase().as_str() {
+            "upload" => info.upload = num,
+            "download" => info.download = num,
+            "total" => info.total = num,
+            "expire" => info.expire = num,
+            _ => {}
+        }
+    }
+    info
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -72,6 +124,24 @@ pub fn fetch(
         other => format!("сеть недоступна: {other}"),
     })?;
 
+    let info = resp
+        .headers()
+        .get("subscription-userinfo")
+        .and_then(|v| v.to_str().ok())
+        .map(parse_userinfo);
+    let title = resp
+        .headers()
+        .get("profile-title")
+        .and_then(|v| v.to_str().ok())
+        .map(parse_title)
+        .unwrap_or_default();
+    let refresh_hint = resp
+        .headers()
+        .get("profile-update-interval")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+
     let mut body = String::new();
     resp.body_mut()
         .as_reader()
@@ -79,7 +149,11 @@ pub fn fetch(
         .read_to_string(&mut body)
         .map_err(|e| format!("не удалось прочитать ответ: {e}"))?;
 
-    parse(&body)
+    let mut parsed = parse(&body)?;
+    parsed.info = info;
+    parsed.title = title;
+    parsed.refresh_hint = refresh_hint;
+    Ok(parsed)
 }
 
 /// Import from pasted text: one or many `vless://` links, plain or base64-wrapped.
@@ -165,6 +239,9 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
     Ok(SubResult {
         profiles,
         warnings,
+        info: None,
+        title: String::new(),
+        refresh_hint: 0,
         format: "links".into(),
     })
 }
@@ -219,6 +296,9 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
     Ok(SubResult {
         profiles,
         warnings,
+        info: None,
+        title: String::new(),
+        refresh_hint: 0,
         format: "xray-json".into(),
     })
 }
@@ -456,3 +536,29 @@ mod net_tests {
         assert!(!r.profiles.is_empty());
     }
 }
+
+    #[test]
+    fn reads_usage_and_expiry_from_the_header() {
+        let info = parse_userinfo("upload=1024; download=2048; total=1048576; expire=1796462447");
+        assert_eq!(info.upload, 1024);
+        assert_eq!(info.download, 2048);
+        assert_eq!(info.total, 1048576);
+        assert_eq!(info.expire, 1796462447);
+    }
+
+    #[test]
+    fn missing_or_broken_usage_fields_stay_zero() {
+        let info = parse_userinfo("download=abc; total=; expire=1796462447");
+        assert_eq!(info.download, 0);
+        assert_eq!(info.total, 0);
+        assert_eq!(info.expire, 1796462447);
+        assert_eq!(parse_userinfo("").total, 0);
+    }
+
+    #[test]
+    fn subscription_title_comes_from_plain_or_base64_header() {
+        // "Happ VPN (RayTun)" → providers often wrap it in base64
+        assert_eq!(parse_title("base64:SEFQUCBWUE4gKFJheVR1bik="), "HAPP VPN (RayTun)");
+        assert_eq!(parse_title("Мой провайдер"), "Мой провайдер");
+        assert_eq!(parse_title(""), "");
+    }

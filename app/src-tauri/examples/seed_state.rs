@@ -42,6 +42,7 @@ fn main() {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs())
                     .unwrap_or(0),
+                info: None,
             }];
             st.sub_url = url;
             st.sub_ua = "K4R-Neko-VPN/0.1".into();

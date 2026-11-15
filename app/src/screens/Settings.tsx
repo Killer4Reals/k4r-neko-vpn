@@ -45,10 +45,18 @@ export function SettingsScreen(p: Props) {
   const [deviceDraft, setDeviceDraft] = useState("");
   const [hotkeyDraft, setHotkeyDraft] = useState(p.hotkey);
   const [exported, setExported] = useState("");
+  const [backup, setBackup] = useState("");
+  const [restore, setRestore] = useState("");
+  const [restoreNote, setRestoreNote] = useState("");
+  const [leak, setLeak] = useState<{ resolver: string; egress: string } | null>(null);
+  const [leakBusy, setLeakBusy] = useState(false);
+  const [leakError, setLeakError] = useState("");
+  const [stats, setStats] = useState<{ day: string; down: number; up: number }[]>([]);
 
   useEffect(() => {
     if (!inTauri) return;
     api.appVersion().then(setVersion).catch(() => undefined);
+    api.statsRead().then(setStats).catch(() => undefined);
     api
       .installId()
       .then((id) => {
@@ -310,12 +318,156 @@ export function SettingsScreen(p: Props) {
           <div className="muted" style={{ marginTop: 10 }}>
             {updateNote}{" "}
             {updateState === "found" && updateLink ? (
-              <button className="ghost-btn" onClick={() => api.openUrl(updateLink).catch(() => undefined)}>
-                {t("download")}
-              </button>
+              <>
+                <button
+                  className="ghost-btn"
+                  onClick={async () => {
+                    try {
+                      setUpdateNote(`${t("downloading")}…`);
+                      const path = await api.updateDownload(updateLink);
+                      setUpdateNote(`${t("downloadDone")} ${path}`);
+                    } catch (e) {
+                      setUpdateNote(String(e));
+                    }
+                  }}
+                >
+                  {t("downloadInstall")}
+                </button>
+                <button className="ghost-btn" onClick={() => api.openUrl(updateLink).catch(() => undefined)}>
+                  {t("openPage")}
+                </button>
+              </>
             ) : null}
           </div>
         )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("backupTitle")}</b>
+            <span>{t("backupHint")}</span>
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: "auto", paddingInline: 16 }}
+            onClick={async () => {
+              try {
+                setBackup(await api.stateExport());
+              } catch (e) {
+                setBackup(String(e));
+              }
+            }}
+          >
+            {t("backupSave")}
+          </button>
+        </div>
+        {backup && <div className="muted" style={{ marginTop: 6 }}>{t("savedTo")} {backup}</div>}
+        <div className="row" style={{ display: "block", marginTop: 12 }}>
+          <div className="txt" style={{ maxWidth: 520 }}>
+            <b>{t("restoreTitle")}</b>
+            <span>{t("restoreHint")}</span>
+          </div>
+          <textarea
+            className="input area"
+            rows={3}
+            value={restore}
+            spellCheck={false}
+            placeholder='{"profiles": …}'
+            onChange={(e) => setRestore(e.target.value)}
+            aria-label={t("restoreTitle")}
+          />
+          <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+            <button
+              className="btn"
+              style={{ width: "auto", paddingInline: 14 }}
+              disabled={!restore.trim()}
+              onClick={async () => {
+                try {
+                  await api.stateImport(restore);
+                  setRestoreNote(t("restoreDone"));
+                  setRestore("");
+                } catch (e) {
+                  setRestoreNote(String(e));
+                }
+              }}
+            >
+              {t("restoreApply")}
+            </button>
+            {restoreNote && <span className="muted">{restoreNote}</span>}
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("statsTitle")}</b>
+            <span>{t("statsHint")}</span>
+          </div>
+        </div>
+        {stats.length === 0 ? (
+          <div className="muted" style={{ marginTop: 8 }}>{t("statsEmpty")}</div>
+        ) : (
+          <div className="day-bars">
+            {(() => {
+              const top = Math.max(...stats.map((d) => d.down + d.up), 1);
+              return stats.slice(0, 7).map((d) => {
+                const total = d.down + d.up;
+                const width = Math.max(3, Math.round((total / top) * 100));
+                return (
+                  <div className="day-row" key={d.day}>
+                    <span className="day-k">{d.day.slice(5)}</span>
+                    <span className="day-bar">
+                      <i style={{ width: `${width}%` }} />
+                    </span>
+                    <span className="day-v">{(total / 1024 / 1024 / 1024).toFixed(2)} ГБ</span>
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("leakTitle")}</b>
+            <span>{t("leakHint")}</span>
+          </div>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            disabled={leakBusy}
+            onClick={async () => {
+              setLeakBusy(true);
+              setLeakError("");
+              try {
+                setLeak(await api.dnsLeak());
+              } catch (e) {
+                setLeak(null);
+                setLeakError(String(e));
+              } finally {
+                setLeakBusy(false);
+              }
+            }}
+          >
+            {leakBusy ? "…" : t("leakCheck")}
+          </button>
+        </div>
+        {leak && (
+          <div className="leak-out">
+            <div>
+              <span className="muted">{t("leakResolver")}</span> <b className="mono">{leak.resolver || "—"}</b>
+            </div>
+            <div>
+              <span className="muted">{t("leakEgress")}</span> <b className="mono">{leak.egress || "—"}</b>
+            </div>
+            <div className="muted" style={{ marginTop: 6 }}>{t("leakHow")}</div>
+          </div>
+        )}
+        {leakError && <div className="muted warn-txt">{leakError}</div>}
       </div>
 
       <div className="card">
