@@ -23,6 +23,11 @@ object SubscriptionClient {
             setRequestProperty("User-Agent", UA)
             // Провайдер узнаёт устройство по этому заголовку; без него — заглушка
             if (hwid.isNotEmpty()) setRequestProperty("X-HWID", hwid)
+            // Эти три строки нужны только чтобы в кабинете провайдера устройство
+            // называлось понятно («Pixel 6, Android 15»), а не «неизвестное»
+            setRequestProperty("X-Device-OS", "Android")
+            setRequestProperty("X-Ver-OS", android.os.Build.VERSION.RELEASE.orEmpty())
+            setRequestProperty("X-Device-Model", android.os.Build.MODEL.orEmpty())
         }
         try {
             val code = connection.responseCode

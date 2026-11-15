@@ -77,10 +77,21 @@ sing-box, аккуратный интерфейс на React и маскот, к
 ```
 cd android
 ./gradlew assembleDebug     # нужен Android SDK 35, NDK не требуется
+./gradlew assembleRelease   # подписанный APK для телефона
 ```
 
 Перед сборкой положить `libbox.aar` в `android/app/libs/` (в репозитории его нет):
 `powershell -ExecutionPolicy Bypass -File scripts/build-libbox.ps1`.
+
+Release подписывается ключом из `android/keystore.properties` — файла **нет в
+репозитории**, он лежит у владельца (`%LOCALAPPDATA%\Android\keys\k4r-release.jks`).
+Без него `assembleRelease` соберёт неподписанный APK: поставить его на телефон
+нельзя, и это видно сразу. Ключ нельзя терять — обновления должны быть подписаны
+тем же ключом, иначе Android откажется ставить новую версию поверх старой.
+
+Готовый APK: `dist/K4R-Neko-VPN-0.1.0-android.apk` (arm64 + amd64, 52 МБ).
+Ставится на телефон как обычный APK; Play Protect спросит про незнакомый
+источник — это ожидаемо, ключ самоподписанный.
 
 ## Что это умеет
 

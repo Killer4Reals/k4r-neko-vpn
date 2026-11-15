@@ -40,3 +40,6 @@ android/.idea/
 # ядро для Android собирается скриптом (30 МБ, в репозиторий не кладём)
 android/app/libs/*.aar
 _build/
+
+# ключ подписи — только локально
+android/keystore.properties
