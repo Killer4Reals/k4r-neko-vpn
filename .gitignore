@@ -20,3 +20,7 @@ dist/
 # чужие установщики и крупные артефакты
 DeepAI-Code-*.exe
 *.msi
+
+# движок скачивается скриптом, а не хранится в репозитории
+app/src-tauri/resources/bin/*.exe
+app/src-tauri/resources/bin/*.dll

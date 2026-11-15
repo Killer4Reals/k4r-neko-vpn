@@ -102,3 +102,14 @@ cargo run --example whitelist_probe # разделение по программ
 
 Все права сохранены. Код открыт для чтения, но не для распространения или
 переиспользования без разрешения автора.
+
+## Движок
+
+`sing-box.exe` в репозитории не хранится. Перед первой сборкой:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/fetch-engine.ps1
+```
+
+Скрипт скачивает официальный релиз sing-box для Windows в
+`app/src-tauri/resources/bin/`.
