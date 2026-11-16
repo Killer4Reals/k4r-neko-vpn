@@ -374,9 +374,13 @@ class SfBox(private val service: VpnService) {
 
     /** События от ядра: перезапуск профиля, остановка, системный прокси. */
     private class Handler : CommandServerHandler {
-        /** Журнал ядра уходит в logcat: без него отказы не разобрать. */
+        /**
+         * Журнал ядра: в logcat и в память приложения. По logcat на телефоне
+         * без компьютера ничего не посмотреть, а журнал в настройках виден.
+         */
         override fun writeDebugMessage(message: String) {
             android.util.Log.d("K4R-engine", message)
+            Diag.add("ядро: $message")
         }
 
         override fun serviceReload() {}

@@ -58,6 +58,12 @@
     <string name="set_leaks">Утечки</string>
     <string name="set_ipv6">Блокировать IPv6</string>
     <string name="set_ipv6_hint">IPv6 вне туннеля — это утечка, поэтому по умолчанию закрыт</string>
+    <string name="set_diag">Диагностика</string>
+    <string name="set_diag_hint">Последние события ядра. Если что-то не работает — открой и покажи эти строки. Адреса серверов в журнал не попадают</string>
+    <string name="diag_show">Показать журнал</string>
+    <string name="diag_hide">Скрыть журнал</string>
+    <string name="diag_clear">Очистить</string>
+    <string name="diag_empty">Пока пусто: подключись, и здесь появятся события</string>
     <string name="set_about">О приложении</string>
     <string name="set_version">Версия</string>
     <string name="set_engine">Ядро sing-box</string>

@@ -18,16 +18,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ink.k4r.nekoneko.R
@@ -35,6 +39,7 @@ import ink.k4r.nekoneko.data.DnsCatalog
 import ink.k4r.nekoneko.data.DnsEntry
 import ink.k4r.nekoneko.data.Lang
 import ink.k4r.nekoneko.data.Store
+import ink.k4r.nekoneko.vpn.Diag
 
 /**
  * Настройки: DNS, защита от утечек, тема оформления и сведения о сборке.
@@ -54,6 +59,15 @@ fun SettingsScreen(
     var own by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(store.autoStart) }
     var kill by remember { mutableStateOf(store.killSwitch) }
+    var diagOpen by remember { mutableStateOf(false) }
+    var diagLines by remember { mutableStateOf(Diag.lines()) }
+    // Журнал открыт — подтягиваем новые строки, закрыт — не тратим батарею
+    LaunchedEffect(diagOpen) {
+        while (diagOpen) {
+            diagLines = Diag.lines()
+            delay(1000)
+        }
+    }
 
     val groups = DnsCatalog.groups
 
@@ -234,6 +248,52 @@ fun SettingsScreen(
                             store.autoStart = it
                         },
                     )
+                }
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
+            Panel(stringResource(R.string.set_diag)) {
+                Text(
+                    text = stringResource(R.string.set_diag_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { diagOpen = !diagOpen }) {
+                        Text(
+                            text = stringResource(if (diagOpen) R.string.diag_hide else R.string.diag_show),
+                            fontSize = 12.sp,
+                        )
+                    }
+                    if (diagOpen) {
+                        TextButton(onClick = {
+                            Diag.clear()
+                            diagLines = emptyList()
+                        }) {
+                            Text(text = stringResource(R.string.diag_clear), fontSize = 12.sp)
+                        }
+                    }
+                }
+                if (diagOpen) {
+                    if (diagLines.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.diag_empty),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 10.sp,
+                        )
+                    } else {
+                        for (line in diagLines.takeLast(40)) {
+                            Text(
+                                text = line,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.5.sp,
+                            )
+                        }
+                    }
                 }
             }
         }

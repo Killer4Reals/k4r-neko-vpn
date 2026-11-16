@@ -59,11 +59,13 @@ class TunnelService : VpnService() {
                 val include = if (store.splitMode == "only") chosen.toList() else emptyList()
                 val exclude = if (store.splitMode == "only") emptyList() else chosen.toList()
                 var reason = getString(R.string.err_no_answer)
+                Diag.add("пробуем ${Diag.server(list.first().name)}")
                 for ((index, profile) in list.withIndex()) {
                     if (index > 0) {
                         // Человек должен видеть, что происходит: «не ответил, пробую другой»
                         TunnelState.set(TunnelState.Phase.Connecting, getString(R.string.trying_server, profile.name))
                         updateNotification(getString(R.string.notify_connecting), profile.name)
+                        Diag.add("предыдущий не ответил, пробуем ${Diag.server(profile.name)}")
                     }
                     val box = SfBox(this@TunnelService)
                     try {
@@ -76,6 +78,7 @@ class TunnelService : VpnService() {
                     engine = box
                     if (alive()) {
                         store.selected = "${profile.host}:${profile.port}"
+                        Diag.add("туннель поднят на ${Diag.server(profile.name)}")
                         TunnelState.set(TunnelState.Phase.Connected)
                         updateNotification(getString(R.string.notify_connected), profile.name)
                         return@launch
@@ -83,6 +86,7 @@ class TunnelService : VpnService() {
                     box.stop()
                     engine = null
                 }
+                Diag.add("ни один сервер не ответил: $reason")
                 fail(reason, include, exclude)
                 return@launch
             } catch (e: Throwable) {
@@ -98,6 +102,7 @@ class TunnelService : VpnService() {
      * ничего не пропускает, и говорим об этом прямо. Иначе отпускаем трафик.
      */
     private fun fail(reason: String, include: List<String>, exclude: List<String>) {
+        Diag.add("отказ: $reason")
         engine?.stop()
         engine = null
         val store = Store(this)
@@ -118,6 +123,7 @@ class TunnelService : VpnService() {
     }
 
     private fun stop() {
+        Diag.add("выключено человеком")
         engine?.stop()
         engine = null
         blocker?.stop()
