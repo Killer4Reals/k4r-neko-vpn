@@ -87,5 +87,5 @@ fun App() {
 
 /** Версия приложения в одном месте. */
 object Build {
-    const val APP_VERSION = "0.1.0"
+    const val APP_VERSION = "0.2.0"
 }
