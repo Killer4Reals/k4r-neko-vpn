@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -40,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import ink.k4r.nekoneko.R
 import ink.k4r.nekoneko.data.Flags
+import ink.k4r.nekoneko.data.Ping
 import ink.k4r.nekoneko.data.Profile
 import ink.k4r.nekoneko.data.Store
 import ink.k4r.nekoneko.data.SubscriptionClient
@@ -69,6 +72,7 @@ import java.net.URL
 fun HomeScreen(store: Store) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val russian = LocalConfiguration.current.locales[0].language == "ru"
 
     val tunnel = TunnelState.state
     var phase by remember { mutableStateOf(tunnel.value.phase) }
@@ -101,6 +105,8 @@ fun HomeScreen(store: Store) {
     var expire by remember { mutableStateOf(store.subExpire) }
     var ip by remember { mutableStateOf("") }
     var ipBusy by remember { mutableStateOf(false) }
+    // Отклик серверов: id → подпись. Меряем по нажатию, а не пачкой при загрузке
+    val pings = remember { mutableStateMapOf<String, String>() }
 
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -377,10 +383,20 @@ fun HomeScreen(store: Store) {
                     )
                 }
                 items(profiles, key = { it.id }) { profile ->
-                    ServerRow(profile, active = profile.id == picked) {
-                        picked = profile.id
-                        store.selected = "${profile.host}:${profile.port}"
-                    }
+                    ServerRow(
+                        profile = profile,
+                        active = profile.id == picked,
+                        ping = pings[profile.id],
+                        onClick = {
+                            picked = profile.id
+                            store.selected = "${profile.host}:${profile.port}"
+                            pings[profile.id] = "…"
+                            scope.launch {
+                                val ms = withContext(Dispatchers.IO) { Ping.measure(profile.host, profile.port) }
+                                pings[profile.id] = Ping.label(ms, russian)
+                            }
+                        },
+                    )
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
@@ -389,7 +405,12 @@ fun HomeScreen(store: Store) {
 }
 
 @Composable
-private fun ServerRow(profile: Profile, active: Boolean, onClick: () -> Unit) {
+private fun ServerRow(
+    profile: Profile,
+    active: Boolean,
+    ping: String?,
+    onClick: () -> Unit,
+) {
     val cc = Flags.ccFromName(profile.name)
     val bg = if (active) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
     Row(
@@ -415,6 +436,10 @@ private fun ServerRow(profile: Profile, active: Boolean, onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.5.sp,
             )
+        }
+        if (ping != null) {
+            Text(text = ping, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.5.sp)
+            Spacer(Modifier.width(8.dp))
         }
         if (active) {
             Text(
