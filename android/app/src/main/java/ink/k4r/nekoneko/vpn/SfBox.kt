@@ -35,6 +35,14 @@ class SfBox(private val service: VpnService) {
     private var hole: android.os.ParcelFileDescriptor? = null
     private var client: CommandClient? = null
 
+    /**
+     * Дескриптор интерфейса, который система выдала ядру. Держим его сами:
+     * если оставить только число, закрыть интерфейс будет нечем, и после
+     * неудачного подключения VPN оставался включённым с пустым туннелем —
+     * интернета нет, а приложение уже «выключено».
+     */
+    private var tun: android.os.ParcelFileDescriptor? = null
+
     /** Запускает конфиг. Ошибку не глотаем: пусть вызывающий покажет её честно. */
     fun start(config: String, include: List<String>, exclude: List<String>, dns: String) {
         ensureSetup()
@@ -77,6 +85,12 @@ class SfBox(private val service: VpnService) {
         } catch (e: Exception) {
         }
         server = null
+        // Ядро уже отпустило интерфейс; закрываем и свой дескриптор
+        try {
+            tun?.close()
+        } catch (e: Exception) {
+        }
+        tun = null
     }
 
     /**
@@ -131,7 +145,7 @@ class SfBox(private val service: VpnService) {
     }
 
     /** Что система сообщает ядру: TUN, маршруты, список приложений. */
-    private class Platform(
+    private inner class Platform(
         private val service: VpnService,
         private val include: List<String>,
         private val exclude: List<String>,
@@ -180,7 +194,10 @@ class SfBox(private val service: VpnService) {
             val fd = builder.establish() ?: error("система не дала создать VPN-интерфейс")
             Traffic.interfaceName = (Traffic.tunNames() - before).firstOrNull()
                 ?: Traffic.tunNames().firstOrNull()
-            val raw = fd.detachFd()
+            // Не detachFd: дескриптор остаётся у нас, чтобы было чем закрыть
+            // интерфейс в stop(), а ядру отдаём тот же номер
+            tun = fd
+            val raw = fd.fd
             tunFd = raw
             return raw
         }

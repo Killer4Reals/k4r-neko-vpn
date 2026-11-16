@@ -180,6 +180,23 @@ fun HomeScreen(store: Store) {
         }
     }
 
+    // Адрес выхода спрашиваем сами, как только туннель поднялся: человек
+    // подключился, чтобы адрес сменился, — пусть увидит это сразу.
+    LaunchedEffect(phase) {
+        if (phase != TunnelState.Phase.Connected) {
+            ip = ""
+            return@LaunchedEffect
+        }
+        if (ipBusy) return@LaunchedEffect
+        ipBusy = true
+        ip = try {
+            withContext(Dispatchers.IO) { fetchIp() }
+        } catch (e: Throwable) {
+            context.getString(R.string.ip_error)
+        }
+        ipBusy = false
+    }
+
     // Подписка сама обновляется при запуске: адрес есть, а профилей нет
     // или прошло больше, чем просил провайдер.
     LaunchedEffect(Unit) {
