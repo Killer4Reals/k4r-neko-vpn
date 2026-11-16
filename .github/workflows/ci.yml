@@ -22,6 +22,14 @@ jobs:
       - name: фронтенд
         working-directory: app
         run: npm ci && npm run build
+      # tauri-build проверяет, что объявленные ресурсы существуют, а sing-box
+      # и библиотеки лежат в .gitignore (они весят как половина проекта).
+      # Тестам бинарник не нужен — достаточно пустых файлов-заглушек.
+      - name: заглушки ресурсов
+        shell: bash
+        run: |
+          mkdir -p app/src-tauri/resources/bin
+          touch app/src-tauri/resources/bin/sing-box.exe
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
