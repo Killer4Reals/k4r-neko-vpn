@@ -1,5 +1,5 @@
 {
   "version": "1.3.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.2.1/K4R.Neko.VPN_1.2.1_x64-setup.exe",
-  "notes": "Провайдер узнаёт устройство по X-HWID: ответ-заглушка больше не затирает серверы. Флаги стран без ложных срабатываний."
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.3.0/K4R.Neko.VPN_1.3.0_x64-setup.exe",
+  "notes": "Туннель включается нажатием на кружок. Второй запуск не поднимает второе ядро. Журнал ядра больше не растёт бесконечно."
 }
