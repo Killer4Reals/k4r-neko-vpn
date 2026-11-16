@@ -9,7 +9,6 @@
     <string name="state_error">Ошибка</string>
     <string name="channel_tunnel">Туннель</string>
     <string name="notify_connected">Защищено</string>
-    <string name="notify_connected_text">Трафик идёт через сервер</string>
     <string name="sub_hint">Ссылка подписки от провайдера</string>
     <string name="sub_load">Загрузить</string>
     <string name="sub_loading">Загружаю…</string>
@@ -21,7 +20,6 @@
     <string name="notify_connecting_text">Готовим туннель</string>
     <string name="err_permission">Без разрешения на VPN туннель не поднять</string>
     <string name="err_no_servers">в подписке нет серверов</string>
-    <string name="skeleton_note">Разрешение получено, но движок ещё не подключён — трафик пока не идёт</string>
     <string name="err_service">Система не разрешила запустить службу туннеля. Открой приложение и включи VPN вручную</string>
     <string name="err_no_answer">Сервер не ответил — туннель не поднялся</string>
     <string name="trying_server">Первый сервер не ответил. Пробую «%1$s»</string>
