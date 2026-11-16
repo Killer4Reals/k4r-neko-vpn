@@ -497,8 +497,10 @@ fun HomeScreen(store: Store) {
                     ) {
                         Text(stringResource(if (busy) R.string.sub_loading else R.string.sub_load), fontSize = 13.sp)
                     }
-                    if (subs.isNotEmpty()) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Кнопки нужны и на первом запуске: подписок ещё нет, а вставить
+                    // ссылку из буфера — первое, что человек захочет сделать
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (subs.isNotEmpty()) {
                             TextButton(onClick = {
                                 // поле пустое — вводим новую ссылку
                                 url = ""
@@ -506,50 +508,50 @@ fun HomeScreen(store: Store) {
                             }) {
                                 Text(stringResource(R.string.sub_add), fontSize = 11.sp)
                             }
-                            if (url.isNotBlank()) {
-                                TextButton(onClick = {
-                                    // Перенести подписку на другой телефон: скопировать проще, чем набирать
-                                    clipboard.setText(AnnotatedString(url))
-                                    message = context.getString(R.string.sub_copied)
-                                }) {
-                                    Text(stringResource(R.string.sub_copy), fontSize = 11.sp)
-                                }
-                            }
-                            // На телефоне вставлять ссылку долгим нажатием неудобно.
-                            // Буфер читаем только по нажатию: система показывает
-                            // «приложение читает буфер», и делать это без спроса нельзя
+                        }
+                        if (url.isNotBlank()) {
                             TextButton(onClick = {
-                                val pasted = clipboard.getText()?.text?.trim().orEmpty()
-                                if (pasted.contains("://")) {
-                                    url = pasted
-                                    message = ""
+                                // Перенести подписку на другой телефон: скопировать проще, чем набирать
+                                clipboard.setText(AnnotatedString(url))
+                                message = context.getString(R.string.sub_copied)
+                            }) {
+                                Text(stringResource(R.string.sub_copy), fontSize = 11.sp)
+                            }
+                        }
+                        // На телефоне вставлять ссылку долгим нажатием неудобно.
+                        // Буфер читаем только по нажатию: система показывает
+                        // «приложение читает буфер», и делать это без спроса нельзя
+                        TextButton(onClick = {
+                            val pasted = clipboard.getText()?.text?.trim().orEmpty()
+                            if (pasted.contains("://")) {
+                                url = pasted
+                                message = ""
+                            } else {
+                                message = context.getString(R.string.sub_paste_empty)
+                            }
+                        }) {
+                            Text(stringResource(R.string.sub_paste), fontSize = 11.sp)
+                        }
+                        if (activeUrl.isNotBlank()) {
+                            TextButton(onClick = {
+                                val target = activeUrl
+                                store.forgetSub(target)
+                                subs = store.subList()
+                                val next = subs.firstOrNull()?.url.orEmpty()
+                                if (next.isNotEmpty()) {
+                                    openSub(next)
                                 } else {
-                                    message = context.getString(R.string.sub_paste_empty)
+                                    activeUrl = ""
+                                    url = ""
+                                    title = ""
+                                    used = 0
+                                    total = 0
+                                    expire = 0
+                                    picked = ""
+                                    profiles = emptyList()
                                 }
                             }) {
-                                Text(stringResource(R.string.sub_paste), fontSize = 11.sp)
-                            }
-                            if (activeUrl.isNotBlank()) {
-                                TextButton(onClick = {
-                                    val target = activeUrl
-                                    store.forgetSub(target)
-                                    subs = store.subList()
-                                    val next = subs.firstOrNull()?.url.orEmpty()
-                                    if (next.isNotEmpty()) {
-                                        openSub(next)
-                                    } else {
-                                        activeUrl = ""
-                                        url = ""
-                                        title = ""
-                                        used = 0
-                                        total = 0
-                                        expire = 0
-                                        picked = ""
-                                        profiles = emptyList()
-                                    }
-                                }) {
-                                    Text(stringResource(R.string.sub_forget), fontSize = 11.sp)
-                                }
+                                Text(stringResource(R.string.sub_forget), fontSize = 11.sp)
                             }
                         }
                     }
