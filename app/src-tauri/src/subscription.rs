@@ -168,6 +168,10 @@ pub fn import_text(text: &str) -> Result<Vec<Profile>, String> {
     if raw.is_empty() {
         return Err("пусто: вставь ссылку vless://…".into());
     }
+    // Вставить могут и целый конфиг: тогда это тот же разбор, что и у подписки
+    if raw.starts_with('{') || raw.starts_with('[') {
+        return parse(raw).map(|result| result.profiles);
+    }
 
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(raw)
@@ -291,10 +295,15 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
             continue;
         };
         for ob in outbounds {
-            if ob.get("protocol").and_then(|v| v.as_str()) != Some("vless") {
-                continue;
-            }
-            if let Some(p) = profile_from_xray(ob, &remarks) {
+            // Два разных JSON: sing-box (`type`) и Xray (`protocol`).
+            // Провайдеры отдают и тот, и другой — понимаем оба.
+            if let Some(p) = profile_from_singbox(ob).or_else(|| {
+                if ob.get("protocol").and_then(|v| v.as_str()) == Some("vless") {
+                    profile_from_xray(ob, &remarks)
+                } else {
+                    None
+                }
+            }) {
                 profiles.push(p);
             }
         }
@@ -319,6 +328,98 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
         title: String::new(),
         refresh_hint: 0,
         format: "xray-json".into(),
+    })
+}
+
+/// Сервер из конфига sing-box: `{"type":"vless","server":...,"server_port":...}`.
+/// Это родной формат нашего ядра, и часть провайдеров отдаёт подписку именно так.
+fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
+    let kind = ob.get("type").and_then(|v| v.as_str())?;
+    if kind != "vless" {
+        return None;
+    }
+    let host = ob.get("server").and_then(|v| v.as_str())?.to_string();
+    let port = ob.get("server_port").and_then(|v| v.as_u64())? as u16;
+    let uuid = ob.get("uuid").and_then(|v| v.as_str())?.to_string();
+    if host.is_empty() || uuid.is_empty() {
+        return None;
+    }
+    let flow = ob.get("flow").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    let tls = ob.get("tls");
+    let reality = tls.and_then(|t| t.get("reality"));
+    let security = if reality.is_some() {
+        "reality"
+    } else if tls.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false) {
+        "tls"
+    } else {
+        "none"
+    }
+    .to_string();
+
+    let transport = ob.get("transport");
+    let network = transport
+        .and_then(|t| t.get("type"))
+        .and_then(|v| v.as_str())
+        .and_then(|t| match t {
+            "ws" => Some("ws"),
+            "grpc" => Some("grpc"),
+            "http" | "httpupgrade" => Some("ws"),
+            _ => None,
+        })
+        .unwrap_or("tcp")
+        .to_string();
+
+    let sni = tls
+        .and_then(|t| t.get("server_name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let public_key = reality
+        .and_then(|r| r.get("public_key"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let short_id = reality
+        .and_then(|r| r.get("short_id"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let fingerprint = tls
+        .and_then(|t| t.get("utls"))
+        .and_then(|u| u.get("fingerprint"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("chrome")
+        .to_string();
+    let service_name = transport
+        .and_then(|t| t.get("service_name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let path = transport
+        .and_then(|t| t.get("path"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let tag = ob.get("tag").and_then(|v| v.as_str()).unwrap_or("");
+    let name = if tag.is_empty() { host.clone() } else { tag.to_string() };
+
+    Some(Profile {
+        id: format!("{host}:{port}:{uuid}"),
+        name,
+        host,
+        port,
+        uuid,
+        flow,
+        security,
+        network,
+        sni,
+        public_key,
+        short_id,
+        fingerprint,
+        service_name,
+        path,
     })
 }
 
@@ -557,22 +658,6 @@ mod tests {
         let r = parse(body).unwrap();
         assert_eq!(r.warnings.len(), 1);
     }
-}
-
-#[cfg(test)]
-mod net_tests {
-    use super::*;
-
-    /// Live check against the owner's subscription. Ignored by default.
-    #[test]
-    #[ignore]
-    fn fetches_real_subscription() {
-        let r = fetch("https://example.invalid/subscription", "Happ/4.7.2", &[]).unwrap();
-        println!("format={} profiles={} warnings={:?}", r.format, r.profiles.len(), r.warnings);
-        assert!(!r.profiles.is_empty());
-    }
-}
-
     #[test]
     fn reads_usage_and_expiry_from_the_header() {
         let info = parse_userinfo("upload=1024; download=2048; total=1048576; expire=1796462447");
@@ -598,3 +683,87 @@ mod net_tests {
         assert_eq!(parse_title("Мой провайдер"), "Мой провайдер");
         assert_eq!(parse_title(""), "");
     }
+
+    const SINGBOX_JSON: &str = r#"{
+      "outbounds": [
+        {
+          "type": "vless",
+          "tag": "Финляндия",
+          "server": "fi1.example.invalid",
+          "server_port": 443,
+          "uuid": "11111111-1111-1111-1111-111111111111",
+          "flow": "xtls-rprx-vision",
+          "tls": {
+            "enabled": true,
+            "server_name": "www.example.invalid",
+            "reality": { "enabled": true, "public_key": "PUB", "short_id": "ab" },
+            "utls": { "enabled": true, "fingerprint": "chrome" }
+          }
+        },
+        {
+          "type": "vless",
+          "tag": "Нидерланды",
+          "server": "nl1.example.invalid",
+          "server_port": 8443,
+          "uuid": "22222222-2222-2222-2222-222222222222",
+          "transport": { "type": "ws", "path": "/vless" }
+        },
+        { "type": "direct", "tag": "direct" }
+      ]
+    }"#;
+
+    #[test]
+    fn singbox_json_reality_becomes_a_profile() {
+        let result = parse(SINGBOX_JSON).expect("конфиг sing-box должен разобраться");
+        assert_eq!(result.profiles.len(), 2, "direct пропускается, два сервера остаются");
+        let fi = &result.profiles[0];
+        assert_eq!(fi.name, "Финляндия");
+        assert_eq!(fi.host, "fi1.example.invalid");
+        assert_eq!(fi.port, 443);
+        assert_eq!(fi.security, "reality");
+        assert_eq!(fi.network, "tcp");
+        assert_eq!(fi.sni, "www.example.invalid");
+        assert_eq!(fi.public_key, "PUB");
+        assert_eq!(fi.short_id, "ab");
+        assert_eq!(fi.flow, "xtls-rprx-vision");
+    }
+
+    #[test]
+    fn singbox_json_ws_transport_is_kept() {
+        let result = parse(SINGBOX_JSON).unwrap();
+        let nl = &result.profiles[1];
+        assert_eq!(nl.network, "ws");
+        assert_eq!(nl.path, "/vless");
+        // без tls в конфиге — без шифрования, а не «на всякий случай reality»
+        assert_eq!(nl.security, "none");
+    }
+
+    #[test]
+    fn singbox_json_without_servers_is_an_error() {
+        let empty = r#"{ "outbounds": [ { "type": "direct", "tag": "d" } ] }"#;
+        let err = parse(empty).unwrap_err();
+        assert!(err.contains("VLESS"), "ошибка должна говорить, чего не хватает: {err}");
+    }
+
+    #[test]
+    fn pasted_singbox_json_is_imported_like_a_link() {
+        // «Импорт ссылки» принимает и конфиг: один и тот же разбор
+        let profiles = import_text(SINGBOX_JSON).expect("вставка конфига должна работать");
+        assert_eq!(profiles.len(), 2);
+    }
+
+}
+
+#[cfg(test)]
+mod net_tests {
+    use super::*;
+
+    /// Live check against the owner's subscription. Ignored by default.
+    #[test]
+    #[ignore]
+    fn fetches_real_subscription() {
+        let r = fetch("https://example.invalid/subscription", "Happ/4.7.2", &[]).unwrap();
+        println!("format={} profiles={} warnings={:?}", r.format, r.profiles.len(), r.warnings);
+        assert!(!r.profiles.is_empty());
+    }
+}
