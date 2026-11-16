@@ -34,6 +34,10 @@ export type Traffic = { down: number; up: number; total_down: number; total_up: 
 export type CoreInfo = {
   name: string;
   version: string;
+  /** версия sing-box, названная самим ядром; "" — не смогли спросить */
+  core_version: string;
+  /** true — работает обновлённое ядро, а не встроенное */
+  core_updated: boolean;
   platform: string;
   data_dir: string;
   admin: boolean;
@@ -75,6 +79,9 @@ export const api = {
   stateExport: () => invoke<string>("state_export"),
   stateImport: (text: string) => invoke<void>("state_import", { text }),
   dnsLeak: () => invoke<{ resolver: string; egress: string }>("dns_leak"),
+  coreLatest: () => invoke<string>("core_latest"),
+  coreUpdate: (version: string) => invoke<string>("core_update", { version }),
+  coreReset: () => invoke<string>("core_reset"),
   updateDownload: (url: string) => invoke<string>("update_download", { url }),
   zapretSettings: () =>
     invoke<{

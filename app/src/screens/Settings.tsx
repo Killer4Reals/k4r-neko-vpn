@@ -39,7 +39,7 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const [deviceId, setDeviceId] = useState("");
-  const [version, setVersion] = useState("1.3.0");
+  const [version, setVersion] = useState("1.4.0");
   const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error">("idle");
   const [updateNote, setUpdateNote] = useState("");
   const [updateLink, setUpdateLink] = useState("");
@@ -49,6 +49,9 @@ export function SettingsScreen(p: Props) {
   const [backup, setBackup] = useState("");
   const [restore, setRestore] = useState("");
   const [restoreNote, setRestoreNote] = useState("");
+  const [core, setCore] = useState<{ version: string; updated: boolean }>({ version: "", updated: false });
+  const [coreBusy, setCoreBusy] = useState(false);
+  const [coreNote, setCoreNote] = useState("");
   const [leak, setLeak] = useState<{ resolver: string; egress: string } | null>(null);
   const [leakBusy, setLeakBusy] = useState(false);
   const [leakError, setLeakError] = useState("");
@@ -57,6 +60,10 @@ export function SettingsScreen(p: Props) {
   useEffect(() => {
     if (!inTauri) return;
     api.appVersion().then(setVersion).catch(() => undefined);
+    api
+      .coreInfo()
+      .then((info) => setCore({ version: info.core_version, updated: info.core_updated }))
+      .catch(() => undefined);
     api.statsRead().then(setStats).catch(() => undefined);
     api
       .installId()
@@ -445,6 +452,67 @@ export function SettingsScreen(p: Props) {
         {leakError && <div className="muted warn-txt">{leakError}</div>}
       </div>
 
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("coreTitle")}</b>
+            <span>
+              {core.version ? t("coreCurrent").replace("{v}", core.version) : t("coreUnknown")}
+              {core.updated ? ` · ${t("coreCustom")}` : ` · ${t("coreBundled")}`}
+            </span>
+          </div>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            disabled={coreBusy}
+            onClick={async () => {
+              setCoreBusy(true);
+              setCoreNote("");
+              try {
+                const latest = await api.coreLatest();
+                if (core.version && latest === core.version && !core.updated) {
+                  setCoreNote(t("coreIsLatest").replace("{v}", latest));
+                } else {
+                  const got = await api.coreUpdate(latest);
+                  setCore({ version: got, updated: true });
+                  setCoreNote(t("coreUpdated").replace("{v}", got));
+                }
+              } catch (e) {
+                setCoreNote(String(e));
+              } finally {
+                setCoreBusy(false);
+              }
+            }}
+          >
+            {coreBusy ? "…" : t("coreCheck")}
+          </button>
+        </div>
+        {core.updated && (
+          <div className="row" style={{ marginTop: 6 }}>
+            <button
+              className="ghost-btn"
+              disabled={coreBusy}
+              onClick={async () => {
+                setCoreBusy(true);
+                setCoreNote("");
+                try {
+                  const back = await api.coreReset();
+                  setCore({ version: back, updated: false });
+                  setCoreNote(t("coreResetDone").replace("{v}", back));
+                } catch (e) {
+                  setCoreNote(String(e));
+                } finally {
+                  setCoreBusy(false);
+                }
+              }}
+            >
+              {t("coreReset")}
+            </button>
+          </div>
+        )}
+        {coreNote && <div className="muted" style={{ marginTop: 6 }}>{coreNote}</div>}
+      </div>
+
       <div className="card">
         <dl className="kv">
           <dt>{t("about")}</dt>
@@ -452,7 +520,7 @@ export function SettingsScreen(p: Props) {
           <dt>{t("version")}</dt>
           <dd>{version}</dd>
           <dt>{t("core")}</dt>
-          <dd>{t("coreValue")}</dd>
+          <dd>{core.version ? `sing-box ${core.version}` : "sing-box"}</dd>
           <dt>{t("deviceId")}</dt>
           <dd>
             <div className="id-row">

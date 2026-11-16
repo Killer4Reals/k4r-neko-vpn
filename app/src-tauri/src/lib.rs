@@ -23,6 +23,10 @@ use winreg::RegKey;
 pub struct CoreInfo {
     pub name: String,
     pub version: String,
+    /// Версия sing-box, как её называет само ядро ("1.14.4"); пусто — не смогли.
+    pub core_version: String,
+    /// true, если работает обновлённое ядро, а не встроенное.
+    pub core_updated: bool,
     pub platform: String,
     pub data_dir: String,
     pub admin: bool,
@@ -34,6 +38,12 @@ fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|e| format!("cannot resolve app data dir: {e}"))
+}
+
+/// Какое ядро запускать: своё обновлённое, если оно есть, иначе встроенное.
+fn core_bin(app: &tauri::AppHandle) -> PathBuf {
+    let data = data_dir(app).ok();
+    engine::sidecar_with_core(&resources_dir(app), data.as_deref())
 }
 
 fn resources_dir(app: &tauri::AppHandle) -> PathBuf {
@@ -72,12 +82,152 @@ fn core_info(app: tauri::AppHandle) -> Result<CoreInfo, String> {
     Ok(CoreInfo {
         name: "K4R Neko VPN".into(),
         version: env!("CARGO_PKG_VERSION").into(),
+        core_version: engine::core_version(&core_bin(&app)),
+        core_updated: data_dir(&app)
+            .map(|d| engine::updated_core(&d).exists())
+            .unwrap_or(false),
         platform: std::env::consts::OS.into(),
         data_dir: data_dir(&app)?.display().to_string(),
         admin: engine::is_elevated(),
         zapret_dir: zapret::detect_dir().map(|p| p.display().to_string()),
         autostart: autostart_enabled(),
     })
+}
+
+/// Адрес релиза ядра. Отдельная функция — её проверяет тест: без строгой
+/// проверки версии сюда можно вписать что угодно и скачать чужой файл.
+fn core_download_url(version: &str) -> Result<String, String> {
+    let v = version.trim().trim_start_matches('v');
+    let ok = !v.is_empty()
+        && v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+        && v.chars().all(|c| c.is_ascii_digit() || c == '.');
+    if !ok {
+        return Err(format!("не похоже на версию: {version}"));
+    }
+    Ok(format!(
+        "https://github.com/SagerNet/sing-box/releases/download/v{v}/sing-box-{v}-windows-amd64.zip"
+    ))
+}
+
+/// Последняя версия ядра по данным GitHub. Пусто — не смогли спросить.
+#[tauri::command]
+async fn core_latest() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(15)))
+            .user_agent("K4R-Neko-VPN/core")
+            .build()
+            .into();
+        let body = agent
+            .get("https://api.github.com/repos/SagerNet/sing-box/releases/latest")
+            .call()
+            .map_err(|e| format!("не удалось спросить GitHub: {e}"))?
+            .into_body()
+            .read_to_string()
+            .map_err(|e| e.to_string())?;
+        let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+        value
+            .get("tag_name")
+            .and_then(|v| v.as_str())
+            .map(|t| t.trim_start_matches('v').to_string())
+            .ok_or_else(|| "GitHub не назвал версию".to_string())
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
+/// Скачать и поставить новое ядро рядом с настройками (без прав администратора).
+/// Старое не трогаем: его можно вернуть одной кнопкой.
+#[tauri::command]
+async fn core_update(app: tauri::AppHandle, version: String) -> Result<String, String> {
+    let url = core_download_url(&version)?;
+    let data = data_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let work = std::env::temp_dir().join("k4r-core");
+        let _ = std::fs::remove_dir_all(&work);
+        std::fs::create_dir_all(&work).map_err(|e| format!("не смог создать каталог: {e}"))?;
+
+        let zip_path = work.join("sing-box.zip");
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(600)))
+            .user_agent("K4R-Neko-VPN/core")
+            .build()
+            .into();
+        let mut resp = agent
+            .get(&url)
+            .call()
+            .map_err(|e| format!("не удалось скачать ядро: {e}"))?;
+        let mut file = std::fs::File::create(&zip_path).map_err(|e| e.to_string())?;
+        std::io::copy(&mut resp.body_mut().as_reader(), &mut file)
+            .map_err(|e| format!("скачивание прервалось: {e}"))?;
+        drop(file);
+
+        // Zip распаковываем системой: тянуть ради одного архива ещё одну
+        // зависимость в клиент — лишний вес и лишние обновления
+        let unzip = format!(
+            "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+            zip_path.display(),
+            work.join("out").display()
+        );
+        let mut unzip_cmd = std::process::Command::new("powershell");
+        engine::hidden(&mut unzip_cmd);
+        let status = unzip_cmd
+            .args(["-NoProfile", "-NonInteractive", "-Command", &unzip])
+            .status()
+            .map_err(|e| format!("не смог распаковать архив: {e}"))?;
+        if !status.success() {
+            return Err("архив не распаковался".into());
+        }
+
+        let mut found: Option<std::path::PathBuf> = None;
+        let mut stack = vec![work.join("out")];
+        while let Some(dir) = stack.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path
+                    .file_name()
+                    .map(|n| n.eq_ignore_ascii_case("sing-box.exe"))
+                    .unwrap_or(false)
+                {
+                    found = Some(path);
+                }
+            }
+        }
+        let exe = found.ok_or_else(|| "в архиве нет sing-box.exe".to_string())?;
+
+        // Проверяем, что скачали именно ядро и именно той версии
+        let got = engine::core_version(&exe);
+        let want = version.trim().trim_start_matches('v').to_string();
+        if got.is_empty() {
+            return Err("скачанный файл не запускается как ядро".into());
+        }
+        if got != want {
+            return Err(format!("в архиве ядро {got}, а просили {want}"));
+        }
+
+        let target = engine::updated_core(&data);
+        if let Some(dir) = target.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("не смог создать каталог: {e}"))?;
+        }
+        std::fs::copy(&exe, &target).map_err(|e| format!("не смог положить ядро: {e}"))?;
+        let _ = std::fs::remove_dir_all(&work);
+        Ok(got)
+    })
+    .await
+    .map_err(|e| format!("задача упала: {e}"))?
+}
+
+/// Вернуть встроенное ядро: обновлённое просто удаляем.
+#[tauri::command]
+fn core_reset(app: tauri::AppHandle) -> Result<String, String> {
+    let path = engine::updated_core(&data_dir(&app)?);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| format!("не смог удалить: {e}"))?;
+    }
+    Ok(engine::core_version(&core_bin(&app)))
 }
 
 #[tauri::command]
@@ -496,7 +646,7 @@ fn engine_start(
     mode: Option<String>,
     via: Option<Vec<String>>,
 ) -> Result<engine::EngineStatus, String> {
-    let bin = engine::sidecar_path(&resources_dir(&app));
+    let bin = core_bin(&app);
     let log_path = data_dir(&app)?.join("logs").join("engine.log");
     engine::write_log_header(
         &log_path,
@@ -572,7 +722,7 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
                 engine::EngineState::Idle => break,
                 engine::EngineState::Error if reconnect && attempts < 3 => {
                     attempts += 1;
-                    let bin = engine::sidecar_path(&resources_dir(&app));
+                    let bin = core_bin(&app);
                     let log_path = match data_dir(&app) {
                         Ok(d) => d.join("logs").join("engine.log"),
                         Err(_) => break,
@@ -624,7 +774,7 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
                 engine::EngineState::Error => {
                     let mut message = st.message.clone();
                     if kill_switch {
-                        let bin = engine::sidecar_path(&resources_dir(&app));
+                        let bin = core_bin(&app);
                         if let Ok(d) = data_dir(&app) {
                             if engine::start_hold(&engine, &bin, &d.join("logs").join("engine.log")) {
                                 message = format!("{message}. Интернет удерживается: нажми «Отключить VPN»");
@@ -1140,6 +1290,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             core_info,
+            core_latest,
+            core_update,
+            core_reset,
             set_start_with_windows,
             sub_fetch,
             install_id,
@@ -1229,5 +1382,38 @@ mod stats_tests {
             day_merge(&mut m, &format!("2026-{:02}-01", (day % 12) + 1), 1, 1).unwrap();
         }
         assert!(m.len() <= 62, "в карте {} дней", m.len());
+    }
+}
+
+#[cfg(test)]
+mod core_tests {
+    use super::*;
+
+    #[test]
+    fn core_url_is_built_for_real_versions() {
+        let url = core_download_url("1.14.4").unwrap();
+        assert!(url.ends_with("/v1.14.4/sing-box-1.14.4-windows-amd64.zip"), "{url}");
+        // «v» в начале — как на GitHub, это не ошибка ввода
+        assert_eq!(core_download_url("v1.15.0").unwrap(), core_download_url("1.15.0").unwrap());
+    }
+
+    #[test]
+    fn core_url_refuses_anything_that_is_not_a_version() {
+        // Сюда нельзя вписать путь или чужой адрес: скачается чужой файл
+        for bad in ["", "latest", "../evil", "1.2.3/../../x", "1.2.3?x=1", "v", "1.2.3-rc1"] {
+            assert!(core_download_url(bad).is_err(), "должно отказать: {bad:?}");
+        }
+        // пробелы по краям — это не ошибка ввода, их срезаем
+        assert_eq!(core_download_url(" 1.14.4 ").unwrap(), core_download_url("1.14.4").unwrap());
+    }
+
+    #[test]
+    fn version_is_read_from_the_engine_banner() {
+        let text = "sing-box version 1.14.4
+
+Environment: go1.23.6 windows/amd64
+";
+        assert_eq!(engine::parse_version(text), "1.14.4");
+        assert_eq!(engine::parse_version("что-то другое"), "");
     }
 }

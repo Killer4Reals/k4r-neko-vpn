@@ -393,7 +393,25 @@ pub fn is_elevated() -> bool {
 }
 
 /// Finds the bundled engine in every layout we ship: installed, portable, dev.
+/// Путь к обновлённому ядру в данных приложения (`<data>/core/sing-box.exe`).
+/// Так обновление ядра не требует прав администратора и не трогает
+/// установленную программу: рядом с установкой живёт то, что поставили мы.
+pub fn updated_core(data_dir: &Path) -> PathBuf {
+    data_dir.join("core").join("sing-box.exe")
+}
+
 pub fn sidecar_path(resource_dir: &Path) -> PathBuf {
+    sidecar_with_core(resource_dir, None)
+}
+
+/// Как [`sidecar_path`], но с учётом обновлённого ядра — если оно на месте.
+pub fn sidecar_with_core(resource_dir: &Path, data_dir: Option<&Path>) -> PathBuf {
+    if let Some(dir) = data_dir {
+        let own = updated_core(dir);
+        if own.exists() {
+            return own;
+        }
+    }
     let mut candidates = vec![
         resource_dir.join("bin").join("sing-box.exe"),
         resource_dir.join("resources").join("bin").join("sing-box.exe"),
@@ -415,6 +433,33 @@ pub fn sidecar_path(resource_dir: &Path) -> PathBuf {
         .find(|p| p.exists())
         .cloned()
         .unwrap_or_else(|| candidates[0].clone())
+}
+
+/// Версия ядра из первой строки `sing-box version`:
+/// `sing-box version 1.14.4`. Отдельная функция — чтобы её проверял тест.
+pub fn parse_version(text: &str) -> String {
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("sing-box version ") {
+            return rest.split_whitespace().next().unwrap_or("").to_string();
+        }
+    }
+    String::new()
+}
+
+/// Спросить у самого ядра, какая у него версия. Пусто — не смогли.
+pub fn core_version(bin: &Path) -> String {
+    if !bin.exists() {
+        return String::new();
+    }
+    let mut cmd = Command::new(bin);
+    cmd.arg("version");
+    hidden(&mut cmd);
+    let out = cmd.output();
+    match out {
+        Ok(o) => parse_version(&String::from_utf8_lossy(&o.stdout)),
+        Err(_) => String::new(),
+    }
 }
 
 /// Every console program we start must be invisible: no black window may flash.
