@@ -23,6 +23,7 @@
     <string name="err_no_servers">в подписке нет серверов</string>
     <string name="skeleton_note">Разрешение получено, но движок ещё не подключён — трафик пока не идёт</string>
     <string name="err_no_answer">Сервер не ответил — туннель не поднялся</string>
+    <string name="trying_server">Первый сервер не ответил. Пробую «%1$s»</string>
     <string name="panel_sub">Подписка</string>
     <string name="panel_ip">Твой IP</string>
     <string name="row_traffic">Трафик</string>

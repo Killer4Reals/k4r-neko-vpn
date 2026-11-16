@@ -1,6 +1,7 @@
 package ink.k4r.nekoneko.data
 
 import android.content.Context
+import android.provider.Settings
 
 /**
  * Всё, что приложение помнит между запусками. Одно место, чтобы не искать
@@ -8,6 +9,7 @@ import android.content.Context
  */
 class Store(context: Context) {
 
+    private val context = context.applicationContext
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     var subUrl: String
@@ -25,17 +27,29 @@ class Store(context: Context) {
         set(value) = prefs.edit().putString("selected", value).apply()
 
     /**
-     * Постоянный идентификатор установки. Провайдеры (Happ, RayTun и подобные)
+     * Постоянный идентификатор устройства. Провайдеры (Happ, RayTun и подобные)
      * считают по нему устройства: без заголовка X-HWID они отвечают заглушкой
      * «приложение не поддерживается», даже если слот свободен.
+     *
+     * Считаем его из системного ANDROID_ID, а не из случайных чисел: он живёт
+     * столько же, сколько телефон, и переустановка приложения его не меняет —
+     * иначе каждая переустановка занимала бы у провайдера новый слот.
      */
     val hwid: String
         get() {
             val saved = prefs.getString("hwid", "").orEmpty()
             if (saved.isNotEmpty()) return saved
-            val fresh = (1..12)
-                .map { "0123456789ABCDEF"[kotlin.random.Random.nextInt(16)] }
-                .joinToString("")
+            val seed = try {
+                Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+            } catch (e: Exception) {
+                null
+            }
+            val fresh = if (seed.isNullOrBlank()) {
+                // совсем без системного идентификатора — остаётся случайный
+                (1..12).map { "0123456789ABCDEF"[kotlin.random.Random.nextInt(16)] }.joinToString("")
+            } else {
+                hwid(seed)
+            }
             prefs.edit().putString("hwid", fresh).apply()
             return fresh
         }
@@ -47,6 +61,15 @@ class Store(context: Context) {
     var killSwitch: Boolean
         get() = prefs.getBoolean("kill_switch", true)
         set(value) = prefs.edit().putBoolean("kill_switch", value).apply()
+
+    companion object {
+        /** 12 шестнадцатеричных знаков из системного идентификатора. */
+        fun hwid(androidId: String): String {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(("k4r-neko-vpn:$androidId").toByteArray(Charsets.UTF_8))
+            return digest.take(6).joinToString("") { "%02X".format(it) }
+        }
+    }
 
     /** Поднимать туннель сразу после перезагрузки телефона. */
     var autoStart: Boolean
@@ -105,7 +128,18 @@ class Store(context: Context) {
 
     fun profile(): Profile? {
         val list = profiles()
+        if (list.isEmpty()) return null
         val key = selected
-        return list.firstOrNull { "${it.host}:${it.port}" == key } ?: list.firstOrNull()
+        return list.firstOrNull { "${it.host}:${it.port}" == key } ?: defaultProfile(list)
     }
+
+    /**
+     * Кого пробовать: сначала выбранный сервер, потом остальные из подписки,
+     * но не больше трёх. Провайдеры держат в списке и мёртвые адреса, и запись
+     * «авто-выбор», которая никуда не ведёт — перебираем, а не сдаёмся сразу.
+     */
+    fun attempts(limit: Int = Servers.ATTEMPTS): List<Profile> = Servers.attempts(profiles(), selected, limit)
+
+    /** По умолчанию берём первый настоящий сервер: «Авто-выбор» — не сервер. */
+    fun defaultProfile(list: List<Profile> = profiles()): Profile? = Servers.defaultProfile(list)
 }

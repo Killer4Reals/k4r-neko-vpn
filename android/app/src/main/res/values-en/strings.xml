@@ -23,6 +23,7 @@
     <string name="err_no_servers">the subscription has no servers</string>
     <string name="skeleton_note">Permission granted, but the engine is not wired yet — traffic does not flow</string>
     <string name="err_no_answer">The server did not answer — the tunnel is down</string>
+    <string name="trying_server">The first server did not answer. Trying “%1$s”</string>
     <string name="panel_sub">Subscription</string>
     <string name="panel_ip">Your IP</string>
     <string name="row_traffic">Traffic</string>

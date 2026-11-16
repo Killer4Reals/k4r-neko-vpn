@@ -45,10 +45,7 @@ object SubscriptionClient {
             }
             // Провайдер умеет отвечать заглушкой «приложение не поддерживается»:
             // это профиль с адресом 0.0.0.0:1. Показываем её словами, а не сервером.
-            if (nested.isNotEmpty() && nested.all { it.host == "0.0.0.0" || it.port == 1 }) {
-                val message = nested.first().name.ifBlank { "провайдер не дал серверов" }
-                throw IllegalStateException(message)
-            }
+            SubscriptionParser.placeholderReason(nested)?.let { throw IllegalStateException(it) }
             return SubResult(nested, info, title, refresh)
         } finally {
             connection.disconnect()

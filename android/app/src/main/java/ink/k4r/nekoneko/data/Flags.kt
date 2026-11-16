@@ -47,15 +47,30 @@ object Flags {
         if (raw.isEmpty()) return null
         ccFromRegional(raw)?.let { return it }
         val text = raw.dropWhile { isEmoji(it) }.trim()
-        if (text.length >= 2) {
-            val head = text.take(2).lowercase()
-            val third = text.getOrNull(2)
-            if (head in known && (third == null || !third.isLetter())) return head
+        prefix(text)?.let { (cc, rest) ->
+            if (cc in known && looksLikeCode(rest)) return cc
         }
         for ((pattern, cc) in words) {
             if (Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(text)) return cc
         }
         return null
+    }
+
+    /**
+     * Две латинские буквы впереди — это код, только если дальше идёт имя
+     * собственное. Иначе «It works» теряло бы слово и превращалось в Италию.
+     */
+    private fun looksLikeCode(rest: String): Boolean = rest.isNotEmpty() && rest[0] !in 'a'..'z'
+
+    /** «FI Финляндия» → код и остаток имени. */
+    private fun prefix(text: String): Pair<String, String>? {
+        if (text.length < 2) return null
+        val code = text.take(2)
+        if (!code.all { it in 'A'..'Z' || it in 'a'..'z' }) return null
+        val third = text.getOrNull(2)
+        if (third != null && third.isLetter()) return null
+        val rest = text.drop(2).trimStart(' ', '-', '–', '—', '·', ':').trim()
+        return code.lowercase() to rest
     }
 
     /** Имя сервера без служебного кода и эмодзи: «🇫🇮 Финляндия» → «Финляндия». */
@@ -66,16 +81,17 @@ object Flags {
             text = text.drop(4).trim()
         }
         text = text.dropWhile { isEmoji(it) }.trim()
-        if (text.length >= 3 && text.take(2).lowercase() in known && !text[2].isLetter()) {
-            text = text.drop(2).trim().trimStart('-', '–', '—', '·', ':').trim()
+        prefix(text)?.let { (cc, rest) ->
+            if (cc in known && looksLikeCode(rest)) text = rest
         }
         text = text.trimEnd().dropLastWhile { isEmoji(it) }.trim()
         return text
     }
 
-    /** Эмодзи-флаг из кода страны; null, если кода нет. */
+    /** Эмодзи-флаг из кода страны; null, если такой страны мы не знаем. */
     fun emoji(cc: String?): String? {
         val code = cc?.lowercase()?.takeIf { it.length == 2 && it.all { ch -> ch in 'a'..'z' } } ?: return null
+        if (code !in known) return null
         val base = 0x1F1E6 - 'a'.code
         return String(Character.toChars(base + code[0].code)) +
             String(Character.toChars(base + code[1].code))

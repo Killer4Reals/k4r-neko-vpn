@@ -53,32 +53,38 @@ class TunnelService : VpnService() {
         scope.launch {
             try {
                 val store = Store(this@TunnelService)
-                val profile = store.profile() ?: error("нет сервера: сначала загрузи подписку")
+                val list = store.attempts()
+                if (list.isEmpty()) error(getString(R.string.err_no_servers))
                 val chosen = store.chosen()
                 val include = if (store.splitMode == "only") chosen.toList() else emptyList()
                 val exclude = if (store.splitMode == "only") emptyList() else chosen.toList()
-                val config = Config.build(profile, store.dns, store.blockIpv6)
-                val box = SfBox(this@TunnelService)
-                box.start(config, include, exclude, store.dns)
-                engine = box
-                // Как на ПК: «защищено» — не по факту запуска, а по живому ответу
-                // из интернета через туннель.
-                var alive = false
-                // Не держим человека в «Подключении» дольше полуминуты:
-                // четыре попытки по ~4 секунды — уже понятный вердикт.
-                for (attempt in 1..4) {
-                    delay(900)
-                    if (reachable()) {
-                        alive = true
-                        break
+                var reason = getString(R.string.err_no_answer)
+                for ((index, profile) in list.withIndex()) {
+                    if (index > 0) {
+                        // Человек должен видеть, что происходит: «не ответил, пробую другой»
+                        TunnelState.set(TunnelState.Phase.Connecting, getString(R.string.trying_server, profile.name))
+                        updateNotification(getString(R.string.notify_connecting), profile.name)
                     }
+                    val box = SfBox(this@TunnelService)
+                    try {
+                        box.start(Config.build(profile, store.dns, store.blockIpv6), include, exclude, store.dns)
+                    } catch (e: Throwable) {
+                        reason = e.message ?: e.javaClass.simpleName
+                        box.stop()
+                        continue
+                    }
+                    engine = box
+                    if (alive()) {
+                        store.selected = "${profile.host}:${profile.port}"
+                        TunnelState.set(TunnelState.Phase.Connected)
+                        updateNotification(getString(R.string.notify_connected), profile.name)
+                        return@launch
+                    }
+                    box.stop()
+                    engine = null
                 }
-                if (!alive) {
-                    fail(getString(R.string.err_no_answer), include, exclude)
-                    return@launch
-                }
-                TunnelState.set(TunnelState.Phase.Connected)
-                updateNotification(getString(R.string.notify_connected), profile.name)
+                fail(reason, include, exclude)
+                return@launch
             } catch (e: Throwable) {
                 android.util.Log.d("K4R-service", "сбой запуска: ${e.javaClass.simpleName}: ${e.message}")
                 // Честно: не «защищено», а ошибка с причиной
@@ -146,6 +152,14 @@ class TunnelService : VpnService() {
      * ли настоящие данные. Запрос идёт по адресу, без DNS: иначе мёртвый
      * туннель подвешивает разрешение имени на десятки секунд.
      */
+    private suspend fun alive(): Boolean {
+        for (attempt in 1..2) {
+            delay(800)
+            if (reachable()) return true
+        }
+        return false
+    }
+
     private fun reachable(): Boolean = try {
         val task = java.util.concurrent.Executors.newSingleThreadExecutor().submit<Boolean> {
             val connection = (URL("http://1.1.1.1/cdn-cgi/trace").openConnection() as HttpURLConnection).apply {

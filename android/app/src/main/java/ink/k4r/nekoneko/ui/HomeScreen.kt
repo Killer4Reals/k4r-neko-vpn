@@ -147,8 +147,10 @@ fun HomeScreen(store: Store) {
                 store.subExpire = expire
                 profiles = result.profiles
                 if (profiles.none { it.id == picked }) {
-                    picked = profiles.first().id
-                    store.selected = "${profiles.first().host}:${profiles.first().port}"
+                    // «Авто-выбор сервера» от провайдера — не сервер, берём настоящий
+                    val first = store.defaultProfile(profiles) ?: profiles.first()
+                    picked = first.id
+                    store.selected = "${first.host}:${first.port}"
                 }
                 message = context.getString(R.string.sub_loaded, profiles.size)
             } catch (e: Throwable) {

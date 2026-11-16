@@ -1,6 +1,6 @@
 package ink.k4r.nekoneko.data
 
-import android.util.Base64
+import java.util.Base64
 import java.net.URLDecoder
 
 /** Один сервер из подписки. Поля те же, что в Windows-версии. */
@@ -75,7 +75,7 @@ object SubscriptionParser {
         if (!text.startsWith("base64:", ignoreCase = true)) return text
         return try {
             val raw = text.substring("base64:".length).trim()
-            String(Base64.decode(raw, Base64.DEFAULT), Charsets.UTF_8).trim().ifEmpty { null }
+            String(decodeBase64(raw) ?: return null, Charsets.UTF_8).trim().ifEmpty { null }
         } catch (e: IllegalArgumentException) {
             null
         }
@@ -84,12 +84,24 @@ object SubscriptionParser {
     fun parseRefreshHours(header: String?): Int =
         header?.trim()?.toIntOrNull()?.takeIf { it in 1..168 } ?: 12
 
+    /**
+     * Провайдер отвечает заглушкой (адрес 0.0.0.0 или порт 1), когда не узнал
+     * клиента или кончились слоты устройств. Возвращаем его слова: это отказ,
+     * а не список серверов.
+     */
+    fun placeholderReason(profiles: List<Profile>): String? {
+        if (profiles.isEmpty()) return null
+        val allPlaceholders = profiles.all { it.host.startsWith("0.0.0.0") || it.port == 1 }
+        if (!allPlaceholders) return null
+        return profiles.firstOrNull { it.name.isNotBlank() }?.name ?: "провайдер не дал серверов"
+    }
+
     fun parse(body: String): List<Profile> {
         val direct = parseLines(body)
         if (direct.isNotEmpty()) return direct
         // Провайдеры часто отдают весь список в base64 — тогда разбираем его
         val decoded = decodeBase64(body) ?: return emptyList()
-        return parseLines(decoded)
+        return parseLines(String(decoded, Charsets.UTF_8))
     }
 
     private fun parseLines(body: String): List<Profile> {
@@ -102,15 +114,27 @@ object SubscriptionParser {
         return out
     }
 
-    /** base64 без переводов строк; null, если это не base64. */
-    private fun decodeBase64(text: String): String? {
+    /**
+     * base64 без переводов строк; null, если это не base64. Провайдеры присылают
+     * и обычный алфавит, и URL-safe, и без выравнивания по «=» — принимаем все.
+     */
+    private fun decodeBase64(text: String): ByteArray? {
         val clean = text.filterNot { it.isWhitespace() }
         if (clean.isEmpty()) return null
-        return try {
-            String(Base64.decode(clean, Base64.DEFAULT), Charsets.UTF_8)
-        } catch (e: IllegalArgumentException) {
-            null
+        val padded = when (clean.length % 4) {
+            2 -> "$clean=="
+            3 -> "$clean="
+            1 -> return null
+            else -> clean
         }
+        for (decoder in listOf(Base64.getDecoder(), Base64.getUrlDecoder())) {
+            try {
+                return decoder.decode(padded)
+            } catch (e: IllegalArgumentException) {
+                // пробуем следующий алфавит
+            }
+        }
+        return null
     }
 
     private fun profileFromUri(uri: String): Profile? {
