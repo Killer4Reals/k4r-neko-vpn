@@ -31,6 +31,12 @@ import java.net.Inet6Address
  */
 class SfBox(private val service: VpnService) {
 
+    /**
+     * Куда отдавать счётчики: служба складывает их в учёт по дням.
+     * Свой обработчик у ядра один, поэтому наблюдатель — одно поле.
+     */
+    var onTraffic: ((rx: Long, tx: Long) -> Unit)? = null
+
     private var server: CommandServer? = null
     private var hole: android.os.ParcelFileDescriptor? = null
     private var client: CommandClient? = null
@@ -366,9 +372,10 @@ class SfBox(private val service: VpnService) {
     }
 
     /** Ядро присылает счётчики раз в секунду — показываем их как есть. */
-    private class TrafficHandler : CommandClientHandler {
+    private inner class TrafficHandler : CommandClientHandler {
         override fun writeStatus(status: io.nekohasekai.libbox.StatusMessage) {
             if (!status.trafficAvailable) return
+            onTraffic?.invoke(status.downlinkTotal, status.uplinkTotal)
             TunnelState.traffic(
                 rx = status.downlinkTotal,
                 tx = status.uplinkTotal,

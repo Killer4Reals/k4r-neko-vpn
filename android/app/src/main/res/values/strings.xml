@@ -26,6 +26,10 @@
     <string name="err_no_answer">Сервер не ответил — туннель не поднялся</string>
     <string name="trying_server">Первый сервер не ответил. Пробую «%1$s»</string>
     <string name="panel_sub">Подписка</string>
+    <string name="speed_run">Спидтест через туннель</string>
+    <string name="speed_busy">Меряем…</string>
+    <string name="speed_result">Скорость: %1$s</string>
+    <string name="speed_fail">Не удалось скачать пробный файл</string>
     <string name="panel_ip">Твой IP</string>
     <string name="row_traffic">Трафик</string>
     <string name="row_expire">Осталось</string>
@@ -59,6 +63,9 @@
     <string name="set_leaks">Утечки</string>
     <string name="set_ipv6">Блокировать IPv6</string>
     <string name="set_ipv6_hint">IPv6 вне туннеля — это утечка, поэтому по умолчанию закрыт</string>
+    <string name="set_days">Трафик по дням</string>
+    <string name="days_empty">Пока пусто: цифры появятся после первого подключения</string>
+    <string name="days_total">За 7 дней: %1$s</string>
     <string name="set_diag">Диагностика</string>
     <string name="set_diag_hint">Последние события ядра. Если что-то не работает — открой и покажи эти строки. Адреса серверов в журнал не попадают</string>
     <string name="diag_show">Показать журнал</string>

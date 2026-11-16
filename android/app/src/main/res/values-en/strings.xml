@@ -26,6 +26,10 @@
     <string name="err_no_answer">The server did not answer — the tunnel is down</string>
     <string name="trying_server">The first server did not answer. Trying “%1$s”</string>
     <string name="panel_sub">Subscription</string>
+    <string name="speed_run">Speed test through the tunnel</string>
+    <string name="speed_busy">Measuring…</string>
+    <string name="speed_result">Speed: %1$s</string>
+    <string name="speed_fail">Could not download the test file</string>
     <string name="panel_ip">Your IP</string>
     <string name="row_traffic">Traffic</string>
     <string name="row_expire">Expires in</string>
@@ -59,6 +63,9 @@
     <string name="set_leaks">Leaks</string>
     <string name="set_ipv6">Block IPv6</string>
     <string name="set_ipv6_hint">IPv6 outside the tunnel is a leak, so it is closed by default</string>
+    <string name="set_days">Traffic by day</string>
+    <string name="days_empty">Nothing yet — the numbers appear after the first connection</string>
+    <string name="days_total">In 7 days: %1$s</string>
     <string name="set_diag">Diagnostics</string>
     <string name="set_diag_hint">Recent engine events. If something is off, open this and show the lines. Server addresses never get into the log</string>
     <string name="diag_show">Show log</string>

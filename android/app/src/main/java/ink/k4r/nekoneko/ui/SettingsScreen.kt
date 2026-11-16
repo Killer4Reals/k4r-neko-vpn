@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -38,7 +39,9 @@ import ink.k4r.nekoneko.R
 import ink.k4r.nekoneko.data.DnsCatalog
 import ink.k4r.nekoneko.data.DnsEntry
 import ink.k4r.nekoneko.data.Lang
+import ink.k4r.nekoneko.data.Day
 import ink.k4r.nekoneko.data.Store
+import ink.k4r.nekoneko.data.Usage
 import ink.k4r.nekoneko.vpn.Diag
 
 /**
@@ -58,10 +61,19 @@ fun SettingsScreen(
     var ipv6 by remember { mutableStateOf(store.blockIpv6) }
     var own by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(store.autoStart) }
+    var usage by remember { mutableStateOf(store.usage()) }
     var kill by remember { mutableStateOf(store.killSwitch) }
     var diagOpen by remember { mutableStateOf(false) }
     var diagLines by remember { mutableStateOf(Diag.lines()) }
     // Журнал открыт — подтягиваем новые строки, закрыт — не тратим батарею
+    // Цифры по дням обновляем, пока экран открыт: после подключения они растут
+    LaunchedEffect(Unit) {
+        while (true) {
+            usage = store.usage()
+            delay(3000)
+        }
+    }
+
     LaunchedEffect(diagOpen) {
         while (diagOpen) {
             diagLines = Diag.lines()
@@ -254,6 +266,37 @@ fun SettingsScreen(
 
         item {
             Spacer(Modifier.height(6.dp))
+            Panel(stringResource(R.string.set_days)) {
+                val week = Usage.window(usage, 7)
+                if (week.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.days_empty),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                    )
+                } else {
+                    val peak = Usage.peak(week).coerceAtLeast(1)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Bottom,
+                    ) {
+                        for (day in week) {
+                            DayColumn(day, peak, Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.days_total, bytes(Usage.total(week))),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
             Panel(stringResource(R.string.set_diag)) {
                 Text(
                     text = stringResource(R.string.set_diag_hint),
@@ -312,6 +355,41 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+}
+
+/** Столбик одного дня: высота — доля от самого полного дня недели. */
+@Composable
+private fun DayColumn(day: Day, peak: Long, modifier: Modifier = Modifier) {
+    val share = (day.total.toFloat() / peak).coerceIn(0f, 1f)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // подпись стоит прямо над своим столбиком: так видно и день, и объём
+        Text(
+            text = if (day.total > 0) bytes(day.total) else "",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 8.sp,
+            maxLines = 1,
+        )
+        Spacer(Modifier.height(2.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp + 44.dp * share)
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    if (day.total > 0) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = day.day.takeLast(2),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 9.sp,
+        )
     }
 }
 

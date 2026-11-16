@@ -57,6 +57,7 @@ import androidx.core.content.ContextCompat
 import ink.k4r.nekoneko.R
 import ink.k4r.nekoneko.data.Flags
 import ink.k4r.nekoneko.data.Ping
+import ink.k4r.nekoneko.data.Speed
 import ink.k4r.nekoneko.data.Profile
 import ink.k4r.nekoneko.data.Store
 import ink.k4r.nekoneko.data.SubscriptionClient
@@ -111,6 +112,8 @@ fun HomeScreen(store: Store) {
     var expire by remember { mutableStateOf(store.subExpire) }
     var ip by remember { mutableStateOf("") }
     var ipBusy by remember { mutableStateOf(false) }
+    var speedBusy by remember { mutableStateOf(false) }
+    var speed by remember { mutableStateOf("") }
     // Отклик серверов: id → подпись. Меряем по нажатию, а не пачкой при загрузке
     val pings = remember { mutableStateMapOf<String, String>() }
 
@@ -187,6 +190,23 @@ fun HomeScreen(store: Store) {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    fun runSpeed() {
+        if (speedBusy) return
+        speedBusy = true
+        speed = ""
+        scope.launch {
+            val result = Speed.measure(onSpeed = { live ->
+                speed = Speed.label(live, russian)
+            })
+            speed = if (result == null) {
+                context.getString(R.string.speed_fail)
+            } else {
+                Speed.label(result, russian)
+            }
+            speedBusy = false
         }
     }
 
@@ -367,6 +387,28 @@ fun HomeScreen(store: Store) {
                             stringResource(R.string.row_tx),
                             if (tx > 0) "${bytes(tx)}  ·  ${bytes(txSpeed)}/s" else "—",
                         )
+                        Spacer(Modifier.height(4.dp))
+                        Button(
+                            onClick = { runSpeed() },
+                            enabled = !speedBusy,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = stringResource(if (speedBusy) R.string.speed_busy else R.string.speed_run),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        if (speed.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = stringResource(R.string.speed_result, speed),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp,
+                            )
+                        }
                     }
                 }
             }

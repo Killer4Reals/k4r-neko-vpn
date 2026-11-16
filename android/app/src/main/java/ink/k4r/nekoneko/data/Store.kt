@@ -122,6 +122,12 @@ class Store(context: Context) {
         set(value) = prefs.edit().putBoolean("kill_switch", value).apply()
 
     companion object {
+        /** Сегодняшняя дата в виде 2026-11-16: по ней и складываем дни. */
+        fun today(): String {
+            val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            return format.format(java.util.Date())
+        }
+
         /** 12 шестнадцатеричных знаков из системного идентификатора. */
         fun hwid(androidId: String): String {
             val digest = java.security.MessageDigest.getInstance("SHA-256")
@@ -187,6 +193,16 @@ class Store(context: Context) {
     var subFetched: Long
         get() = active()?.fetched ?: 0
         set(value) = updateActive { it.copy(fetched = value) }
+
+    /** Сколько прошло через туннель по дням (последние 30). */
+    fun usage(): List<Day> = Usage.parse(prefs.getString("usage", "").orEmpty())
+
+    /** Прибавить к сегодняшнему дню. Пишем всё сразу: потерять счётчик обиднее. */
+    fun addUsage(rx: Long, tx: Long) {
+        if (rx <= 0 && tx <= 0) return
+        val list = Usage.add(usage(), today(), rx, tx)
+        prefs.edit().putString("usage", Usage.write(list)).apply()
+    }
 
     fun profiles(): List<Profile> = SubscriptionParser.parse(subBody)
 

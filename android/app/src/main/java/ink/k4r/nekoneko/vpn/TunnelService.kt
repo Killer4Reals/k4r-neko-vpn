@@ -79,7 +79,9 @@ class TunnelService : VpnService() {
                 val list = store.attempts()
                 if (list.isEmpty()) error(getString(R.string.err_no_servers))
                 val chosen = store.chosen()
-                val include = if (store.splitMode == "only") chosen.toList() else emptyList()
+                // Себя всегда держим внутри туннеля: иначе проверка IP и
+                // спидтест мерили бы прямое соединение и врали бы человеку.
+                val include = if (store.splitMode == "only") (chosen + packageName).toList() else emptyList()
                 val exclude = if (store.splitMode == "only") emptyList() else chosen.toList()
                 var reason = getString(R.string.err_no_answer)
                 Diag.add("пробуем ${Diag.server(list.first().name)}")
@@ -91,6 +93,7 @@ class TunnelService : VpnService() {
                         Diag.add("предыдущий не ответил, пробуем ${Diag.server(profile.name)}")
                     }
                     val box = SfBox(this@TunnelService)
+                    box.onTraffic = { rx, tx -> count(rx, tx) }
                     try {
                         box.start(Config.build(profile, store.dns, store.blockIpv6), include, exclude, store.dns)
                     } catch (e: Throwable) {
@@ -124,6 +127,34 @@ class TunnelService : VpnService() {
                 fail(e.message ?: e.javaClass.simpleName, emptyList(), emptyList())
             }
         }
+    }
+
+    // Учёт трафика: копим в памяти и пишем в настройки не чаще раза в 20 секунд,
+    // чтобы не дёргать диск каждую секунду.
+    private var lastRx = 0L
+    private var lastTx = 0L
+    private var pendingRx = 0L
+    private var pendingTx = 0L
+    private var ticks = 0
+
+    private fun count(rx: Long, tx: Long) {
+        // Ядро может начать счёт заново после перезапуска профиля: тогда
+        // счётчики уменьшились, и разницу считать нельзя.
+        if (rx >= lastRx) pendingRx += rx - lastRx
+        if (tx >= lastTx) pendingTx += tx - lastTx
+        lastRx = rx
+        lastTx = tx
+        ticks++
+        if (ticks >= 20) flush()
+    }
+
+    private fun flush() {
+        ticks = 0
+        val rx = pendingRx
+        val tx = pendingTx
+        pendingRx = 0
+        pendingTx = 0
+        if (rx > 0 || tx > 0) Store(this).addUsage(rx, tx)
     }
 
     /**
@@ -167,6 +198,7 @@ class TunnelService : VpnService() {
     }
 
     override fun onDestroy() {
+        flush()
         engine?.stop()
         engine = null
         // Без этого блокировка пережила бы остановку службы и оставила
