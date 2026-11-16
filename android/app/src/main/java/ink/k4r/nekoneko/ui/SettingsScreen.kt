@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import ink.k4r.nekoneko.R
 import ink.k4r.nekoneko.data.DnsCatalog
 import ink.k4r.nekoneko.data.DnsEntry
+import ink.k4r.nekoneko.data.Lang
 import ink.k4r.nekoneko.data.Store
 
 /**
@@ -40,7 +41,13 @@ import ink.k4r.nekoneko.data.Store
  * Каталог DNS тот же, что на ПК, чтобы выбор не зависел от платформы.
  */
 @Composable
-fun SettingsScreen(store: Store, theme: String, onTheme: (String) -> Unit) {
+fun SettingsScreen(
+    store: Store,
+    theme: String,
+    onTheme: (String) -> Unit,
+    lang: String = Lang.SYSTEM,
+    onLang: (String) -> Unit = {},
+) {
     val russian = LocalConfiguration.current.locales[0].language == "ru"
     var dns by remember { mutableStateOf(store.dns) }
     var ipv6 by remember { mutableStateOf(store.blockIpv6) }
@@ -70,6 +77,24 @@ fun SettingsScreen(store: Store, theme: String, onTheme: (String) -> Unit) {
                                 store.theme = id
                                 onTheme(id)
                             },
+                            label = { Text(label, fontSize = 12.sp) },
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Panel(stringResource(R.string.set_lang)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((id, label) in listOf(
+                        Lang.SYSTEM to stringResource(R.string.lang_system),
+                        Lang.RU to stringResource(R.string.lang_ru),
+                        Lang.EN to stringResource(R.string.lang_en),
+                    )) {
+                        FilterChip(
+                            selected = lang == id,
+                            onClick = { onLang(id) },
                             label = { Text(label, fontSize = 12.sp) },
                         )
                     }

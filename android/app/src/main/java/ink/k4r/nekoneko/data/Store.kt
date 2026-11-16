@@ -71,6 +71,11 @@ class Store(context: Context) {
         }
     }
 
+    /** Язык интерфейса: system / ru / en. */
+    var lang: String
+        get() = prefs.getString("lang", Lang.SYSTEM).orEmpty()
+        set(value) = prefs.edit().putString("lang", value).apply()
+
     /** Поднимать туннель сразу после перезагрузки телефона. */
     var autoStart: Boolean
         get() = prefs.getBoolean("auto_start", false)
