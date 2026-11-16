@@ -54,10 +54,17 @@ object Speed {
             val stream: InputStream = connection.inputStream
             val buffer = ByteArray(64 * 1024)
             var total = 0L
+            var complete = false
             stream.use {
                 while (true) {
                     val read = it.read(buffer)
-                    if (read <= 0) break
+                    if (read <= 0) {
+                        // Файл скачался целиком: на быстром канале это может
+                        // случиться раньше, чем истечёт «минимальный» срок —
+                        // такой замер всё равно настоящий
+                        complete = true
+                        break
+                    }
                     total += read
                     val millis = (System.nanoTime() - started) / 1_000_000
                     if (millis >= capMs) break
@@ -66,7 +73,8 @@ object Speed {
                 }
             }
             val millis = ((System.nanoTime() - started) / 1_000_000).coerceAtLeast(1)
-            if (millis < MIN_MS) return@withContext null
+            if (total <= 0) return@withContext null
+            if (millis < MIN_MS && !complete) return@withContext null
             mbps(total, millis)
         } catch (e: Exception) {
             null
