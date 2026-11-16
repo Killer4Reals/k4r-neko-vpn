@@ -101,6 +101,10 @@ class TunnelService : VpnService() {
                     engine = box
                     if (alive()) {
                         store.selected = "${profile.host}:${profile.port}"
+                        // Туннель поднялся: сторож сети и счётчик попыток больше
+                        // не нужны, иначе он дёрнет запуск уже во время работы
+                        unwatchNetwork()
+                        retries = 0
                         Diag.add("туннель поднят на ${Diag.server(profile.name)}")
                         TunnelState.set(TunnelState.Phase.Connected)
                         updateNotification(getString(R.string.notify_connected), profile.name)
