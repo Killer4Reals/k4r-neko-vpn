@@ -14,7 +14,7 @@
     <string name="sub_add">Добавить подписку</string>
     <string name="sub_forget">Забыть эту</string>
     <string name="sub_loading">Загружаю…</string>
-    <string name="sub_loaded">Серверов: %1$d</string>
+    <string name="sub_loaded">Подписка обновлена</string>
     <string name="ip_check">Проверить IP</string>
     <string name="ip_error">не удалось</string>
     <string name="chosen">выбран</string>
@@ -72,6 +72,14 @@
     <string name="diag_hide">Скрыть журнал</string>
     <string name="diag_clear">Очистить</string>
     <string name="diag_empty">Пока пусто: подключись, и здесь появятся события</string>
+    <string name="set_backup">Резервная копия</string>
+    <string name="set_backup_hint">Подписки, DNS, тема, язык, разделение и учёт трафика — в одном файле JSON</string>
+    <string name="backup_save">Сохранить в файл</string>
+    <string name="backup_open">Восстановить из файла</string>
+    <string name="backup_saved">Копия сохранена</string>
+    <string name="backup_restored">Настройки восстановлены</string>
+    <string name="backup_bad">Это не файл копии K4R Neko VPN</string>
+    <string name="backup_fail">Не получилось: %1$s</string>
     <string name="set_about">О приложении</string>
     <string name="set_version">Версия</string>
     <string name="set_engine">Ядро sing-box</string>

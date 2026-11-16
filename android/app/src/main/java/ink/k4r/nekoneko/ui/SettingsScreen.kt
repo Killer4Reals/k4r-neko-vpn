@@ -39,6 +39,12 @@ import ink.k4r.nekoneko.R
 import ink.k4r.nekoneko.data.DnsCatalog
 import ink.k4r.nekoneko.data.DnsEntry
 import ink.k4r.nekoneko.data.Lang
+import android.app.Activity
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import ink.k4r.nekoneko.data.Backup
 import ink.k4r.nekoneko.data.Day
 import ink.k4r.nekoneko.data.Store
 import ink.k4r.nekoneko.data.Usage
@@ -59,10 +65,48 @@ fun SettingsScreen(
     val russian = LocalConfiguration.current.locales[0].language == "ru"
     var dns by remember { mutableStateOf(store.dns) }
     var ipv6 by remember { mutableStateOf(store.blockIpv6) }
+    var kill by remember { mutableStateOf(store.killSwitch) }
     var own by remember { mutableStateOf("") }
     var autoStart by remember { mutableStateOf(store.autoStart) }
     var usage by remember { mutableStateOf(store.usage()) }
-    var kill by remember { mutableStateOf(store.killSwitch) }
+    var backupNote by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupNote = try {
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(store.exportBackup().toByteArray(Charsets.UTF_8))
+            }
+            context.getString(R.string.backup_saved)
+        } catch (e: Exception) {
+            context.getString(R.string.backup_fail, e.javaClass.simpleName)
+        }
+    }
+    val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        backupNote = try {
+            val text = context.contentResolver.openInputStream(uri)?.use { input ->
+                input.readBytes().toString(Charsets.UTF_8)
+            }.orEmpty()
+            val snapshot = Backup.parse(text)
+            if (snapshot == null || snapshot.isEmpty) {
+                context.getString(R.string.backup_bad)
+            } else {
+                store.restoreBackup(snapshot)
+                // Показываем восстановленное сразу: тумблеры, тема и язык
+                dns = store.dns
+                ipv6 = store.blockIpv6
+                autoStart = store.autoStart
+                kill = store.killSwitch
+                onTheme(store.theme)
+                // Язык применяется пересозданием активити — пусть решает App
+                if (store.lang != lang) onLang(store.lang)
+                context.getString(R.string.backup_restored)
+            }
+        } catch (e: Exception) {
+            context.getString(R.string.backup_fail, e.javaClass.simpleName)
+        }
+    }
     var diagOpen by remember { mutableStateOf(false) }
     var diagLines by remember { mutableStateOf(Diag.lines()) }
     // Журнал открыт — подтягиваем новые строки, закрыт — не тратим батарею
@@ -337,6 +381,33 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
+            Panel(stringResource(R.string.set_backup)) {
+                Text(
+                    text = stringResource(R.string.set_backup_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { saver.launch("k4r-neko-backup.json") }) {
+                        Text(text = stringResource(R.string.backup_save), fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { opener.launch(arrayOf("application/json", "text/plain", "*/*")) }) {
+                        Text(text = stringResource(R.string.backup_open), fontSize = 12.sp)
+                    }
+                }
+                if (backupNote.isNotBlank()) {
+                    Text(
+                        text = backupNote,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                    )
                 }
             }
         }

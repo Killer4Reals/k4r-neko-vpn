@@ -204,6 +204,33 @@ class Store(context: Context) {
         prefs.edit().putString("usage", Usage.write(list)).apply()
     }
 
+    /** Вся копия настроек одним текстом — для сохранения в файл. */
+    fun exportBackup(): String {
+        val strings = LinkedHashMap<String, String>()
+        for ((key, pref) in Backup.STRINGS) {
+            strings[key] = prefs.getString(pref, "").orEmpty()
+        }
+        val flags = LinkedHashMap<String, Boolean>()
+        for ((key, pref) in Backup.FLAGS) {
+            flags[key] = prefs.getBoolean(pref, pref == "kill_switch")
+        }
+        return Backup.export(strings, flags)
+    }
+
+    /** Восстановление: пишем только то, что есть в файле, остальное не трогаем. */
+    fun restoreBackup(snapshot: Backup.Snapshot) {
+        val edit = prefs.edit()
+        for ((key, value) in snapshot.strings) {
+            val pref = Backup.STRINGS[key] ?: continue
+            edit.putString(pref, value)
+        }
+        for ((key, value) in snapshot.flags) {
+            val pref = Backup.FLAGS[key] ?: continue
+            edit.putBoolean(pref, value)
+        }
+        edit.apply()
+    }
+
     fun profiles(): List<Profile> = SubscriptionParser.parse(subBody)
 
     fun profile(): Profile? {

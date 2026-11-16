@@ -14,7 +14,7 @@
     <string name="sub_add">Add subscription</string>
     <string name="sub_forget">Forget this one</string>
     <string name="sub_loading">Loading…</string>
-    <string name="sub_loaded">Servers: %1$d</string>
+    <string name="sub_loaded">Subscription updated</string>
     <string name="ip_check">Check IP</string>
     <string name="ip_error">failed</string>
     <string name="chosen">chosen</string>
@@ -72,6 +72,14 @@
     <string name="diag_hide">Hide log</string>
     <string name="diag_clear">Clear</string>
     <string name="diag_empty">Empty so far: connect once and the events will show up</string>
+    <string name="set_backup">Backup</string>
+    <string name="set_backup_hint">Subscriptions, DNS, theme, language, split tunneling and traffic history in one JSON file</string>
+    <string name="backup_save">Save to file</string>
+    <string name="backup_open">Restore from file</string>
+    <string name="backup_saved">Backup saved</string>
+    <string name="backup_restored">Settings restored</string>
+    <string name="backup_bad">That is not a K4R Neko VPN backup file</string>
+    <string name="backup_fail">Failed: %1$s</string>
     <string name="set_about">About</string>
     <string name="set_version">Version</string>
     <string name="set_engine">sing-box core</string>

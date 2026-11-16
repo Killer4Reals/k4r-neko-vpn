@@ -184,7 +184,7 @@ fun HomeScreen(store: Store) {
                 }
                 subs = store.subList()
                 activeUrl = store.subUrl
-                message = context.getString(R.string.sub_loaded, profiles.size)
+                message = context.getString(R.string.sub_loaded)
             } catch (e: Throwable) {
                 message = explain(context, e)
             } finally {
