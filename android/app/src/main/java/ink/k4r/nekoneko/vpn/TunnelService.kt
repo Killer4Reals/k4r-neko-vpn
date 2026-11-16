@@ -9,6 +9,7 @@ import android.net.VpnService
 import android.os.Build
 import ink.k4r.nekoneko.MainActivity
 import ink.k4r.nekoneko.R
+import ink.k4r.nekoneko.data.Split
 import ink.k4r.nekoneko.data.Store
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -79,10 +80,10 @@ class TunnelService : VpnService() {
                 val list = store.attempts()
                 if (list.isEmpty()) error(getString(R.string.err_no_servers))
                 val chosen = store.chosen()
-                // Себя всегда держим внутри туннеля: иначе проверка IP и
-                // спидтест мерили бы прямое соединение и врали бы человеку.
-                val include = if (store.splitMode == "only") (chosen + packageName).toList() else emptyList()
-                val exclude = if (store.splitMode == "only") emptyList() else chosen.toList()
+                // Набор приложений для туннеля — один на запуск и на блокировку:
+                // иначе kill switch держал бы не тех, кого обещал.
+                val include = Split.allowed(store.splitMode, chosen, packageName)
+                val exclude = Split.excluded(store.splitMode, chosen)
                 var reason = getString(R.string.err_no_answer)
                 Diag.add("пробуем ${Diag.server(list.first().name)}")
                 for ((index, profile) in list.withIndex()) {
