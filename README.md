@@ -26,11 +26,11 @@ sing-box, аккуратный интерфейс на React и маскот, к
 <table>
   <tr>
     <td width="50%"><img src="docs/screens/settings.webp" alt="Настройки"></td>
-    <td width="50%"><img src="docs/screens/dns.webp" alt="Каталог DNS"></td>
+    <td width="50%"><img src="docs/screens/logs.webp" alt="Журнал ядра"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Настройки: темы, трей, горячая клавиша, блокировка при обрыве</sub></td>
-    <td align="center"><sub>Каталог DNS: категории, поиск, DoH/DoT/IP у каждого</sub></td>
+    <td align="center"><sub>Настройки: темы, трей, горячая клавиша, блокировка</sub></td>
+    <td align="center"><sub>Журнал ядра: ключи и адреса вырезаны</sub></td>
   </tr>
 </table>
 
