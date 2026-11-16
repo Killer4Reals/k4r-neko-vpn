@@ -48,7 +48,16 @@ class TunnelService : VpnService() {
 
     private fun start() {
         TunnelState.set(TunnelState.Phase.Connecting)
-        startForeground(NOTE_ID, notification(getString(R.string.notify_connecting), getString(R.string.notify_connecting_text)))
+        try {
+            startForeground(NOTE_ID, notification(getString(R.string.notify_connecting), getString(R.string.notify_connecting_text)))
+        } catch (e: Throwable) {
+            // Система может не разрешить службу переднего плана (например,
+            // сразу после загрузки). Это не повод падать: говорим причину.
+            Diag.add("службу не поднять: ${e.javaClass.simpleName}")
+            TunnelState.set(TunnelState.Phase.Error, getString(R.string.err_service))
+            stopSelf()
+            return
+        }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
             try {
