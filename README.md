@@ -41,6 +41,11 @@ sing-box, аккуратный интерфейс на React и маскот, к
 
 ## Android
 
+> **Разработка Android переехала в отдельный репозиторий:
+> [k4r-neko-vpn-android](https://github.com/Killer4Reals/k4r-neko-vpn-android).**
+> Здесь остались описание и скриншоты версии 0.3.0; исходники, история коммитов,
+> скрипт сборки ядра и ADR-005 теперь там. Этот репозиторий — про Windows.
+
 Тот же клиент нативно на Kotlin + Compose, ядро — тот же `sing-box`, но
 библиотекой (`libbox.aar`, собран из исходников, см. `scripts/build-libbox.ps1`).
 `VpnService`, разрешение на VPN, постоянное уведомление — родные API Android,
@@ -81,25 +86,18 @@ sing-box, аккуратный интерфейс на React и маскот, к
 ядра и журнал ядра в настройках. Ядро собрано под `arm64` и `amd64`, поэтому
 этот же APK ставится на настоящий телефон.
 
-Сборка:
+Сборка — в репозитории [k4r-neko-vpn-android](https://github.com/Killer4Reals/k4r-neko-vpn-android):
+там же `scripts/build-libbox.ps1` для ядра, `./gradlew testDebugUnitTest` и
+`./gradlew assembleRelease`.
 
-```
-cd android
-./gradlew assembleDebug              # нужен Android SDK 35, NDK не требуется
-./gradlew testDebugUnitTest          # 106 юнит-тестов логики
-./gradlew assembleRelease            # подписанный APK для телефона
-```
+Release подписывается ключом из `keystore.properties` в репозитории приложения —
+файла **нет в репозитории**, он лежит у владельца
+(`%LOCALAPPDATA%\Android\keys\k4r-release.jks`). Без него `assembleRelease`
+соберёт неподписанный APK: поставить его на телефон нельзя, и это видно сразу.
+Ключ нельзя терять — обновления должны быть подписаны тем же ключом, иначе
+Android откажется ставить новую версию поверх старой.
 
-Перед сборкой положить `libbox.aar` в `android/app/libs/` (в репозитории его нет):
-`powershell -ExecutionPolicy Bypass -File scripts/build-libbox.ps1`.
-
-Release подписывается ключом из `android/keystore.properties` — файла **нет в
-репозитории**, он лежит у владельца (`%LOCALAPPDATA%\Android\keys\k4r-release.jks`).
-Без него `assembleRelease` соберёт неподписанный APK: поставить его на телефон
-нельзя, и это видно сразу. Ключ нельзя терять — обновления должны быть подписаны
-тем же ключом, иначе Android откажется ставить новую версию поверх старой.
-
-Готовый APK: `dist/K4R-Neko-VPN-0.2.0-android.apk` (arm64 + amd64, 52 МБ).
+Готовый APK: `dist/K4R-Neko-VPN-0.3.0-android.apk` (arm64 + amd64, 53 МБ).
 Ставится на телефон как обычный APK; Play Protect спросит про незнакомый
 источник — это ожидаемо, ключ самоподписанный.
 

@@ -27,19 +27,17 @@ app/src-tauri/resources/bin/*.dll
 __pycache__/
 *.pyc
 
-# Android
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-android/.idea/
-*.iml
-*.apk
-*.aab
-
-# ядро для Android собирается скриптом (30 МБ, в репозиторий не кладём)
-android/app/libs/*.aar
+# Android переехал в отдельный репозиторий k4r-neko-vpn-android
+# (libbox.aar и keystore.properties игнорируются уже там)
 _build/
 
-# ключ подписи — только локально
+# на случай локальной папки android/ : артефакты сборки в git не нужны никогда
+android/build/
+android/app/build/
+android/.gradle/
+android/.kotlin/
+android/local.properties
 android/keystore.properties
+android/app/libs/*.aar
+*.apk
+*.aab
