@@ -109,20 +109,18 @@ export function HomeScreen(p: Props) {
           className="orb"
           data-state={view}
           onClick={toggleConnection}
-          aria-label={t(hintKey)}
+          aria-label={`${t(statusKey)}. ${t(hintKey)}`}
           title={t(hintKey)}
         >
           <span className="ring" />
           <img className="mascot" src={m} alt="" draggable={false} />
         </button>
 
-        <button
-          className="btn primary connect-btn"
-          onClick={toggleConnection}
-          disabled={conn === "connecting"}
-        >
-          {conn === "connected" ? t("disconnect") : t("connect")}
-        </button>
+        {/* Кружок — единственная кнопка включения: подпись под ним
+            объясняет, что нажатие делает, чтобы это не приходилось угадывать */}
+        <div className="orb-hint" data-state={view}>
+          {t(hintKey)}
+        </div>
 
         <div className="server-line">
           <Flag cc={selected.flag || selected.cc} size="sm" />

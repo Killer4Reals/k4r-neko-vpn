@@ -718,6 +718,23 @@ input {
   cursor: default;
 }
 
+/* Подпись под кружком: что произойдёт по нажатию, словами, а не догадкой */
+.orb-hint {
+  margin-top: -2px;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--txt-3);
+  text-align: center;
+  transition: color 0.2s;
+  user-select: none;
+}
+.orb-hint[data-state="connected"] {
+  color: var(--green-line);
+}
+.orb-hint[data-state="error"] {
+  color: var(--warn-text);
+}
+
 .hero .server-line {
   display: flex;
   align-items: center;

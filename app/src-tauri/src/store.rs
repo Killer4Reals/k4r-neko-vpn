@@ -270,6 +270,36 @@ pub fn strip_ansi(text: &str) -> String {
 }
 
 /// Last `lines` lines of one of our own log files. Never reads foreign programs.
+/// Предел журнала: всё, что больше, уезжает в `*.log.1`. Журнал пишется
+/// дозаписью и ничем не ограничен, а sing-box на каждом запуске добавляет
+/// десятки строк — без потолка файл растёт годами и однажды ломает чтение.
+pub const LOG_LIMIT: u64 = 4 * 1024 * 1024;
+
+/// Убирает разросшийся журнал в `.log.1` (один предыдущий кусок).
+/// Вызывается до запуска ядра, когда файл никто не держит открытым:
+/// на Windows переименовать открытый файл нельзя.
+/// Возвращает true, если файл действительно убран.
+pub fn rotate_log(path: &Path) -> bool {
+    rotate_log_at(path, LOG_LIMIT)
+}
+
+pub fn rotate_log_at(path: &Path, limit: u64) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if meta.len() <= limit {
+        return false;
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "log".into());
+    let backup = path.with_file_name(format!("{name}.1"));
+    // старый предыдущий кусок больше не нужен: два файла — уже история
+    let _ = std::fs::remove_file(&backup);
+    std::fs::rename(path, &backup).is_ok()
+}
+
 pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
     let name = match which {
         "zapret" => "zapret.log",
@@ -402,5 +432,63 @@ mod tests {
     fn tail_returns_empty_for_unknown_log() {
         let dir = std::env::temp_dir().join("k4r-logs-missing");
         assert_eq!(tail(&dir, "engine", 10), "");
+    }
+
+    #[test]
+    fn small_log_is_not_rotated() {
+        let dir = std::env::temp_dir().join("k4r-log-small");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("engine.log");
+        std::fs::write(&path, "строка
+").unwrap();
+        assert!(!rotate_log_at(&path, 1024));
+        assert!(path.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn big_log_moves_to_dot_one_and_starts_fresh() {
+        let dir = std::env::temp_dir().join("k4r-log-big");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("engine.log");
+        let old = "старое
+".repeat(100);
+        std::fs::write(&path, &old).unwrap();
+        assert!(rotate_log_at(&path, 100));
+        assert!(!path.exists(), "свежий журнал начинается с пустого файла");
+        let backup = dir.join("engine.log.1");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), old);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn second_rotation_replaces_previous_backup() {
+        let dir = std::env::temp_dir().join("k4r-log-twice");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("engine.log");
+        std::fs::write(&path, "первый
+".repeat(50)).unwrap();
+        assert!(rotate_log_at(&path, 100));
+        std::fs::write(&path, "второй
+".repeat(50)).unwrap();
+        assert!(rotate_log_at(&path, 100));
+        // держим ровно один предыдущий кусок, иначе каталог растёт бесконечно
+        assert_eq!(
+            std::fs::read_to_string(dir.join("engine.log.1")).unwrap(),
+            "второй
+".repeat(50)
+        );
+        assert!(!dir.join("engine.log.2").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rotation_survives_missing_file() {
+        let dir = std::env::temp_dir().join("k4r-log-none");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!rotate_log_at(&dir.join("engine.log"), 100));
     }
 }

@@ -3,6 +3,7 @@
 
 pub mod engine;
 pub mod probe;
+pub mod single;
 pub mod store;
 pub mod subscription;
 pub mod zapret;
@@ -1086,12 +1087,34 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Второй экземпляр не должен поднимать второе ядро: он просто показывает
+    // окно первого и выходит. Порт-сторож держится, пока жив процесс.
+    let single = match single::acquire(single::PORT) {
+        Some(guard) => guard,
+        None => {
+            single::wake_existing(single::PORT);
+            return;
+        }
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .manage(engine::Engine::default())
         .manage(zapret::Zapret::default())
-        .setup(|app| {
+        .setup(move |app| {
+            let handle = app.handle().clone();
+            single::serve(single, move || {
+                let outer = handle.clone();
+                let inner = handle.clone();
+                let _ = outer.run_on_main_thread(move || {
+                    if let Some(win) = inner.get_webview_window("main") {
+                        let _ = win.show();
+                        let _ = win.unminimize();
+                        let _ = win.set_focus();
+                    }
+                });
+            });
             build_tray(app.handle())?;
             watch_minimize(app.handle().clone());
             // the X button hides to tray unless the user asked for a real quit

@@ -737,6 +737,9 @@ fn read_tail(path: &Path, lines: usize) -> String {
 }
 
 pub fn write_log_header(path: &Path, header: &str) {
+    // Разросшийся журнал убираем до открытия: на Windows открытый файл
+    // переименовать нельзя, а копить его без предела нельзя тем более
+    crate::store::rotate_log(path);
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
