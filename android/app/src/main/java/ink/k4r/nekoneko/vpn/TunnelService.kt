@@ -102,6 +102,10 @@ class TunnelService : VpnService() {
                         continue
                     }
                     engine = box
+                    // Ядро может умереть уже после успешного запуска: тогда
+                    // честно переводим в «Ошибка» и держим трафик, если включён
+                    // kill switch, — иначе человек думает, что он под защитой.
+                    box.onStop = { reason -> coreStopped(reason, include, exclude) }
                     if (alive()) {
                         store.selected = "${profile.host}:${profile.port}"
                         // Туннель поднялся: сторож сети и счётчик попыток больше
@@ -127,6 +131,17 @@ class TunnelService : VpnService() {
                 fail(e.message ?: e.javaClass.simpleName, emptyList(), emptyList())
             }
         }
+    }
+
+    /** Ядро остановилось само: показываем причину и, если нужно, блокируем трафик. */
+    private fun coreStopped(reason: String, include: List<String>, exclude: List<String>) {
+        android.util.Log.d("K4R-service", "ядро остановилось: $reason")
+        engine?.stop()
+        engine = null
+        flush()
+        active.set(false)
+        retries = 0
+        fail(reason, include, exclude)
     }
 
     // Учёт трафика: копим в памяти и пишем в настройки не чаще раза в 20 секунд,

@@ -37,6 +37,16 @@ class SfBox(private val service: VpnService) {
      */
     var onTraffic: ((rx: Long, tx: Long) -> Unit)? = null
 
+    /**
+     * Ядро остановилось само (ошибка, нехватка памяти, отказ сервера). Без этого
+     * сообщения интерфейс продолжал бы показывать «Защищено», хотя трафика уже нет.
+     * При обычном выключении человеком не вызывается: там мы сами просили закрыть.
+     */
+    var onStop: ((String) -> Unit)? = null
+
+    /** Мы сами просим ядро закрыться — тогда его остановка не «сбой». */
+    private var closing = false
+
     private var server: CommandServer? = null
     private var hole: android.os.ParcelFileDescriptor? = null
     private var client: CommandClient? = null
@@ -71,6 +81,7 @@ class SfBox(private val service: VpnService) {
     }
 
     fun stop() {
+        closing = true
         try {
             hole?.close()
         } catch (e: Exception) {
@@ -393,11 +404,16 @@ class SfBox(private val service: VpnService) {
         override fun setDefaultLogLevel(level: Int) {}
         override fun clearLogs() {}
         override fun connected() {}
-        override fun disconnected(message: String) {}
+
+        override fun disconnected(message: String) {
+            if (closing) return
+            Diag.add("связь с ядром потеряна: $message")
+            onStop?.invoke(message.ifBlank { "связь с ядром потеряна" })
+        }
     }
 
     /** События от ядра: перезапуск профиля, остановка, системный прокси. */
-    private class Handler : CommandServerHandler {
+    private inner class Handler : CommandServerHandler {
         /**
          * Журнал ядра: в logcat и в память приложения. По logcat на телефоне
          * без компьютера ничего не посмотреть, а журнал в настройках виден.
@@ -409,7 +425,11 @@ class SfBox(private val service: VpnService) {
 
         override fun serviceReload() {}
 
-        override fun serviceStop() {}
+        override fun serviceStop() {
+            if (closing) return
+            Diag.add("ядро остановилось само")
+            onStop?.invoke("ядро остановилось")
+        }
 
         override fun setSystemProxyEnabled(enabled: Boolean) {}
 
