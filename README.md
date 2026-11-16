@@ -51,11 +51,13 @@ sing-box, аккуратный интерфейс на React и маскот, к
     <td width="33%"><img src="docs/screens/android_home.webp" alt="Главная на Android"></td>
     <td width="33%"><img src="docs/screens/android_split.webp" alt="Разделение по программам"></td>
     <td width="33%"><img src="docs/screens/android_settings.webp" alt="Настройки и каталог DNS"></td>
+    <td width="33%"><img src="docs/screens/android_settings2.webp" alt="Трафик по дням и резервная копия"></td>
   </tr>
   <tr>
     <td align="center"><sub>Маскот, состояние, подписка, «Твой IP»</sub></td>
     <td align="center"><sub>Живой список программ с иконками</sub></td>
     <td align="center"><sub>Три темы, язык, каталог DNS</sub></td>
+    <td align="center"><sub>Трафик по дням, журнал, копия настроек</sub></td>
   </tr>
 </table>
 

@@ -86,6 +86,31 @@ class UsageTest {
     }
 
     @Test
+    fun `неделя всегда из семи дней с нулями`() {
+        val list = Usage.add(Usage.add(emptyList(), "2026-11-16", 50, 0), "2026-11-14", 10, 0)
+        val week = Usage.week(list, "2026-11-16")
+        assertEquals(7, week.size)
+        assertEquals("2026-11-10", week.first().day)
+        assertEquals("2026-11-16", week.last().day)
+        assertEquals(60L, Usage.total(week))
+        assertEquals(0L, week.first { it.day == "2026-11-15" }.total)
+        assertEquals(10L, week.first { it.day == "2026-11-14" }.total)
+    }
+
+    @Test
+    fun `неделя переживает переход через месяц`() {
+        val week = Usage.week(emptyList(), "2026-12-02")
+        assertEquals("2026-11-26", week.first().day)
+        assertEquals("2026-12-02", week.last().day)
+    }
+
+    @Test
+    fun `неделя терпит мусор вместо даты`() {
+        val list = Usage.add(emptyList(), "2026-11-16", 5, 0)
+        assertEquals(1, Usage.week(list, "не дата").size)
+    }
+
+    @Test
     fun `пик и сумма`() {
         val list = listOf(Day("2026-11-15", 100, 50), Day("2026-11-16", 10, 5))
         assertEquals(150L, Usage.peak(list))

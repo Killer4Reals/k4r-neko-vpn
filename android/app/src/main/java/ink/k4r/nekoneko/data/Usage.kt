@@ -66,6 +66,23 @@ object Usage {
     fun keep(list: List<Day>): List<Day> =
         if (list.size <= KEEP) list else list.sortedBy { it.day }.takeLast(KEEP)
 
+    /**
+     * Ровно [days] последних календарных дней, включая сегодняшний, с нулями там,
+     * где ничего не было: пустой день — это тоже факт, и столбик должен стоять.
+     */
+    fun week(list: List<Day>, today: String, days: Int = 7): List<Day> {
+        val end = try {
+            java.time.LocalDate.parse(today)
+        } catch (e: Exception) {
+            return window(list, days)
+        }
+        val known = list.associateBy { it.day }
+        return (days - 1 downTo 0).map { back ->
+            val key = end.minusDays(back.toLong()).toString()
+            known[key] ?: Day(key, 0, 0)
+        }
+    }
+
     /** Последние [days] дней по порядку, начиная с самого раннего. */
     fun window(list: List<Day>, days: Int): List<Day> =
         list.sortedBy { it.day }.takeLast(days.coerceAtLeast(1))

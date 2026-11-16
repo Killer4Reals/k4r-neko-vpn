@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -311,7 +312,7 @@ fun SettingsScreen(
         item {
             Spacer(Modifier.height(6.dp))
             Panel(stringResource(R.string.set_days)) {
-                val week = Usage.window(usage, 7)
+                val week = Usage.week(usage, Store.today())
                 if (week.isEmpty()) {
                     Text(
                         text = stringResource(R.string.days_empty),
@@ -322,19 +323,16 @@ fun SettingsScreen(
                     val peak = Usage.peak(week).coerceAtLeast(1)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.Bottom,
                     ) {
                         for (day in week) {
-                            DayColumn(day, peak, Modifier.weight(1f))
+                            DayColumn(day, peak, Modifier.width(30.dp))
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(R.string.days_total, bytes(Usage.total(week))),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp,
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    InfoLine(stringResource(R.string.days_today), bytes(week.last().total))
+                    InfoLine(stringResource(R.string.days_week), bytes(Usage.total(week)))
                 }
             }
         }
@@ -437,14 +435,7 @@ private fun DayColumn(day: Day, peak: Long, modifier: Modifier = Modifier) {
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // подпись стоит прямо над своим столбиком: так видно и день, и объём
-        Text(
-            text = if (day.total > 0) bytes(day.total) else "",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 8.sp,
-            maxLines = 1,
-        )
-        Spacer(Modifier.height(2.dp))
+        // подписи над столбиками на узком экране не помещаются: цифры ниже
         Box(
             modifier = Modifier
                 .fillMaxWidth()

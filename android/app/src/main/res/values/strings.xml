@@ -67,6 +67,8 @@
     <string name="set_ipv6_hint">IPv6 вне туннеля — это утечка, поэтому по умолчанию закрыт</string>
     <string name="set_days">Трафик по дням</string>
     <string name="days_empty">Пока пусто: цифры появятся после первого подключения</string>
+    <string name="days_today">Сегодня</string>
+    <string name="days_week">За 7 дней</string>
     <string name="days_total">За 7 дней: %1$s</string>
     <string name="set_diag">Диагностика</string>
     <string name="set_diag_hint">Последние события ядра. Если что-то не работает — открой и покажи эти строки. Адреса серверов в журнал не попадают</string>

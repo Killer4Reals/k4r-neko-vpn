@@ -67,6 +67,8 @@
     <string name="set_ipv6_hint">IPv6 outside the tunnel is a leak, so it is closed by default</string>
     <string name="set_days">Traffic by day</string>
     <string name="days_empty">Nothing yet — the numbers appear after the first connection</string>
+    <string name="days_today">Today</string>
+    <string name="days_week">In 7 days</string>
     <string name="days_total">In 7 days: %1$s</string>
     <string name="set_diag">Diagnostics</string>
     <string name="set_diag_hint">Recent engine events. If something is off, open this and show the lines. Server addresses never get into the log</string>
