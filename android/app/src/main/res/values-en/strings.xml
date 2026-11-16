@@ -87,6 +87,8 @@
     <string name="set_engine">sing-box core</string>
     <string name="set_about_text">The DNS catalog holds public resolvers — the same list as in the desktop app.</string>
     <string name="panel_sub_link">Subscription</string>
+    <string name="servers_ping_all">Ping all</string>
+    <string name="servers_pinging">Pinging…</string>
     <string name="panel_servers">Servers: %1$d</string>
     <string name="split_none">Nothing checked — every app goes through the tunnel</string>
     <string name="set_start">Startup</string>

@@ -66,6 +66,8 @@ import ink.k4r.nekoneko.vpn.TunnelService
 import ink.k4r.nekoneko.vpn.TunnelState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
@@ -118,6 +120,7 @@ fun HomeScreen(store: Store) {
     var speed by remember { mutableStateOf("") }
     // Отклик серверов: id → подпись. Меряем по нажатию, а не пачкой при загрузке
     val pings = remember { mutableStateMapOf<String, String>() }
+    var pingAll by remember { mutableStateOf(false) }
 
     val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
@@ -192,6 +195,28 @@ fun HomeScreen(store: Store) {
             } finally {
                 busy = false
             }
+        }
+    }
+
+    /**
+     * Замер всех серверов сразу. Идём по три за раз: и быстро, и не открываем
+     * десятки соединений к чужим адресам одновременно.
+     */
+    fun pingAllServers() {
+        if (pingAll) return
+        pingAll = true
+        val list = profiles
+        for (profile in list) pings[profile.id] = "…"
+        scope.launch {
+            list.chunked(3).forEach { group ->
+                group.map { profile ->
+                    async(Dispatchers.IO) {
+                        val ms = Ping.measure(profile.host, profile.port)
+                        profile.id to Ping.label(ms, russian)
+                    }
+                }.awaitAll().forEach { (id, label) -> pings[id] = label }
+            }
+            pingAll = false
         }
     }
 
@@ -521,12 +546,29 @@ fun HomeScreen(store: Store) {
             }
             if (profiles.isNotEmpty()) {
                 item {
-                    Text(
-                        text = stringResource(R.string.panel_servers, profiles.size),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.panel_servers, profiles.size),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        // Один замер на каждый сервер: по одному пальцем — долго
+                        if (!pingAll) {
+                            TextButton(onClick = { pingAllServers() }) {
+                                Text(text = stringResource(R.string.servers_ping_all), fontSize = 11.sp)
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(R.string.servers_pinging),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
                 }
                 items(profiles, key = { it.id }) { profile ->
                     ServerRow(

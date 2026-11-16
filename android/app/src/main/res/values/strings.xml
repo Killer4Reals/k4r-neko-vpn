@@ -87,6 +87,8 @@
     <string name="set_engine">Ядро sing-box</string>
     <string name="set_about_text">Каталог DNS — публичные резолверы, тот же список, что в версии для ПК.</string>
     <string name="panel_sub_link">Подписка</string>
+    <string name="servers_ping_all">Проверить все</string>
+    <string name="servers_pinging">Проверяем…</string>
     <string name="panel_servers">Серверы: %1$d</string>
     <string name="split_none">Ничего не отмечено — через туннель идут все программы</string>
     <string name="set_start">Запуск</string>
