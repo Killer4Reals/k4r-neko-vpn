@@ -132,4 +132,27 @@ class SubscriptionParserTest {
         assertNull(SubscriptionParser.placeholderReason(SubscriptionParser.parse(link)))
         assertNull(SubscriptionParser.placeholderReason(emptyList()))
     }
+
+    @Test
+    fun `предел устройств распознаётся`() {
+        assertEquals(
+            SubscriptionParser.Kind.DEVICES,
+            SubscriptionParser.kindOf("Достигнут предел количества устройств"),
+        )
+        assertEquals(SubscriptionParser.Kind.DEVICES, SubscriptionParser.kindOf("device limit reached"))
+        assertEquals(SubscriptionParser.Kind.DEVICES, SubscriptionParser.kindOf("превышено число устройств"))
+    }
+
+    @Test
+    fun `просроченная подписка распознаётся`() {
+        assertEquals(SubscriptionParser.Kind.EXPIRED, SubscriptionParser.kindOf("Подписка истекла"))
+        assertEquals(SubscriptionParser.Kind.EXPIRED, SubscriptionParser.kindOf("subscription expired"))
+        assertEquals(SubscriptionParser.Kind.EXPIRED, SubscriptionParser.kindOf("Срок подписки просрочен"))
+    }
+
+    @Test
+    fun `непонятная причина остаётся прочим`() {
+        assertEquals(SubscriptionParser.Kind.OTHER, SubscriptionParser.kindOf("provider says no"))
+        assertEquals(SubscriptionParser.Kind.OTHER, SubscriptionParser.kindOf(""))
+    }
 }

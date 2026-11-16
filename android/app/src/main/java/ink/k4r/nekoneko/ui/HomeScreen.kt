@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -58,6 +59,7 @@ import androidx.core.content.ContextCompat
 import ink.k4r.nekoneko.R
 import ink.k4r.nekoneko.data.Flags
 import ink.k4r.nekoneko.data.Ping
+import ink.k4r.nekoneko.data.SubscriptionParser
 import ink.k4r.nekoneko.data.Speed
 import ink.k4r.nekoneko.data.Profile
 import ink.k4r.nekoneko.data.Store
@@ -504,6 +506,15 @@ fun HomeScreen(store: Store) {
                             }) {
                                 Text(stringResource(R.string.sub_add), fontSize = 11.sp)
                             }
+                            if (url.isNotBlank()) {
+                                TextButton(onClick = {
+                                    // Перенести подписку на другой телефон: скопировать проще, чем набирать
+                                    clipboard.setText(AnnotatedString(url))
+                                    message = context.getString(R.string.sub_copied)
+                                }) {
+                                    Text(stringResource(R.string.sub_copy), fontSize = 11.sp)
+                                }
+                            }
                             // На телефоне вставлять ссылку долгим нажатием неудобно.
                             // Буфер читаем только по нажатию: система показывает
                             // «приложение читает буфер», и делать это без спроса нельзя
@@ -643,13 +654,21 @@ private fun ServerRow(
  * Ошибка сети словами человека. Java-сообщения вида «For input string: "8099http:"»
  * ничего не объясняют, поэтому переводим частые случаи, остальное оставляем как есть.
  */
-private fun explain(context: android.content.Context, e: Throwable): String = when (e) {
-    is java.net.MalformedURLException, is IllegalArgumentException ->
-        context.getString(R.string.err_bad_url)
-    is java.net.UnknownHostException -> context.getString(R.string.err_no_host, e.message.orEmpty())
-    is java.net.SocketTimeoutException -> context.getString(R.string.err_timeout)
-    is java.io.IOException -> context.getString(R.string.err_network, e.message.orEmpty())
-    else -> e.message ?: e.javaClass.simpleName
+private fun explain(context: android.content.Context, e: Throwable): String = when {
+    // Провайдер прислал заглушку: причину переводим в действие, а не в его текст
+    e is IllegalStateException && e.message != null -> when (SubscriptionParser.kindOf(e.message.orEmpty())) {
+        SubscriptionParser.Kind.DEVICES -> context.getString(R.string.err_device_limit)
+        SubscriptionParser.Kind.EXPIRED -> context.getString(R.string.err_sub_expired)
+        SubscriptionParser.Kind.OTHER -> context.getString(R.string.err_no_servers_provider, e.message.orEmpty())
+    }
+    else -> when (e) {
+        is java.net.MalformedURLException, is IllegalArgumentException ->
+            context.getString(R.string.err_bad_url)
+        is java.net.UnknownHostException -> context.getString(R.string.err_no_host, e.message.orEmpty())
+        is java.net.SocketTimeoutException -> context.getString(R.string.err_timeout)
+        is java.io.IOException -> context.getString(R.string.err_network, e.message.orEmpty())
+        else -> e.message ?: e.javaClass.simpleName
+    }
 }
 
 private fun fetchIp(): String {

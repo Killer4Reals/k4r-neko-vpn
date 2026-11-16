@@ -96,6 +96,25 @@ object SubscriptionParser {
         return profiles.firstOrNull { it.name.isNotBlank() }?.name ?: "провайдер не дал серверов"
     }
 
+    /** О чём говорит ответ-заглушка: предел устройств, срок или что-то ещё. */
+    enum class Kind { DEVICES, EXPIRED, OTHER }
+
+    /**
+     * Провайдеры отвечают заглушкой на разные беды одинаково: «сервер» на
+     * 0.0.0.0:1, а причина — в названии. Человеку нужен не текст провайдера,
+     * а что делать: убрать старое устройство или продлить подписку.
+     */
+    fun kindOf(reason: String): Kind {
+        val text = reason.lowercase()
+        val devices = listOf("устройств", "device", "лимит", "limit", "превыш")
+        val expired = listOf("истек", "истёк", "просроч", "expir", "закончил")
+        return when {
+            devices.any { text.contains(it) } -> Kind.DEVICES
+            expired.any { text.contains(it) } -> Kind.EXPIRED
+            else -> Kind.OTHER
+        }
+    }
+
     fun parse(body: String): List<Profile> {
         val direct = parseLines(body)
         if (direct.isNotEmpty()) return direct

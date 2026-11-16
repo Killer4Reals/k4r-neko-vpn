@@ -12,6 +12,8 @@
     <string name="sub_hint">Ссылка подписки от провайдера</string>
     <string name="sub_load">Загрузить</string>
     <string name="sub_paste_empty">В буфере нет ссылки</string>
+    <string name="sub_copy">Копировать</string>
+    <string name="sub_copied">Ссылка скопирована</string>
     <string name="sub_paste">Вставить из буфера</string>
     <string name="sub_add">Добавить подписку</string>
     <string name="sub_forget">Забыть эту</string>
@@ -23,6 +25,9 @@
     <string name="notify_connecting">Подключаемся</string>
     <string name="notify_connecting_text">Готовим туннель</string>
     <string name="err_permission">Без разрешения на VPN туннель не поднять</string>
+    <string name="err_device_limit">Провайдер: достигнут предел устройств. Удалите лишнее устройство в кабинете провайдера и нажмите Load</string>
+    <string name="err_sub_expired">Провайдер: подписка закончилась. Продлите её и нажмите Load</string>
+    <string name="err_no_servers_provider">Провайдер не дал серверов: %1$s</string>
     <string name="err_no_servers">в подписке нет серверов</string>
     <string name="err_service">Система не разрешила запустить службу туннеля. Открой приложение и включи VPN вручную</string>
     <string name="err_no_answer">Сервер не ответил — туннель не поднялся</string>

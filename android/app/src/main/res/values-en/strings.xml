@@ -12,6 +12,8 @@
     <string name="sub_hint">Subscription link from your provider</string>
     <string name="sub_load">Load</string>
     <string name="sub_paste_empty">No link in the clipboard</string>
+    <string name="sub_copy">Copy</string>
+    <string name="sub_copied">Link copied</string>
     <string name="sub_paste">Paste from clipboard</string>
     <string name="sub_add">Add subscription</string>
     <string name="sub_forget">Forget this one</string>
@@ -23,6 +25,9 @@
     <string name="notify_connecting">Connecting</string>
     <string name="notify_connecting_text">Preparing the tunnel</string>
     <string name="err_permission">No VPN permission, no tunnel</string>
+    <string name="err_device_limit">Provider: device limit reached. Remove an extra device in your provider account and press Load</string>
+    <string name="err_sub_expired">Provider: the subscription has expired. Renew it and press Load</string>
+    <string name="err_no_servers_provider">The provider returned no servers: %1$s</string>
     <string name="err_no_servers">the subscription has no servers</string>
     <string name="err_service">The system did not allow the tunnel service to start. Open the app and turn the VPN on manually</string>
     <string name="err_no_answer">The server did not answer — the tunnel is down</string>
