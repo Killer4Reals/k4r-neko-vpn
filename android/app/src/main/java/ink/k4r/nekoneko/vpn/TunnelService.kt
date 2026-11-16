@@ -38,6 +38,15 @@ class TunnelService : VpnService() {
     /** Блокировка трафика после обрыва: держим ссылку, иначе её нечем снять. */
     private var blocker: SfBox? = null
 
+    /** Одна попытка за раз: иначе сторож сети и кнопка запускают две. */
+    private val active = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** Сколько раз пробовали сами после возврата сети. */
+    private var retries = 0
+
+    /** Сторож сети: ждём, когда связь вернётся, и пробуем снова. */
+    private var watcher: android.net.ConnectivityManager.NetworkCallback? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> start()
@@ -47,6 +56,10 @@ class TunnelService : VpnService() {
     }
 
     private fun start() {
+        if (!active.compareAndSet(false, true)) {
+            Diag.add("попытка уже идёт — второй раз не начинаем")
+            return
+        }
         TunnelState.set(TunnelState.Phase.Connecting)
         try {
             startForeground(NOTE_ID, notification(getString(R.string.notify_connecting), getString(R.string.notify_connecting_text)))
@@ -54,6 +67,7 @@ class TunnelService : VpnService() {
             // Система может не разрешить службу переднего плана (например,
             // сразу после загрузки). Это не повод падать: говорим причину.
             Diag.add("службу не поднять: ${e.javaClass.simpleName}")
+            active.set(false)
             TunnelState.set(TunnelState.Phase.Error, getString(R.string.err_service))
             stopSelf()
             return
@@ -96,11 +110,13 @@ class TunnelService : VpnService() {
                     engine = null
                 }
                 Diag.add("ни один сервер не ответил: $reason")
+                active.set(false)
                 fail(reason, include, exclude)
                 return@launch
             } catch (e: Throwable) {
                 android.util.Log.d("K4R-service", "сбой запуска: ${e.javaClass.simpleName}: ${e.message}")
                 // Честно: не «защищено», а ошибка с причиной
+                active.set(false)
                 fail(e.message ?: e.javaClass.simpleName, emptyList(), emptyList())
             }
         }
@@ -121,6 +137,7 @@ class TunnelService : VpnService() {
                 blocker = SfBox(this).also { it.blackhole(include, exclude) }
                 TunnelState.setBlocked(getString(R.string.err_blocked, reason))
                 updateNotification(getString(R.string.notify_blocked), reason)
+                watchNetwork()
                 return
             } catch (e: Throwable) {
                 android.util.Log.d("K4R-service", "блокировку не поставить: ${e.message}")
@@ -133,6 +150,9 @@ class TunnelService : VpnService() {
 
     private fun stop() {
         Diag.add("выключено человеком")
+        unwatchNetwork()
+        active.set(false)
+        retries = 0
         engine?.stop()
         engine = null
         blocker?.stop()
@@ -149,6 +169,8 @@ class TunnelService : VpnService() {
         // человека без интернета до перезагрузки.
         blocker?.stop()
         blocker = null
+        unwatchNetwork()
+        active.set(false)
         if (TunnelState.state.value.phase != TunnelState.Phase.Error) {
             TunnelState.set(TunnelState.Phase.Idle)
         }
@@ -159,6 +181,54 @@ class TunnelService : VpnService() {
         // Система отобрала VPN (другое приложение или ручное отключение)
         stop()
         super.onRevoke()
+    }
+
+    /**
+     * Пока трафик заблокирован, ждём возврата сети: человек вышел из метро или
+     * включил Wi-Fi — соединение должно подняться само, а не требовать заново
+     * нажимать кнопку. Пробуем не больше трёх раз, чтобы не крутиться в цикле.
+     */
+    private fun watchNetwork() {
+        if (watcher != null) return
+        val manager = getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        // Слушаем не «сеть по умолчанию» — ею после блокировки стал наш же
+        // пустой VPN, и он никуда не пропадает. Нужны обычные сети без VPN:
+        // запоминаем, какие уже есть, и ждём появления новой.
+        val known = try {
+            manager.allNetworks.map { it.networkHandle }.toSet()
+        } catch (e: Throwable) {
+            emptySet()
+        }
+        val request = android.net.NetworkRequest.Builder()
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                if (retries >= 3) return
+                if (network.networkHandle in known) return
+                retries++
+                Diag.add("сеть вернулась — пробуем ещё раз ($retries из 3)")
+                start()
+            }
+        }
+        try {
+            manager.registerNetworkCallback(request, callback)
+            watcher = callback
+            Diag.add("ждём возврата сети")
+        } catch (e: Throwable) {
+            Diag.add("сторож сети не поставлен: ${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun unwatchNetwork() {
+        val callback = watcher ?: return
+        watcher = null
+        try {
+            getSystemService(android.net.ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
+        } catch (e: Throwable) {
+            // уже снят системой
+        }
     }
 
     /**
