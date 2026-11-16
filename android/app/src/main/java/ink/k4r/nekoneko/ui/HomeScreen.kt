@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -78,6 +79,7 @@ fun HomeScreen(store: Store) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val russian = LocalConfiguration.current.locales[0].language == "ru"
+    val clipboard = LocalClipboardManager.current
 
     val tunnel = TunnelState.state
     var phase by remember { mutableStateOf(tunnel.value.phase) }
@@ -476,6 +478,20 @@ fun HomeScreen(store: Store) {
                                 message = ""
                             }) {
                                 Text(stringResource(R.string.sub_add), fontSize = 11.sp)
+                            }
+                            // На телефоне вставлять ссылку долгим нажатием неудобно.
+                            // Буфер читаем только по нажатию: система показывает
+                            // «приложение читает буфер», и делать это без спроса нельзя
+                            TextButton(onClick = {
+                                val pasted = clipboard.getText()?.text?.trim().orEmpty()
+                                if (pasted.contains("://")) {
+                                    url = pasted
+                                    message = ""
+                                } else {
+                                    message = context.getString(R.string.sub_paste_empty)
+                                }
+                            }) {
+                                Text(stringResource(R.string.sub_paste), fontSize = 11.sp)
                             }
                             if (activeUrl.isNotBlank()) {
                                 TextButton(onClick = {
