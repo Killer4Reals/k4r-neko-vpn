@@ -4,7 +4,7 @@
 
 Исходники, история и ADR-005 Android-версии теперь в
 [github.com/Killer4Reals/k4r-neko-vpn-android](https://github.com/Killer4Reals/k4r-neko-vpn-android)
-(тег `v0.3.0`). Здесь остаётся Windows-клиент, описание и готовый APK.
+(теги `v0.3.0`, `v0.3.1`). Здесь остаётся Windows-клиент, описание и готовый APK.
 
 ## Android 0.3.0 — несколько подписок, трафик по дням, спидтест
 
