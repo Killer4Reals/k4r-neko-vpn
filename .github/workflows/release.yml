@@ -1,0 +1,96 @@
+name: release
+
+# Релиз собирается тегом, а не руками на чьём-то компьютере:
+#   git tag -a v1.4.0 -m "..." && git push origin v1.4.0
+# Кнопка запуска нужна, чтобы проверить сам конвейер без нового тега.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: установщик и portable
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # Ядро не лежит в git (80 МБ). Берём официальный релиз sing-box:
+      # версия закреплена так же, как в docs/ЛИЦЕНЗИИ.md
+      - name: скачать ядро sing-box
+        shell: pwsh
+        run: |
+          $ver = "1.14.4"
+          $url = "https://github.com/SagerNet/sing-box/releases/download/v$ver/sing-box-$ver-windows-amd64.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\sing-box.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\sing-box.zip" -DestinationPath "$env:RUNNER_TEMP\sb" -Force
+          $exe = Get-ChildItem -Path "$env:RUNNER_TEMP\sb" -Recurse -Filter "sing-box.exe" | Select-Object -First 1
+          if (-not $exe) { throw "sing-box.exe не найден в архиве" }
+          New-Item -ItemType Directory -Force -Path "app/src-tauri/resources/bin" | Out-Null
+          Copy-Item $exe.FullName "app/src-tauri/resources/bin/sing-box.exe" -Force
+          "{0:N1} МБ" -f ((Get-Item "app/src-tauri/resources/bin/sing-box.exe").Length / 1MB)
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: фронтенд
+        working-directory: app
+        run: npm ci
+
+      - name: собрать установщик
+        working-directory: app
+        run: npm run tauri build
+
+      - name: portable-сборка
+        shell: pwsh
+        run: |
+          $dir = "dist/K4R-Neko-VPN"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item "app/src-tauri/target/release/K4R Neko VPN.exe" $dir -Force
+          Copy-Item "app/src-tauri/target/release/resources" $dir -Recurse -Force
+          Copy-Item "packaging/ЧИТАЙ МЕНЯ.txt" $dir -Force
+          Compress-Archive -Path "$dir\*" -DestinationPath "dist/K4R-Neko-VPN-portable.zip" -CompressionLevel Optimal
+
+      - name: версия
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content app/package.json -Raw | ConvertFrom-Json).version
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: приложить к релизу
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $setup = Get-ChildItem "app/src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $setup) { throw "установщик не собрался" }
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "K4R Neko VPN $tag" --notes "Собрано в CI по тегу $tag."
+          }
+          gh release upload $tag $setup.FullName "dist/K4R-Neko-VPN-portable.zip" --clobber
+
+      - name: артефакты прогона
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ steps.ver.outputs.version }}
+          path: |
+            app/src-tauri/target/release/bundle/nsis/*.exe
+            dist/K4R-Neko-VPN-portable.zip
+          if-no-files-found: error
