@@ -11,6 +11,8 @@
     <string name="notify_connected">Protected</string>
     <string name="sub_hint">Subscription link from your provider</string>
     <string name="sub_load">Load</string>
+    <string name="sub_add">Add subscription</string>
+    <string name="sub_forget">Forget this one</string>
     <string name="sub_loading">Loading…</string>
     <string name="sub_loaded">Servers: %1$d</string>
     <string name="ip_check">Check IP</string>

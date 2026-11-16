@@ -9,6 +9,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +29,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,6 +99,8 @@ fun HomeScreen(store: Store) {
     }
 
     var url by remember { mutableStateOf(store.subUrl) }
+    var subs by remember { mutableStateOf(store.subList()) }
+    var activeUrl by remember { mutableStateOf(store.subUrl) }
     var profiles by remember { mutableStateOf(store.profiles()) }
     var picked by remember { mutableStateOf(store.profile()?.id.orEmpty()) }
     var busy by remember { mutableStateOf(false) }
@@ -131,6 +137,21 @@ fun HomeScreen(store: Store) {
         }
     }
 
+    /** Открыть другую подписку из списка: и данные, и серверы с ней. */
+    fun openSub(target: String) {
+        store.activeSub = target
+        activeUrl = target
+        url = store.subUrl
+        title = store.subTitle
+        used = store.subUsed
+        total = store.subTotal
+        expire = store.subExpire
+        profiles = store.profiles()
+        picked = store.profile()?.id.orEmpty()
+        pings.clear()
+        message = ""
+    }
+
     fun load() {
         if (busy) return
         busy = true
@@ -158,6 +179,8 @@ fun HomeScreen(store: Store) {
                     picked = first.id
                     store.selected = "${first.host}:${first.port}"
                 }
+                subs = store.subList()
+                activeUrl = store.subUrl
                 message = context.getString(R.string.sub_loaded, profiles.size)
             } catch (e: Throwable) {
                 message = explain(context, e)
@@ -370,6 +393,21 @@ fun HomeScreen(store: Store) {
             }
             item {
                 Panel(stringResource(R.string.panel_sub_link)) {
+                    if (subs.isNotEmpty()) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
+                            for (item in subs) {
+                                FilterChip(
+                                    selected = item.url == activeUrl,
+                                    onClick = { openSub(item.url) },
+                                    label = { Text(item.label(), fontSize = 11.sp) },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
                     OutlinedTextField(
                         value = url,
                         onValueChange = { url = it },
@@ -387,6 +425,39 @@ fun HomeScreen(store: Store) {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(stringResource(if (busy) R.string.sub_loading else R.string.sub_load), fontSize = 13.sp)
+                    }
+                    if (subs.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = {
+                                // поле пустое — вводим новую ссылку
+                                url = ""
+                                message = ""
+                            }) {
+                                Text(stringResource(R.string.sub_add), fontSize = 11.sp)
+                            }
+                            if (activeUrl.isNotBlank()) {
+                                TextButton(onClick = {
+                                    val target = activeUrl
+                                    store.forgetSub(target)
+                                    subs = store.subList()
+                                    val next = subs.firstOrNull()?.url.orEmpty()
+                                    if (next.isNotEmpty()) {
+                                        openSub(next)
+                                    } else {
+                                        activeUrl = ""
+                                        url = ""
+                                        title = ""
+                                        used = 0
+                                        total = 0
+                                        expire = 0
+                                        picked = ""
+                                        profiles = emptyList()
+                                    }
+                                }) {
+                                    Text(stringResource(R.string.sub_forget), fontSize = 11.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }

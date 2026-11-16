@@ -11,6 +11,8 @@
     <string name="notify_connected">Защищено</string>
     <string name="sub_hint">Ссылка подписки от провайдера</string>
     <string name="sub_load">Загрузить</string>
+    <string name="sub_add">Добавить подписку</string>
+    <string name="sub_forget">Забыть эту</string>
     <string name="sub_loading">Загружаю…</string>
     <string name="sub_loaded">Серверов: %1$d</string>
     <string name="ip_check">Проверить IP</string>

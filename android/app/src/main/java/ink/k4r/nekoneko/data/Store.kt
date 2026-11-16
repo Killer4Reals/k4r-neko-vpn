@@ -12,14 +12,73 @@ class Store(context: Context) {
     private val context = context.applicationContext
     private val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
+    /**
+     * Подписки. Раньше была одна, и её поля лежали в настройках по отдельности;
+     * теперь список, но наружу Store по-прежнему отдаёт действующую подписку:
+     * экрану не нужно знать, сколько их.
+     */
+    fun subList(): List<Sub> {
+        val stored = prefs.getString("subs", "").orEmpty()
+        if (stored.isNotBlank()) return Subs.parse(stored)
+        // перенос со старой версии: одна подписка в отдельных полях
+        val legacyUrl = prefs.getString("sub_url", "").orEmpty()
+        return if (legacyUrl.isBlank()) emptyList() else listOf(
+            Sub(
+                url = legacyUrl,
+                title = prefs.getString("sub_title", "").orEmpty(),
+                body = prefs.getString("sub_body", "").orEmpty(),
+                fetched = prefs.getLong("sub_fetched", 0),
+                refresh = prefs.getInt("sub_refresh", 12),
+                used = prefs.getLong("sub_used", 0),
+                total = prefs.getLong("sub_total", 0),
+                expire = prefs.getLong("sub_expire", 0),
+            )
+        )
+    }
+
+    fun saveSubs(list: List<Sub>) = prefs.edit().putString("subs", Subs.write(list)).apply()
+
+    /** Адрес действующей подписки. */
+    var activeSub: String
+        get() = prefs.getString("sub_active", "").orEmpty()
+        set(value) = prefs.edit().putString("sub_active", value).apply()
+
+    fun active(): Sub? = Subs.active(subList(), activeSub)
+
+    /** Добавить подписку или обновить известную, сохранив порядок. */
+    fun putSub(sub: Sub) {
+        saveSubs(Subs.upsert(subList(), sub))
+        activeSub = sub.url
+    }
+
+    fun forgetSub(url: String) {
+        val rest = Subs.remove(subList(), url)
+        saveSubs(rest)
+        if (activeSub == url) activeSub = rest.firstOrNull()?.url.orEmpty()
+    }
+
+    private fun updateActive(change: (Sub) -> Sub) {
+        val current = active() ?: return
+        putSub(change(current))
+    }
+
     var subUrl: String
-        get() = prefs.getString("sub_url", "").orEmpty()
-        set(value) = prefs.edit().putString("sub_url", value).apply()
+        get() = active()?.url.orEmpty()
+        set(value) {
+            val clean = value.trim()
+            if (clean.isEmpty()) return
+            val known = subList().firstOrNull { it.url == clean }
+            if (known == null) {
+                putSub(Sub(url = clean))
+            } else {
+                activeSub = clean
+            }
+        }
 
     /** Тело последней загруженной подписки — из него собираем профили. */
     var subBody: String
-        get() = prefs.getString("sub_body", "").orEmpty()
-        set(value) = prefs.edit().putString("sub_body", value).apply()
+        get() = active()?.body.orEmpty()
+        set(value) = updateActive { it.copy(body = value) }
 
     /** Адрес выбранного сервера в виде host:port; по нему находим профиль. */
     var selected: String
@@ -106,28 +165,28 @@ class Store(context: Context) {
 
     /** Что провайдер сообщил о подписке: название, трафик, срок. */
     var subTitle: String
-        get() = prefs.getString("sub_title", "").orEmpty()
-        set(value) = prefs.edit().putString("sub_title", value).apply()
+        get() = active()?.title.orEmpty()
+        set(value) = updateActive { it.copy(title = value) }
 
     var subUsed: Long
-        get() = prefs.getLong("sub_used", 0)
-        set(value) = prefs.edit().putLong("sub_used", value).apply()
+        get() = active()?.used ?: 0
+        set(value) = updateActive { it.copy(used = value) }
 
     var subTotal: Long
-        get() = prefs.getLong("sub_total", 0)
-        set(value) = prefs.edit().putLong("sub_total", value).apply()
+        get() = active()?.total ?: 0
+        set(value) = updateActive { it.copy(total = value) }
 
     var subExpire: Long
-        get() = prefs.getLong("sub_expire", 0)
-        set(value) = prefs.edit().putLong("sub_expire", value).apply()
+        get() = active()?.expire ?: 0
+        set(value) = updateActive { it.copy(expire = value) }
 
     var subRefresh: Int
-        get() = prefs.getInt("sub_refresh", 12)
-        set(value) = prefs.edit().putInt("sub_refresh", value).apply()
+        get() = active()?.refresh ?: 12
+        set(value) = updateActive { it.copy(refresh = value) }
 
     var subFetched: Long
-        get() = prefs.getLong("sub_fetched", 0)
-        set(value) = prefs.edit().putLong("sub_fetched", value).apply()
+        get() = active()?.fetched ?: 0
+        set(value) = updateActive { it.copy(fetched = value) }
 
     fun profiles(): List<Profile> = SubscriptionParser.parse(subBody)
 
