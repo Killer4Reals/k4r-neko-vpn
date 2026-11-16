@@ -86,7 +86,7 @@ sing-box, аккуратный интерфейс на React и маскот, к
 ```
 cd android
 ./gradlew assembleDebug              # нужен Android SDK 35, NDK не требуется
-./gradlew testDebugUnitTest          # 103 юнит-теста логики
+./gradlew testDebugUnitTest          # 106 юнит-тестов логики
 ./gradlew assembleRelease            # подписанный APK для телефона
 ```
 

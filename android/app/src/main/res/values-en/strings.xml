@@ -77,9 +77,11 @@
     <string name="days_total">In 7 days: %1$s</string>
     <string name="set_diag">Diagnostics</string>
     <string name="set_diag_hint">Recent engine events. If something is off, open this and show the lines. Server addresses never get into the log</string>
+    <string name="diag_share">Send the log</string>
     <string name="diag_show">Show log</string>
     <string name="diag_hide">Hide log</string>
     <string name="diag_clear">Clear</string>
+    <string name="diag_saved">On disk: %1$d lines — the log survives closing the app</string>
     <string name="diag_empty">Empty so far: connect once and the events will show up</string>
     <string name="set_backup">Backup</string>
     <string name="set_backup_hint">Subscriptions, DNS, theme, language, split tunneling and traffic history in one JSON file</string>

@@ -77,9 +77,11 @@
     <string name="days_total">За 7 дней: %1$s</string>
     <string name="set_diag">Диагностика</string>
     <string name="set_diag_hint">Последние события ядра. Если что-то не работает — открой и покажи эти строки. Адреса серверов в журнал не попадают</string>
+    <string name="diag_share">Отправить журнал</string>
     <string name="diag_show">Показать журнал</string>
     <string name="diag_hide">Скрыть журнал</string>
     <string name="diag_clear">Очистить</string>
+    <string name="diag_saved">На диске: %1$d строк — журнал переживает закрытие приложения</string>
     <string name="diag_empty">Пока пусто: подключись, и здесь появятся события</string>
     <string name="set_backup">Резервная копия</string>
     <string name="set_backup_hint">Подписки, DNS, тема, язык, разделение и учёт трафика — в одном файле JSON</string>

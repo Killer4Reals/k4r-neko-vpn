@@ -56,4 +56,29 @@ class DiagTest {
         assertEquals("«Финляндия»", Diag.server("Финляндия"))
         assertTrue(!Diag.server("bisw222.axinode.sbs:10121").contains("10121"))
     }
+
+    @Test
+    fun `хвост файла обрезается по целой строке`() {
+        val text = (1..100).joinToString("\n") { "строка " + it }
+        val cut = Diag.trim(text, 200)
+        assertTrue(cut.length <= 200)
+        // первая строка в отчёте должна быть целой, без обрывка
+        assertTrue(cut.startsWith("строка "))
+        assertTrue(cut.endsWith("строка 100"))
+    }
+
+    @Test
+    fun `короткий журнал не трогаем`() {
+        val text = "раз\nдва"
+        assertEquals(text, Diag.trim(text, 1000))
+    }
+
+    @Test
+    fun `отчёт содержит шапку и строки`() {
+        Diag.clear()
+        Diag.add("проверка отчёта")
+        val report = Diag.report("шапка")
+        assertTrue(report.startsWith("шапка"))
+        assertTrue(report.contains("проверка отчёта"))
+    }
 }

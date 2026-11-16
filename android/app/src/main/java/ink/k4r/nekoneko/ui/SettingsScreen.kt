@@ -361,6 +361,27 @@ fun SettingsScreen(
                             Text(text = stringResource(R.string.diag_clear), fontSize = 12.sp)
                         }
                     }
+                    // Журнал нужен не «посмотреть», а «показать»: отправляем его
+                    // текстом, без файлов и провайдеров — так меньше разрешений
+                    TextButton(onClick = {
+                        val text = diagReport()
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "K4R Neko VPN: журнал")
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        context.startActivity(Intent.createChooser(send, context.getString(R.string.diag_share)))
+                    }) {
+                        Text(text = stringResource(R.string.diag_share), fontSize = 12.sp)
+                    }
+                }
+                val saved = Diag.savedCount()
+                if (saved > 0) {
+                    Text(
+                        text = stringResource(R.string.diag_saved, saved),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                    )
                 }
                 if (diagOpen) {
                     if (diagLines.isEmpty()) {
@@ -425,6 +446,24 @@ fun SettingsScreen(
             Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+
+/** Шапка отчёта: версия, телефон и версия ядра — без неё журнал мало что даёт. */
+private fun diagReport(): String {
+    val header = buildString {
+        append("K4R Neko VPN ")
+        append(ink.k4r.nekoneko.ui.Build.APP_VERSION)
+        append(" · Android ")
+        append(android.os.Build.VERSION.RELEASE)
+        append(" (API ")
+        append(android.os.Build.VERSION.SDK_INT)
+        append(") · ")
+        append(android.os.Build.MANUFACTURER)
+        append(" ")
+        append(android.os.Build.MODEL)
+    }
+    return Diag.report(header)
 }
 
 /** Столбик одного дня: высота — доля от самого полного дня недели. */

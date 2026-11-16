@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import ink.k4r.nekoneko.data.Lang
+import ink.k4r.nekoneko.vpn.Diag
 import ink.k4r.nekoneko.data.Store
 import ink.k4r.nekoneko.ui.App
 
@@ -26,6 +27,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Журнал нужен и после падения: привязываем его к папке приложения
+        // до всего остального и ставим обработчик сбоев
+        Diag.attach(this)
+        Diag.installCrashHandler()
+        Diag.add("запуск приложения ${ink.k4r.nekoneko.ui.Build.APP_VERSION}")
         // Постоянное уведомление туннеля — часть работы VPN: без разрешения
         // Android 13+ его не покажет, и человек не увидит, что туннель включён.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&

@@ -48,6 +48,14 @@ class TunnelService : VpnService() {
     /** Сторож сети: ждём, когда связь вернётся, и пробуем снова. */
     private var watcher: android.net.ConnectivityManager.NetworkCallback? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        // Служба может подняться и без экрана (после перезагрузки): журнал
+        // должен писаться и тогда, иначе разбирать будет нечего
+        Diag.attach(this)
+        Diag.add("служба запущена")
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> start()
