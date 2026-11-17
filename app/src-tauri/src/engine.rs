@@ -486,6 +486,63 @@ pub fn check_config(bin: &Path, config: &Path) -> Result<(), String> {
     }
 }
 
+/// Есть ли интернет вообще, без туннеля. Пустой адрес — нет маршрута наружу.
+fn have_internet() -> bool {
+    let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") else {
+        return false;
+    };
+    sock.connect("1.1.1.1:53").is_ok() && sock.local_addr().map(|a| !a.ip().is_unspecified()).unwrap_or(false)
+}
+
+/// Адрес сервера из конфига: первый outbound с полем server.
+fn config_server(config: &Value) -> Option<(String, u16)> {
+    let list = config.get("outbounds")?.as_array()?;
+    for ob in list {
+        // `?` здесь нельзя: у селектора и прямого выхода поля server нет,
+        // и первый же такой выход оборвал бы поиск
+        let Some(host) = ob.get("server").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let port = ob.get("server_port").and_then(|v| v.as_u64()).unwrap_or(443) as u16;
+        return Some((host.to_string(), port));
+    }
+    None
+}
+
+/// Можно ли дозвониться до сервера напрямую. Отвечает на вопрос «сервер мёртв
+/// или у нас нет сети» — это разные беды и разные слова для владельца.
+fn server_reachable(config: &Value) -> bool {
+    let Some((host, port)) = config_server(config) else {
+        return false;
+    };
+    let Ok(addrs) = std::net::ToSocketAddrs::to_socket_addrs(&(host.as_str(), port)) else {
+        return false;
+    };
+    for addr in addrs.take(3) {
+        if std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(4)).is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Понятная причина вместо кода выхода движка.
+fn failure_reason(config: &Value, server_name: &str, tail: &str, kind: &str) -> String {
+    if !have_internet() {
+        return "нет интернета: проверь Wi-Fi или кабель, затем попробуй снова".into();
+    }
+    if !server_reachable(config) {
+        return format!(
+            "сервер «{server_name}» не отвечает: попробуй другой сервер или обнови подписку"
+        );
+    }
+    if tail.is_empty() {
+        kind.to_string()
+    } else {
+        format!("{kind}: {tail}")
+    }
+}
+
 pub fn start(
     engine: &Engine,
     bin: &Path,
@@ -543,18 +600,22 @@ pub fn start(
     std::thread::sleep(std::time::Duration::from_millis(900));
     if let Ok(Some(code)) = child.try_wait() {
         let tail = read_tail(log_path, 6);
-        return Err(format!(
-            "движок завершился с кодом {code}{}",
-            if tail.is_empty() { String::new() } else { format!(": {tail}") }
+        return Err(failure_reason(
+            config,
+            server_name,
+            &tail,
+            &format!("движок завершился с кодом {code}"),
         ));
     }
     if !wait_tunnel_ready(log_path, log_offset, std::time::Duration::from_secs(8)) {
         let _ = child.kill();
         let _ = child.wait();
         let tail = read_tail(log_path, 4);
-        return Err(format!(
-            "движок запустился, но туннель не поднялся{}",
-            if tail.is_empty() { String::new() } else { format!(": {tail}") }
+        return Err(failure_reason(
+            config,
+            server_name,
+            &tail,
+            "движок запустился, но туннель не поднялся",
         ));
     }
 
@@ -796,6 +857,30 @@ pub fn write_log_header(path: &Path, header: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn server_address_comes_from_the_first_outbound() {
+        let cfg: Value = serde_json::from_str(
+            r#"{"outbounds":[{"type":"selector"},{"type":"vless","server":"example.invalid","server_port":8443}]}"#,
+        )
+        .unwrap();
+        assert_eq!(config_server(&cfg), Some(("example.invalid".into(), 8443)));
+    }
+
+    #[test]
+    fn config_without_a_server_has_no_address() {
+        let cfg: Value = serde_json::from_str(r#"{"outbounds":[{"type":"direct"}]}"#).unwrap();
+        assert_eq!(config_server(&cfg), None);
+        // недостижимый сервер без адреса — не повод говорить «сеть виновата»
+        assert!(!server_reachable(&cfg));
+    }
+
+    #[test]
+    fn reason_is_words_not_an_exit_code() {
+        let cfg: Value = serde_json::from_str(r#"{"outbounds":[{"type":"direct"}]}"#).unwrap();
+        let why = failure_reason(&cfg, "Токио", "", "движок завершился с кодом 1");
+        assert!(why.contains("интернет") || why.contains("не отвечает"), "причина: {why}");
+    }
+
     use super::*;
 
     fn sample() -> Profile {

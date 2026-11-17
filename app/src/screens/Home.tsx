@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
+import { humanBytes, leftBytes, subTiming } from "../sub";
 
 type Props = {
   t: (k: string) => string;
@@ -33,6 +34,12 @@ type Props = {
   onCheckIp: () => void;
   realCount: number;
   error: string;
+  /** срок подписки, unix-секунды; 0 — провайдер не сказал */
+  subExpire: number;
+  /** лимит трафика в байтах; 0 — без лимита */
+  subTotal: number;
+  /** сколько уже израсходовано, байты */
+  subUsed: number;
 };
 
 // sizes live in CSS: each art has a different amount of empty canvas, so the
@@ -160,6 +167,8 @@ export function HomeScreen(p: Props) {
           </button>
         </div>
 
+        <SubLine expire={p.subExpire} total={p.subTotal} used={p.subUsed} t={t} />
+
         <div className="quick">
           <button
             className="chip"
@@ -235,6 +244,33 @@ export function HomeScreen(p: Props) {
           </button>
         </div>
       </aside>
+    </div>
+  );
+}
+
+/**
+ * Срок подписки и остаток трафика. Показываем только то, что провайдер
+ * действительно сообщил: выдуманная дата хуже, чем пустое место.
+ */
+function SubLine(p: { expire: number; total: number; used: number; t: (k: string) => string }) {
+  const timing = subTiming(p.expire);
+  const left = leftBytes(p.total, p.used, 0);
+  if (timing.state === "none" && !p.total) return null;
+  const date = p.expire > 0 ? new Date((p.expire > 1e12 ? p.expire : p.expire * 1000) * 1).toLocaleDateString() : "";
+  return (
+    <div className="sub-line" data-state={timing.state}>
+      {timing.state !== "none" && (
+        <span>
+          {timing.state === "expired"
+            ? p.t("subExpired")
+            : p.t("subUntil").replace("{d}", date).replace("{n}", String(timing.days))}
+        </span>
+      )}
+      {p.total > 0 && (
+        <span>
+          {p.t("subLeft").replace("{l}", humanBytes(left)).replace("{t}", humanBytes(p.total))}
+        </span>
+      )}
     </div>
   );
 }

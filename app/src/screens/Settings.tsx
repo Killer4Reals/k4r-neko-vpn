@@ -12,6 +12,8 @@ type Props = {
   setKillSwitch: (v: boolean) => void;
   autostart: boolean;
   setAutostart: (v: boolean) => void;
+  connectOnStart: boolean;
+  setConnectOnStart: (v: boolean) => void;
   theme: Theme;
   setTheme: (t: Theme) => void;
   dnsMode: "tunnel" | "system";
@@ -38,8 +40,9 @@ type Props = {
 
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
+  const { connectOnStart, setConnectOnStart } = p;
   const [deviceId, setDeviceId] = useState("");
-  const [version, setVersion] = useState("1.4.0");
+  const [version, setVersion] = useState("1.5.0");
   const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error">("idle");
   const [updateNote, setUpdateNote] = useState("");
   const [updateLink, setUpdateLink] = useState("");
@@ -110,6 +113,22 @@ export function SettingsScreen(p: Props) {
               {t("themeMascot")}
             </button>
           </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("connectOnStart")}</b>
+            <span>{t("connectOnStartHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={connectOnStart}
+            onClick={() => setConnectOnStart(!connectOnStart)}
+          >
+            <span />
+          </button>
         </div>
       </div>
 

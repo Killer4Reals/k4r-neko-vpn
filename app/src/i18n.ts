@@ -145,6 +145,9 @@ const dict: Dict = {
   until: { ru: "до", en: "until" },
   days: { ru: "дн.", en: "days" },
   expired: { ru: "истекла", en: "expired" },
+  subUntil: { ru: "Подписка до {d} · {n} дн.", en: "Subscription until {d} · {n} days" },
+  subExpired: { ru: "Срок подписки истёк", en: "Subscription expired" },
+  subLeft: { ru: "Остаток {l} из {t}", en: "{l} of {t} left" },
   myIp: { ru: "Твой IP", en: "Your IP" },
   myIpHint: {
     ru: "Адрес, который видят сайты. Включи VPN и нажми «проверить» — он должен смениться",
@@ -343,6 +346,11 @@ const dict: Dict = {
 
   settingsTitle: { ru: "Настройки", en: "Settings" },
   language: { ru: "Язык", en: "Language" },
+  connectOnStart: { ru: "Подключаться при запуске", en: "Connect on launch" },
+  connectOnStartHint: {
+    ru: "Туннель поднимется сам, как только откроется приложение",
+    en: "The tunnel comes up by itself as soon as the app opens",
+  },
   autostart: { ru: "Запускать с Windows", en: "Start with Windows" },
   theme: { ru: "Тема", en: "Theme" },
   themeDark: { ru: "Тёмная", en: "Dark" },

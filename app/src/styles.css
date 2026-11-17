@@ -1836,3 +1836,18 @@ input {
   font-family: var(--mono);
   font-size: 12px;
 }
+
+/* Срок подписки: спокойно по умолчанию, предупреждение — только когда правда скоро */
+.sub-line {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--txt-3);
+  margin-top: 2px;
+}
+.sub-line[data-state="soon"] {
+  color: var(--warn-text);
+}
+.sub-line[data-state="expired"] {
+  color: #ff8a8a;
+}

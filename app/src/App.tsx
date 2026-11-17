@@ -118,6 +118,7 @@ export default function App() {
   /// the preset the owner picked must survive a restart, not snap back to the first
   const [zapretPreset, setZapretPreset] = useState("");
   const [autostart, setAutostart] = useState(false);
+  const [connectOnStart, setConnectOnStart] = useState(false);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const [subs, setSubs] = useState<SubSource[]>([]);
@@ -226,6 +227,7 @@ export default function App() {
         if (typeof st.tg_proxy === "boolean") setTgProxy(st.tg_proxy);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
+        if (typeof st.connect_on_start === "boolean") setConnectOnStart(st.connect_on_start);
         // only what the owner picked is restored — never a full scan dump
         setChosen(
           (st.split ?? []).map((s) => ({
@@ -267,6 +269,8 @@ export default function App() {
           dns_server: dnsServer,
           sub_refresh_hours: subRefreshHours,
           update_url: updateUrl,
+          autostart,
+          connect_on_start: connectOnStart,
         })
         .catch(() => undefined);
     }, 700);
@@ -274,7 +278,7 @@ export default function App() {
   }, [
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
-    deviceId, splitMode, dnsServer, subRefreshHours, updateUrl,
+    deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
     zapretPreset, tgProxy,
   ]);
 
@@ -441,6 +445,10 @@ export default function App() {
     await stopTunnel();
     await startTunnel();
   }, [stopTunnel, startTunnel]);
+
+  // Срок и остаток берём у действующей подписки: у разных подписок они разные
+  const activeSub =
+    subs.find((s) => s.url === subUrl && s.info) ?? subs.find((s) => s.info) ?? null;
 
   /** Fetches every subscription and merges the servers, keeping the selection. */
   const loadSubscription = useCallback(async () => {
@@ -806,6 +814,9 @@ export default function App() {
                 if (best) setSelectedId(best.id);
               }}
               realCount={profiles.length}
+              subExpire={activeSub?.info?.expire ?? 0}
+              subTotal={activeSub?.info?.total ?? 0}
+              subUsed={(activeSub?.info?.upload ?? 0) + (activeSub?.info?.download ?? 0)}
             />
           )}
           {screen === "servers" && (
@@ -849,6 +860,8 @@ export default function App() {
               killSwitch={killSwitch}
               setKillSwitch={setKillSwitch}
               autostart={autostart}
+              connectOnStart={connectOnStart}
+              setConnectOnStart={setConnectOnStart}
               setAutostart={setAutostart}
               theme={theme}
               setTheme={setTheme}

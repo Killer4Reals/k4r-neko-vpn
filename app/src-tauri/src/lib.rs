@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 pub mod engine;
+pub mod health;
+pub mod netwatch;
 pub mod probe;
 pub mod single;
 pub mod store;
@@ -13,7 +15,7 @@ use std::path::PathBuf;
 use probe::PingResult;
 use store::AppState;
 use subscription::{Profile, SubHeader, SubResult};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, State};
 use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
@@ -254,7 +256,9 @@ fn state_save(app: tauri::AppHandle, mut state: AppState) -> Result<(), String> 
     }
     // the UI never sends a schema: whatever it saves is already current
     state.schema = store::SCHEMA;
-    store::save(&dir, &state)
+    store::save(&dir, &state)?;
+    refresh_tray(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -805,6 +809,97 @@ fn engine_stop(engine: State<'_, engine::Engine>) -> engine::EngineStatus {
     engine::stop(&engine)
 }
 
+/// Ставит следующий сервер из подписки, пропуская уже проверенные.
+/// Выбор владельца не перезаписываем: это обход на время, а не новая настройка.
+fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
+    let dir = data_dir(app)?;
+    let mut saved = store::load(&dir);
+    let len = saved.profiles.len();
+    let current = saved
+        .profiles
+        .iter()
+        .position(|p| p.id == saved.selected)
+        .unwrap_or(0);
+    let Some(idx) = health::next_index(current, len, skip) else {
+        return Err("других серверов нет".into());
+    };
+    saved.selected = saved.profiles[idx].id.clone();
+    let profile = saved.profiles[idx].clone();
+    let excluded: Vec<String> = saved.split.iter().filter(|e| !e.via).map(|e| e.exe.clone()).collect();
+    let via: Vec<String> = saved.split.iter().filter(|e| e.via).map(|e| e.exe.clone()).collect();
+    let dns = if saved.dns_mode == "tunnel" {
+        saved.dns_server.clone()
+    } else {
+        String::new()
+    };
+    {
+        let state = app.state::<engine::Engine>();
+        let _ = engine::stop(&state);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let state = app.state::<engine::Engine>();
+    engine_start(
+        app.clone(),
+        state,
+        profile,
+        excluded,
+        dns,
+        Some(saved.split_mode.clone()),
+        Some(via),
+    )?;
+    Ok(())
+}
+
+/// Поднимает туннель из сохранённого состояния: то же, что кнопка, но без окна.
+/// Нужно автоподключению при запуске и сторожу сети — оба работают, когда
+/// интерфейс ещё не нарисован.
+fn connect_saved(app: &tauri::AppHandle) -> Result<(), String> {
+    let dir = data_dir(app)?;
+    let saved = store::load(&dir);
+    let busy = {
+        let state = app.state::<engine::Engine>();
+        engine::poll(&state).state == engine::EngineState::Running
+    };
+    if !store::should_autoconnect(true, saved.profiles.len(), busy) {
+        return Ok(());
+    }
+    let profile = saved
+        .profiles
+        .iter()
+        .find(|p| p.id == saved.selected)
+        .or_else(|| saved.profiles.first())
+        .cloned()
+        .ok_or_else(|| "нет серверов".to_string())?;
+    let excluded: Vec<String> = saved
+        .split
+        .iter()
+        .filter(|e| !e.via)
+        .map(|e| e.exe.clone())
+        .collect();
+    let via: Vec<String> = saved
+        .split
+        .iter()
+        .filter(|e| e.via)
+        .map(|e| e.exe.clone())
+        .collect();
+    let dns = if saved.dns_mode == "tunnel" {
+        saved.dns_server.clone()
+    } else {
+        String::new()
+    };
+    let state = app.state::<engine::Engine>();
+    engine_start(
+        app.clone(),
+        state,
+        profile,
+        excluded,
+        dns,
+        Some(saved.split_mode.clone()),
+        Some(via),
+    )?;
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 struct UpdateInfo {
     version: String,
@@ -1146,6 +1241,8 @@ fn set_tray_state(app: tauri::AppHandle, state: String) -> Result<(), String> {
     if let Some(tray) = app.tray_by_id("main") {
         tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
     }
+    // подсказка говорит то же, что и значок: состояние и сервер
+    refresh_tray(&app);
     Ok(())
 }
 
@@ -1194,28 +1291,73 @@ fn watch_minimize(app: tauri::AppHandle) {
     });
 }
 
-fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+/// Меню трея: быстрые серверы сверху, дальше окно и выход.
+/// Собирается заново, когда меняется список серверов, — иначе в меню остались
+/// бы серверы из первой подписки.
+fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let show = MenuItem::with_id(app, "show", "Показать окно", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let saved = data_dir(app).map(|d| store::load(&d)).unwrap_or_default();
+    let mut items: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = Vec::new();
+    if let Ok(head) = MenuItem::with_id(app, "srv_head", "Серверы", false, None::<&str>) {
+        items.push(Box::new(head));
+    }
+    // шесть — это столько строк, сколько видно в меню без прокрутки
+    for (i, p) in saved.profiles.iter().take(6).enumerate() {
+        let mark = if p.id == saved.selected { "● " } else { "   " };
+        let label = format!("{mark}{}", p.name);
+        if let Ok(item) = CheckMenuItem::with_id(
+            app,
+            format!("srv:{i}"),
+            label,
+            true,
+            p.id == saved.selected,
+            None::<&str>,
+        ) {
+            items.push(Box::new(item));
+        }
+    }
+    if !items.is_empty() {
+        items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items.iter().map(|b| b.as_ref()).collect();
+    let mut all: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = refs;
+    all.push(&show);
+    all.push(&quit);
+    Menu::with_items(app, &all)
+}
 
+fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let menu = tray_menu(app)?;
     TrayIconBuilder::with_id("main")
         .icon(tauri::image::Image::from_bytes(include_bytes!(
             "../icons/tray/tray_off_32.png"
         ))?)
-        .tooltip("K4R Neko VPN")
+        .tooltip(tray_tooltip(app))
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => {
+        .on_menu_event(|app, event| {
+            let id = event.id.as_ref();
+            if id == "show" {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.show();
                     let _ = w.unminimize();
                     let _ = w.set_focus();
                 }
+                return;
             }
-            "quit" => app.exit(0),
-            _ => {}
+            if id == "quit" {
+                app.exit(0);
+                return;
+            }
+            // «● Сервер» из меню: выбрать его и поднять туннель
+            if let Some(rest) = id.strip_prefix("srv:") {
+                if let Ok(idx) = rest.parse::<usize>() {
+                    if let Err(e) = pick_server(app, idx) {
+                        eprintln!("сервер из трея не поднялся: {e}");
+                    }
+                }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -1233,6 +1375,103 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+/// Подсказка трея: состояние, сервер и сколько ушло за сегодня. Всё это уже
+/// есть в состоянии приложения, так что ничего лишнего не считаем.
+fn tray_tooltip(app: &tauri::AppHandle) -> String {
+    let Ok(dir) = data_dir(app) else {
+        return "K4R Neko VPN".into();
+    };
+    let saved = store::load(&dir);
+    let name = saved
+        .profiles
+        .iter()
+        .find(|p| p.id == saved.selected)
+        .map(|p| p.name.clone())
+        .unwrap_or_default();
+    let state = {
+        let st = app.state::<engine::Engine>();
+        engine::poll(&st).state
+    };
+    let head = match state {
+        engine::EngineState::Running => "Защищено",
+        engine::EngineState::Starting => "Подключается",
+        engine::EngineState::Error => "Ошибка",
+        engine::EngineState::Idle => "Выключено",
+    };
+    let mut text = format!("K4R Neko VPN — {head}");
+    if !name.is_empty() && state == engine::EngineState::Running {
+        text.push_str(&format!(" · {name}"));
+    }
+    text
+}
+
+/// Ставит сервер по номеру из меню трея и поднимает туннель.
+fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
+    let dir = data_dir(app)?;
+    let mut saved = store::load(&dir);
+    let profile = saved
+        .profiles
+        .get(idx)
+        .cloned()
+        .ok_or_else(|| "такого сервера больше нет".to_string())?;
+    saved.selected = profile.id.clone();
+    store::save(&dir, &saved).map_err(|e| format!("не смог сохранить выбор: {e}"))?;
+    let excluded: Vec<String> = saved.split.iter().filter(|e| !e.via).map(|e| e.exe.clone()).collect();
+    let via: Vec<String> = saved.split.iter().filter(|e| e.via).map(|e| e.exe.clone()).collect();
+    let dns = if saved.dns_mode == "tunnel" {
+        saved.dns_server.clone()
+    } else {
+        String::new()
+    };
+    {
+        let state = app.state::<engine::Engine>();
+        let _ = engine::stop(&state);
+    }
+    let state = app.state::<engine::Engine>();
+    engine_start(
+        app.clone(),
+        state,
+        profile,
+        excluded,
+        dns,
+        Some(saved.split_mode.clone()),
+        Some(via),
+    )?;
+    Ok(())
+}
+
+/// Что в меню трея сейчас: сколько серверов и какой выбран. Меню пересобираем
+/// только когда это меняется — иначе оно дёргалось бы на каждом сохранении.
+static TRAY_KEY: std::sync::Mutex<(usize, String)> = std::sync::Mutex::new((0, String::new()));
+
+/// Обновляет подсказку и меню трея, не пересоздавая значок.
+fn refresh_tray(app: &tauri::AppHandle) {
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
+    let _ = tray.set_tooltip(Some(tray_tooltip(app)));
+    let key = data_dir(app)
+        .map(|d| {
+            let saved = store::load(&d);
+            (saved.profiles.len(), saved.selected.clone())
+        })
+        .unwrap_or((0, String::new()));
+    let changed = {
+        let mut last = TRAY_KEY.lock().unwrap();
+        if *last == key {
+            false
+        } else {
+            *last = key;
+            true
+        }
+    };
+    if changed {
+        if let Ok(menu) = tray_menu(app) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1266,6 +1505,83 @@ pub fn run() {
                 });
             });
             build_tray(app.handle())?;
+            // Деградация: туннель формально поднят, а данные не идут —
+            // переключаемся на следующий сервер сами, а не ждём владельца.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let mut fails: u8 = 0;
+                    let mut skip: usize = 0;
+                    loop {
+                        std::thread::sleep(health::CHECK_EVERY);
+                        let running = {
+                            let state = handle.state::<engine::Engine>();
+                            engine::poll(&state).state == engine::EngineState::Running
+                        };
+                        if !running {
+                            fails = 0;
+                            skip = 0;
+                            continue;
+                        }
+                        if health::healthy() {
+                            fails = 0;
+                            skip = 0;
+                            continue;
+                        }
+                        fails += 1;
+                        if fails < health::FAILS_TO_SWITCH {
+                            continue;
+                        }
+                        fails = 0;
+                        if let Err(e) = switch_server(&handle, skip) {
+                            eprintln!("переключение на другой сервер не удалось: {e}");
+                        }
+                        skip = skip.saturating_add(1);
+                        std::thread::sleep(health::AFTER_SWITCH);
+                    }
+                });
+            }
+            // Смена сети: туннель держится за старый маршрут и после переезда
+            // на другой Wi-Fi или кабель молча умирает. Перезапускаем его,
+            // если он был поднят — но не включаем, если человек его выключил.
+            {
+                let handle = app.handle().clone();
+                netwatch::watch(move || {
+                    let running = {
+                        let state = handle.state::<engine::Engine>();
+                        engine::poll(&state).state == engine::EngineState::Running
+                    };
+                    if !running {
+                        return;
+                    }
+                    {
+                        let state = handle.state::<engine::Engine>();
+                        let _ = engine::stop(&state);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    if let Err(e) = connect_saved(&handle) {
+                        eprintln!("после смены сети не переподключились: {e}");
+                    }
+                });
+            }
+            // Туннель поднимаем после старта, чтобы окно успело появиться:
+            // подключение занимает секунды, и пустое окно всё это время
+            // выглядело бы зависшим.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let enabled = data_dir(&handle)
+                        .map(|d| store::load(&d).connect_on_start)
+                        .unwrap_or(false);
+                    if !enabled {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    if let Err(e) = connect_saved(&handle) {
+                        eprintln!("автоподключение не удалось: {e}");
+                    }
+                });
+            }
             watch_minimize(app.handle().clone());
             // the X button hides to tray unless the user asked for a real quit
             if let Some(win) = app.get_webview_window("main") {

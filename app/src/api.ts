@@ -156,4 +156,5 @@ export type AppState = {
   kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;
+  connect_on_start?: boolean;
 };

@@ -53,6 +53,9 @@ pub struct AppState {
     pub tg_port: u16,
     pub notify: bool,
     pub autostart: bool,
+    /// поднимать туннель сразу при запуске приложения (не только автозапуск)
+    #[serde(default)]
+    pub connect_on_start: bool,
     /// 0 = written before the settings existed; bumped when defaults change
     pub schema: u32,
 }
@@ -68,6 +71,15 @@ pub struct SubSource {
     /// remaining traffic and expiry, as the provider last reported them
     #[serde(default)]
     pub info: Option<crate::subscription::SubInfo>,
+}
+
+/// Поднимать ли туннель сразу при запуске.
+///
+/// Три условия, и все три обязательны: человек включил галочку, серверы есть и
+/// сейчас ничего не подключено. Иначе приложение полезло бы в сеть само —
+/// а это ровно то, чего от VPN-клиента не ждут.
+pub fn should_autoconnect(enabled: bool, profiles: usize, busy: bool) -> bool {
+    enabled && profiles > 0 && !busy
 }
 
 /// Zapret uses 1353 for its Telegram proxy; we stay out of its way and take the
@@ -96,6 +108,7 @@ impl AppState {
             notify: true,
             // opt-in: a portable app must not register itself behind the owner's back
             autostart: false,
+            connect_on_start: false,
             schema: SCHEMA,
             ..Self::default()
         }
@@ -224,6 +237,7 @@ pub fn load(data_dir: &Path) -> AppState {
         st.kill_switch = d.kill_switch;
         st.notify = d.notify;
         st.autostart = d.autostart;
+        st.connect_on_start = d.connect_on_start;
         st.schema = 1;
     }
     if st.schema < 2 {
@@ -490,5 +504,17 @@ mod tests {
         let dir = std::env::temp_dir().join("k4r-log-none");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!rotate_log_at(&dir.join("engine.log"), 100));
+    }
+
+    #[test]
+    fn autoconnect_needs_all_three_conditions() {
+        // включено + есть серверы + ничего не запущено
+        assert!(should_autoconnect(true, 5, false));
+        // выключено — не лезем в сеть сами
+        assert!(!should_autoconnect(false, 5, false));
+        // серверов нет — подключаться некуда
+        assert!(!should_autoconnect(true, 0, false));
+        // уже подключено — второй раз не начинаем
+        assert!(!should_autoconnect(true, 5, true));
     }
 }
