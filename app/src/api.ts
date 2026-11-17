@@ -61,7 +61,10 @@ export const api = {
     invoke<SubResult>("sub_fetch", { url, userAgent, headers }),
   engineStart: (profile: Profile, excluded: string[], dns: string, mode: string, via: string[]) =>
     invoke<EngineStatus>("engine_start", { profile, excluded, dns, mode, via }),
-  engineStop: () => invoke<EngineStatus>("engine_stop"),
+  // release=false — это переподключение: блокировку не снимаем
+  engineStop: (release = true) => invoke<EngineStatus>("engine_stop", { release }),
+  killSwitchStatus: () => invoke<KillSwitchStatus>("kill_switch_status"),
+  killSwitchSet: (on: boolean) => invoke<KillSwitchStatus>("kill_switch_set", { on }),
   engineStatus: () => invoke<EngineStatus>("engine_status"),
   engineTraffic: () => invoke<Traffic>("engine_traffic"),
   isAdmin: () => invoke<boolean>("app_is_admin"),
@@ -137,6 +140,14 @@ export type RouteRule = {
   value: string;
   action: "proxy" | "direct" | "block";
   enabled: boolean;
+};
+
+/** Состояние защиты на уровне ОС (WFP). */
+export type KillSwitchStatus = {
+  state: "off" | "on" | "restarting" | "lost" | "unavailable";
+  tun: boolean;
+  filters: number;
+  message: string;
 };
 
 export type AppState = {

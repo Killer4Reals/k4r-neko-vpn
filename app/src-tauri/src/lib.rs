@@ -8,6 +8,8 @@ pub mod probe;
 pub mod single;
 pub mod store;
 pub mod subscription;
+#[cfg(windows)]
+pub mod wfp;
 pub mod zapret;
 
 use probe::PingResult;
@@ -698,6 +700,65 @@ fn install_id(app: tauri::AppHandle) -> Result<String, String> {
     Ok(store::install_id(&data_dir(&app)?))
 }
 
+/// Что нужно kill-switch: фактические пути движка и IP-резолверы.
+///
+/// Имена резолверов (DoH/DoT по имени) сюда не попадают: разрешать по имени
+/// нельзя, а открывать 443 «куда угодно» — дыра. Такие резолверы работают
+/// через туннель, как и раньше.
+fn wfp_opts(app: &tauri::AppHandle, saved: &store::AppState) -> wfp::filters::PlanOpts {
+    let mut paths = vec![core_bin(app).display().to_string()];
+    let bundled = engine::sidecar_path(&resources_dir(app))
+        .display()
+        .to_string();
+    if !paths.contains(&bundled) {
+        paths.push(bundled);
+    }
+    let raw = saved.dns_server.trim();
+    let (v4, v6) = match raw {
+        _ if raw.is_empty() => (None, None),
+        _ => match raw.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(ip)) => (Some(ip), None),
+            Ok(std::net::IpAddr::V6(ip)) => (None, Some(ip)),
+            _ => (None, None),
+        },
+    };
+    wfp::filters::PlanOpts {
+        engine_paths: paths,
+        resolver_v4: v4,
+        resolver_v6: v6,
+        // DoT/DoH по имени не разрешаем: нет IP — нет правила
+        dot: false,
+        doh_v4: None,
+        doh_v6: None,
+    }
+}
+
+#[tauri::command]
+fn kill_switch_status() -> wfp::Status {
+    wfp::status()
+}
+
+/// Включить/выключить защиту на уровне ОС.
+#[tauri::command]
+fn kill_switch_set(app: tauri::AppHandle, on: bool) -> Result<wfp::Status, String> {
+    if !on {
+        wfp::disable()?;
+        return Ok(wfp::status());
+    }
+    let saved = store::load(&data_dir(&app)?);
+    let opts = wfp_opts(&app, &saved);
+    wfp::enable(opts).map_err(|e| {
+        let _ = engine::write_log_header(
+            &data_dir(&app)
+                .unwrap_or_default()
+                .join("logs")
+                .join("killswitch.log"),
+            &format!("не смог включить kill-switch: {e}"),
+        );
+        e
+    })
+}
+
 #[tauri::command]
 fn engine_start(
     app: tauri::AppHandle,
@@ -720,7 +781,7 @@ fn engine_start(
         dns_mode: if saved.dns_mode.is_empty() {
             "tunnel".into()
         } else {
-            saved.dns_mode
+            saved.dns_mode.clone()
         },
         block_ipv6: saved.block_ipv6,
         dns_server: if !dns.trim().is_empty() {
@@ -760,6 +821,21 @@ fn engine_start(
         // Кэш списков рядом с данными приложения: папка установки только для чтения
         cache_path: data_dir(&app)?.join("rule-sets.db").display().to_string(),
     };
+    // Защита на уровне ОС ставится ДО движка: иначе есть окно, в котором
+    // туннель ещё не поднят, а трафик уже не должен уходить наружу.
+    if saved.kill_switch {
+        match wfp::enable(wfp_opts(&app, &saved)) {
+            Ok(st) => engine::write_log_header(
+                &log_path,
+                &format!("kill-switch: активен, фильтров {}", st.filters),
+            ),
+            Err(e) => {
+                // Туннель всё равно поднимем: TUN-защита при обрыве работает,
+                // но человек должен видеть, что ОС-блокировка не встала.
+                engine::write_log_header(&log_path, &format!("kill-switch не включился: {e}"));
+            }
+        }
+    }
     *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
     *engine.last_sample.lock().unwrap() = None;
 
@@ -875,8 +951,21 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
 }
 
 #[tauri::command]
-fn engine_stop(engine: State<'_, engine::Engine>) -> engine::EngineStatus {
-    engine::stop(&engine)
+fn engine_stop(
+    app: tauri::AppHandle,
+    engine: State<'_, engine::Engine>,
+    release: Option<bool>,
+) -> engine::EngineStatus {
+    let status = engine::stop(&engine);
+    // Переподключение (release = false) не должно открывать интернет даже на
+    // мгновение: блокировка остаётся. Явное «Отключить» — снимает.
+    if release.unwrap_or(true) {
+        let saved = store::load(&data_dir(&app).unwrap_or_default());
+        if saved.kill_switch {
+            let _ = wfp::disable();
+        }
+    }
+    status
 }
 
 /// Ставит следующий сервер из подписки, пропуская уже проверенные.
@@ -1600,6 +1689,32 @@ pub fn run() {
                 });
             });
             build_tray(app.handle())?;
+            // Если защита уже стояла (helper пережил прошлый запуск) — обновляем
+            // её параметры под текущие настройки, а не оставляем старые.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let Ok(dir) = data_dir(&handle) else { return };
+                    let saved = store::load(&dir);
+                    if saved.kill_switch && wfp::ipc::alive() {
+                        let opts = wfp_opts(&handle, &saved);
+                        let _ = wfp::enable(opts);
+                    }
+                });
+            }
+            // Надзор за helper'ом: упал — поднимаем; не смогли — UI красит
+            // плашку в красный и честно пишет, что защита снята.
+            {
+                let handle = app.handle().clone();
+                std::mem::forget(wfp::supervise(move |event| {
+                    let label = match event {
+                        wfp::Event::Restarting => "restarting",
+                        wfp::Event::Restored => "on",
+                        wfp::Event::Lost(_) => "lost",
+                    };
+                    let _ = handle.emit("killswitch", label);
+                }));
+            }
             // Zapret — часть нашей работы, а не отдельная программа: если
             // владелец попросил, поднимаем его сами при запуске.
             {
@@ -1754,6 +1869,8 @@ pub fn run() {
             state_export,
             state_import,
             dns_leak,
+            kill_switch_status,
+            kill_switch_set,
             update_download,
             speed_test,
             zapret_settings,

@@ -4,7 +4,7 @@ import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, nameOf, stripCc } from "./flags";
-import type { ChosenApp, RouteRule } from "./api";
+import type { ChosenApp, KillSwitchStatus, RouteRule } from "./api";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -86,6 +86,13 @@ export default function App() {
   const [zapretAuto, setZapretAuto] = useState(false);
   const [zapretState, setZapretState] = useState<"off" | "running" | "external" | "error">("off");
   const [killSwitch, setKillSwitch] = useState(true);
+  // состояние ОС-блокировки: зелёная/жёлтая/красная плашка в настройках
+  const [ksState, setKsState] = useState<KillSwitchStatus>({
+    state: "off",
+    tun: false,
+    filters: 0,
+    message: "",
+  });
   const [catalog, setCatalog] = useState<AppEntry[]>([]);
   const [chosen, setChosen] = useState<ChosenApp[]>([]);
   const [scanning, setScanning] = useState(inTauri);
@@ -394,11 +401,11 @@ export default function App() {
     };
   }, []);
 
-  const stopTunnel = useCallback(async () => {
+  const stopTunnel = useCallback(async (release = true) => {
     setError("");
     if (inTauri) {
       try {
-        await api.engineStop();
+        await api.engineStop(release);
       } catch (e) {
         setError(String(e));
       }
@@ -461,7 +468,8 @@ export default function App() {
   /** New routes need a fresh tunnel: the engine reads the list on start only. */
   const reconnectTunnel = useCallback(async () => {
     setSplitDirty(false);
-    await stopTunnel();
+    // переподключение не должно открывать интернет: блокировку не снимаем
+    await stopTunnel(false);
     await startTunnel();
   }, [stopTunnel, startTunnel]);
 
@@ -604,6 +612,38 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [profiles, measurePing]);
 
+  // Kill-switch на уровне ОС: спрашиваем helper и слушаем надзор.
+  useEffect(() => {
+    if (!inTauri) return;
+    const poll = () =>
+      api
+        .killSwitchStatus()
+        .then(setKsState)
+        .catch((e) =>
+          setKsState({ state: "unavailable", tun: false, filters: 0, message: String(e) }),
+        );
+    void poll();
+    const id = window.setInterval(poll, 3000);
+    let un: (() => void) | undefined;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<string>("killswitch", (e) => {
+          setKsState((prev) => ({
+            ...prev,
+            state: e.payload === "lost" ? "lost" : e.payload === "on" ? "on" : "restarting",
+          }));
+        }),
+      )
+      .then((fn) => {
+        un = fn;
+      })
+      .catch(() => undefined);
+    return () => {
+      window.clearInterval(id);
+      un?.();
+    };
+  }, []);
+
   // --- automatic subscription refresh ---------------------------------------
   // The server list goes stale: providers rotate hosts and add servers. A timer
   // keeps it fresh by itself when the owner asked for it.
@@ -733,6 +773,23 @@ export default function App() {
       .catch(() => undefined)
       .finally(() => setScanning(false));
   }, [loaded]);
+
+  /** Переключатель kill-switch: сначала команда helper'у, потом состояние. */
+  const setKillSwitchNow = useCallback(async (next: boolean) => {
+    if (!inTauri) {
+      setKillSwitch(next);
+      return;
+    }
+    try {
+      const st = await api.killSwitchSet(next);
+      setKillSwitch(next);
+      setKsState(st);
+      setError("");
+    } catch (e) {
+      setKsState({ state: "unavailable", tun: false, filters: 0, message: String(e) });
+      setError(String(e));
+    }
+  }, []);
 
   const ctx = {
     t,
@@ -892,7 +949,9 @@ export default function App() {
               lang={lang}
               setLang={setLang}
               killSwitch={killSwitch}
-              setKillSwitch={setKillSwitch}
+              setKillSwitch={setKillSwitchNow}
+              ksState={ksState}
+              connected={conn === "connected"}
               autostart={autostart}
               connectOnStart={connectOnStart}
               setConnectOnStart={setConnectOnStart}

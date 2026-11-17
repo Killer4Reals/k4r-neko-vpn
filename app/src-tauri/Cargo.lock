@@ -1994,7 +1994,7 @@ dependencies = [
 
 [[package]]
 name = "k4r-neko-vpn"
-version = "1.6.0"
+version = "1.8.0"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -2007,6 +2007,8 @@ dependencies = [
  "tauri-plugin-notification",
  "ureq",
  "url",
+ "wfp",
+ "windows-sys 0.61.2",
  "winreg 0.55.0",
 ]
 
@@ -4766,6 +4768,16 @@ dependencies = [
  "thiserror 2.0.21",
  "windows",
  "windows-core",
+]
+
+[[package]]
+name = "wfp"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1a00d160bcc49e02afc5fc587e22ff2329f31b821970be0686be6492a414226"
+dependencies = [
+ "log",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

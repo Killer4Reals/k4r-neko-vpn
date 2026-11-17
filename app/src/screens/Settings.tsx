@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
 import type { Theme } from "../App";
-import { api, inTauri } from "../api";
+import { api, inTauri, type KillSwitchStatus } from "../api";
 import { DnsPick } from "../DnsPick";
 
 type Props = {
@@ -10,6 +10,10 @@ type Props = {
   setLang: (l: Lang) => void;
   killSwitch: boolean;
   setKillSwitch: (v: boolean) => void;
+  /** состояние ОС-блокировки (WFP helper) */
+  ksState: KillSwitchStatus;
+  /** туннель подключён? от него зависит, работает ли сеть при блокировке */
+  connected: boolean;
   autostart: boolean;
   setAutostart: (v: boolean) => void;
   connectOnStart: boolean;
@@ -42,8 +46,16 @@ export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const { connectOnStart, setConnectOnStart } = p;
   const [deviceId, setDeviceId] = useState("");
-  const [version, setVersion] = useState("1.5.1");
-  const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error">("idle");
+  useEffect(() => {
+    if (!inTauri) return;
+    import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then(setVersion)
+      .catch(() => undefined);
+  }, []);
+  // версию берём у самого приложения: захардкоженная врала бы при обновлении
+  const [version, setVersion] = useState("");
+  const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error" | "blocked">("idle");
   const [updateNote, setUpdateNote] = useState("");
   const [updateLink, setUpdateLink] = useState("");
   const [deviceDraft, setDeviceDraft] = useState("");
@@ -76,6 +88,37 @@ export function SettingsScreen(p: Props) {
       })
       .catch(() => undefined);
   }, []);
+
+  // Плашка состояния ОС-блокировки: зелёная — работает, жёлтая — перезапуск,
+  // красная — защита снята, серая — выключена.
+  const ksLabel =
+    p.ksState.state === "on"
+      ? "ksOnLabel"
+      : p.ksState.state === "restarting"
+        ? "ksRestartingLabel"
+        : p.ksState.state === "lost"
+          ? "ksLostLabel"
+          : p.ksState.state === "unavailable"
+            ? "ksUnavailableLabel"
+            : "ksOffLabel";
+  const ksText =
+    p.ksState.state === "on"
+      ? `${t("ksOnHint")} · ${t("ksFilters")}: ${p.ksState.filters}${p.ksState.tun ? " · TUN" : ""}`
+      : p.ksState.state === "restarting"
+        ? t("ksRestartingHint")
+        : p.ksState.state === "lost"
+          ? p.ksState.message || t("ksLostHint")
+          : p.ksState.state === "unavailable"
+            ? p.ksState.message || t("ksUnavailableHint")
+            : t("ksOffHint");
+  const ksColor =
+    p.ksState.state === "on"
+      ? "var(--green)"
+      : p.ksState.state === "restarting"
+        ? "#e8b33a"
+        : p.ksState.state === "lost" || p.ksState.state === "unavailable"
+          ? "var(--red, #ff5a5a)"
+          : "var(--txt-3)";
 
   return (
     <>
@@ -203,6 +246,12 @@ export function SettingsScreen(p: Props) {
           </div>
           <button className="switch" aria-checked={killSwitch} onClick={() => setKillSwitch(!killSwitch)} />
         </div>
+        <div className="row" style={{ display: "block" }}>
+          <div className="txt" style={{ maxWidth: 560 }}>
+            <b>{t(ksLabel)}</b>
+            <span style={{ color: ksColor }}>{ksText}</span>
+          </div>
+        </div>
         <div className="row">
           <div className="txt">
             <b>{t("dns")}</b>
@@ -279,6 +328,13 @@ export function SettingsScreen(p: Props) {
             style={{ width: "auto", paddingInline: 16 }}
             disabled={updateState === "busy"}
             onClick={async () => {
+              // При активной блокировке и выключенном VPN сеть закрыта: это
+              // by design, апдейтер не должен обходить защиту.
+              if (p.ksState.state === "on" && !p.connected) {
+                setUpdateState("blocked");
+                setUpdateNote(t("ksBlockedNet"));
+                return;
+              }
               setUpdateState("busy");
               setUpdateNote("");
               try {

@@ -1,6 +1,6 @@
 [package]
 name = "k4r-neko-vpn"
-version = "1.7.0"
+version = "1.8.0"
 description = "K4R Neko VPN"
 authors = ["K4R"]
 edition = "2021"
@@ -11,6 +11,23 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+
+[target.'cfg(windows)'.dependencies]
+# WFP kill-switch: Mullvad'овская обёртка (MIT/Apache-2.0), dynamic-сессии из коробки
+wfp = "0.3"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }

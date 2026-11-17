@@ -1,5 +1,5 @@
 {
-  "version": "1.7.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.7.0/K4R.Neko.VPN_1.7.0_x64-setup.exe",
-  "notes": "Zapret запускается вместе с приложением, проверка обновлений включена по умолчанию"
+  "version": "1.8.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.8.0/K4R.Neko.VPN_1.8.0_x64-setup.exe",
+  "notes": "Kill-switch на уровне ОС: фильтры WFP переживают падение приложения"
 }

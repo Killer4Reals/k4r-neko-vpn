@@ -217,6 +217,33 @@ const dict: Dict = {
     ru: "Zapret уже запущен другой программой — мы его не трогаем",
     en: "Zapret is already running under another program — we leave it alone"
   },
+  ksOnLabel: { ru: "Защита на уровне ОС", en: "OS-level protection" },
+  ksOffLabel: { ru: "Защита на уровне ОС", en: "OS-level protection" },
+  ksRestartingLabel: { ru: "Защита перезапускается", en: "Protection is restarting" },
+  ksLostLabel: { ru: "Защита снята", en: "Protection removed" },
+  ksUnavailableLabel: { ru: "Защита недоступна", en: "Protection unavailable" },
+  ksOnHint: {
+    ru: "Kill-switch работает даже при падении приложения: фильтры живут в ядре Windows",
+    en: "The kill switch survives an app crash: filters live in the Windows kernel",
+  },
+  ksOffHint: { ru: "Фильтры сняты, интернет открыт.", en: "Filters are gone, traffic is open." },
+  ksRestartingHint: {
+    ru: "Хелпер защиты упал, поднимаю заново…",
+    en: "The protection helper died, restarting it…",
+  },
+  ksLostHint: {
+    ru: "Не удалось перезапустить защиту. Интернет открыт.",
+    en: "Could not restart protection. Traffic is open.",
+  },
+  ksUnavailableHint: {
+    ru: "Kill-switch требует прав администратора.",
+    en: "The kill switch requires administrator rights.",
+  },
+  ksFilters: { ru: "фильтров", en: "filters" },
+  ksBlockedNet: {
+    ru: "Заблокировано kill-switch: подключите VPN или выключите блокировку",
+    en: "Blocked by the kill switch: connect the VPN or turn the switch off",
+  },
   killSwitchHint: {
     ru: "Если туннель упадёт, интернет придерживается до восстановления. Локальная сеть и принтер работают",
     en: "If the tunnel drops, internet is held back until it is back. Your local network keeps working",
