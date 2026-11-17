@@ -1,5 +1,5 @@
 {
-  "version": "1.5.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.5.0/K4R.Neko.VPN_1.5.0_x64-setup.exe",
-  "notes": "Автоподключение при запуске, переподключение при смене сети, автопереключение сервера при деградации, серверы в трее, срок подписки на главном, честная причина отказа"
+  "version": "1.5.1",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.5.1/K4R.Neko.VPN_1.5.1_x64-setup.exe",
+  "notes": "Подписки с придирчивых панелей: перебор известных клиентов вместо 502, слова провайдера в ошибке"
 }

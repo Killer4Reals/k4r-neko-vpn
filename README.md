@@ -4,7 +4,7 @@
 sing-box, аккуратный интерфейс на React и маскот, который живёт в интерфейсе, а
 не висит картинкой в углу.
 
-> **1.5.0** — релиз для Windows. Android — **1.1.0**, отдельный репозиторий
+> **1.5.1** — релиз для Windows. Android — **1.1.1**, отдельный репозиторий
 > [k4r-neko-vpn-android](https://github.com/Killer4Reals/k4r-neko-vpn-android).
 > iOS не планируется. Что менялось: [CHANGELOG.md](CHANGELOG.md).
 
@@ -185,7 +185,7 @@ npm run tauri build    # установщик NSIS и exe
 
 ## Тесты
 
-67 тестов ядра, 35 тестов интерфейса, 118 тестов Android (в его репозитории).
+72 теста ядра, 35 тестов интерфейса, 121 тест Android (в его репозитории).
 
 ```bash
 cd app/src-tauri

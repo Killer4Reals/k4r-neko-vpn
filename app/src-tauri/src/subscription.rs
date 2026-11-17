@@ -53,6 +53,9 @@ pub struct SubResult {
     pub title: String,
     /// How often the provider suggests refreshing, in hours (0 = no opinion).
     pub refresh_hint: u32,
+    /// Имя клиента, которым провайдер согласился ответить. Панели часто пускают
+    /// только знакомые UA, отвечая остальным 502 — тогда это не наша вина.
+    pub ua_used: String,
 }
 
 /// Providers announce the allowance in a header: `upload=..; download=..;
@@ -96,6 +99,50 @@ pub struct SubHeader {
     pub value: String,
 }
 
+/// Какая ошибка полезнее человеку. Провайдер, сказавший «лимит устройств 5/5»,
+/// объясняет больше, чем «сервер ответил 502» или «это YAML».
+fn more_useful(current: &str, candidate: &str) -> bool {
+    fn rank(e: &str) -> u8 {
+        // «провайдер: …» — это слова самого провайдера, они всего полезнее.
+        // «провайдер отдал Clash YAML» — наша формулировка, она ценнее не всех.
+        if e.starts_with("провайдер:") {
+            3
+        } else if e.starts_with("сервер ответил") || e.starts_with("сеть недоступна") {
+            2
+        } else if e.is_empty() {
+            0
+        } else {
+            1
+        }
+    }
+    rank(candidate) > rank(current)
+}
+
+/// Клиенты, которых панели узнают. Порядок не случайный: `v2rayNG` почти
+/// всегда получает обычный список ссылок, который мы умеем читать; остальные —
+/// на случай, если панель знает только их.
+pub const UA_KNOWN: [&str; 3] = [
+    "v2rayNG/1.9.0",
+    "Streisand/1.6.0",
+    "ClashMetaForAndroid/2.11.1",
+];
+
+/// Порядок попыток: сперва то, что стоит у человека в настройках (там может
+/// быть его личный UA), потом известные клиенты. Повторы не нужны.
+pub fn ua_chain(custom: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let custom = custom.trim();
+    if !custom.is_empty() {
+        out.push(custom.to_string());
+    }
+    for d in UA_KNOWN {
+        if !out.iter().any(|u| u.eq_ignore_ascii_case(d)) {
+            out.push(d.to_string());
+        }
+    }
+    out
+}
+
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(std::time::Duration::from_secs(25)))
@@ -108,11 +155,36 @@ pub fn fetch(
     user_agent: &str,
     headers: &[SubHeader],
 ) -> Result<SubResult, String> {
+    // Панели узнают клиента по User-Agent и чужим отвечают 502 или 403 —
+    // со стороны человека это выглядит как «сервер сломался». Пробуем
+    // по очереди: сначала его настройку, потом знакомых клиентов.
+    let mut best_error = String::new();
+    for (attempt, ua) in ua_chain(user_agent).into_iter().enumerate() {
+        match fetch_as(url, &ua, headers) {
+            Ok(mut result) => {
+                result.ua_used = ua.clone();
+                if attempt > 0 {
+                    result.warnings.push(format!(
+                        "провайдер не принял клиента «{user_agent}»: подписка загружена как {ua}"
+                    ));
+                }
+                return Ok(result);
+            }
+            Err(e) => {
+                if more_useful(&best_error, &e) || best_error.is_empty() {
+                    best_error = e;
+                }
+            }
+        }
+    }
+    Err(best_error)
+}
+
+/// Один запрос конкретным клиентом.
+fn fetch_as(url: &str, user_agent: &str, headers: &[SubHeader]) -> Result<SubResult, String> {
     let agent = agent();
     let mut req = agent.get(url);
-    if !user_agent.is_empty() {
-        req = req.header("User-Agent", user_agent);
-    }
+    req = req.header("User-Agent", user_agent);
     for h in headers {
         if !h.name.trim().is_empty() && !h.value.trim().is_empty() {
             req = req.header(h.name.trim(), h.value.trim());
@@ -158,6 +230,7 @@ pub fn fetch(
     parsed.info = info;
     parsed.title = title;
     parsed.refresh_hint = refresh_hint;
+    parsed.ua_used = String::new();
     Ok(parsed)
 }
 
@@ -252,6 +325,7 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
         title: String::new(),
         refresh_hint: 0,
         format: "links".into(),
+        ua_used: String::new(),
     })
 }
 
@@ -328,6 +402,7 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
         title: String::new(),
         refresh_hint: 0,
         format: "xray-json".into(),
+        ua_used: String::new(),
     })
 }
 
@@ -765,5 +840,43 @@ mod net_tests {
         let r = fetch("https://example.invalid/subscription", "Happ/4.7.2", &[]).unwrap();
         println!("format={} profiles={} warnings={:?}", r.format, r.profiles.len(), r.warnings);
         assert!(!r.profiles.is_empty());
+    }
+
+    #[test]
+    fn client_chain_starts_with_the_configured_one() {
+        let chain = ua_chain("K4R-Neko-VPN/1.5.0");
+        assert_eq!(chain[0], "K4R-Neko-VPN/1.5.0");
+        assert!(chain.len() > 1);
+    }
+
+    #[test]
+    fn client_chain_does_not_repeat_the_same_name() {
+        // человек вписал в настройках имя известного клиента — второй раз его
+        // пробовать незачем
+        let chain = ua_chain("v2rayNG/1.9.0");
+        let same = chain.iter().filter(|u| u.eq_ignore_ascii_case("v2rayNG/1.9.0")).count();
+        assert_eq!(same, 1);
+    }
+
+    #[test]
+    fn empty_setting_still_leaves_someone_to_try() {
+        let chain = ua_chain("   ");
+        assert_eq!(chain.len(), UA_KNOWN.len());
+        assert_eq!(chain[0], UA_KNOWN[0]);
+    }
+
+    #[test]
+    fn provider_words_beat_technical_errors() {
+        // «лимит устройств 5/5» объясняет больше, чем «сервер ответил 502»
+        assert!(more_useful("сервер ответил 502", "провайдер: лимит устройств 5/5"));
+        assert!(more_useful("провайдер отдал Clash YAML", "сервер ответил 502"));
+        // и наоборот: техническая мелочь не должна затирать понятную причину
+        assert!(!more_useful("провайдер: лимит устройств", "некорректный JSON: expected value"));
+        assert!(!more_useful("провайдер: лимит устройств", "сервер ответил 502"));
+    }
+
+    #[test]
+    fn empty_error_is_always_replaced() {
+        assert!(more_useful("", "некорректный JSON"));
     }
 }

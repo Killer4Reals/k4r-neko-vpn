@@ -39,7 +39,10 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
 ];
 
 const DEFAULT_SUB = "";
-const DEFAULT_UA = "K4R-Neko-VPN/0.1";
+// Панели узнают клиента по UA и чужим отвечают 502 — берём самый
+// распространённый; если провайдер знает только другой, клиент
+// переберёт известные сам (см. ua_chain в subscription.rs).
+const DEFAULT_UA = "v2rayNG/1.9.0";
 
 /** "Ctrl+Alt+V" -> "Control+Alt+KeyV": what the shortcut plugin understands. */
 function toAccelerator(hotkey: string): string {
