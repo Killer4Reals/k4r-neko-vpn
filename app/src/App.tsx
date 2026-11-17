@@ -6,6 +6,7 @@ import { servers as demoCatalog, type AppEntry, type ConnState, type Server } fr
 import { ccFromName, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, RouteRule } from "./api";
 import { isBusy, pickServer } from "./autoSelect";
+import { describe as describeSubError } from "./subError";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -489,6 +490,20 @@ export default function App() {
     subs.find((s) => s.url === subUrl && s.info) ?? subs.find((s) => s.info) ?? null;
 
   /** Fetches every subscription and merges the servers, keeping the selection. */
+  /**
+   * Текст ошибки загрузки списка: сначала понятная причина, потом слова
+   * сервера. Если блокировка ОС включена, а туннель нет — сеть закрыта
+   * намеренно, и об этом надо сказать прямо, иначе человек ищет баг.
+   */
+  const subErrorText = useCallback(
+    (raw: string) => {
+      const base = describeSubError(raw).text;
+      const blocked = ksState.state === "on" && conn !== "connected";
+      return blocked ? `${base} ${t("ksBlockedNet")}` : base;
+    },
+    [conn, ksState.state, t],
+  );
+
   const loadSubscription = useCallback(async () => {
     setBusy(true);
     setWarnings([]);
@@ -525,10 +540,10 @@ export default function App() {
         const msg = String(e);
         notes.push(
           src.name
-            ? `${src.name}: ${msg}`
+            ? `${src.name}: ${subErrorText(msg)}`
             : msg.includes("устройств")
               ? "Провайдер говорит «достигнут предел устройств»: удали лишнее устройство в личном кабинете или напиши в поддержку, приложив ID из настроек."
-              : msg,
+              : subErrorText(msg),
         );
       }
     }
