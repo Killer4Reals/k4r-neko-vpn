@@ -22,7 +22,13 @@ impl Drop for KillOnDrop {
 fn curl(args: &[&str]) -> String {
     let out = Command::new("curl")
         .args(args)
-        .args(["-sS", "--ssl-no-revoke", "-m", "20", "https://1.1.1.1/cdn-cgi/trace"])
+        .args([
+            "-sS",
+            "--ssl-no-revoke",
+            "-m",
+            "20",
+            "https://1.1.1.1/cdn-cgi/trace",
+        ])
         .output();
     match out {
         Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
@@ -57,12 +63,19 @@ fn main() {
 
     say!("elevated: {}", engine::is_elevated());
     let before = curl(&[]);
-    say!("direct: ip={} colo={}", field(&before, "ip"), field(&before, "colo"));
+    say!(
+        "direct: ip={} colo={}",
+        field(&before, "ip"),
+        field(&before, "colo")
+    );
 
     let res = match subscription::fetch(
         &url,
         "K4R-Neko-VPN/0.1",
-        &[SubHeader { name: "X-HWID".into(), value: hwid }],
+        &[SubHeader {
+            name: "X-HWID".into(),
+            value: hwid,
+        }],
     ) {
         Ok(r) => r,
         Err(e) => {
@@ -79,9 +92,18 @@ fn main() {
         .find(|p| p.name.contains(&filter))
         .unwrap_or(&res.profiles[1])
         .clone();
-    say!("server: {} ({}:{})", profile.name, profile.host, profile.port);
+    say!(
+        "server: {} ({}:{})",
+        profile.name,
+        profile.host,
+        profile.port
+    );
 
-    let excluded: Vec<String> = extra.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    let excluded: Vec<String> = extra
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
     let config = engine::build_config(&profile, &excluded, &engine::NetOptions::default());
     let cfg_path = std::env::temp_dir().join("k4r-tun-probe.json");
     std::fs::write(&cfg_path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
@@ -128,7 +150,11 @@ fn main() {
     drop(guard);
     std::thread::sleep(Duration::from_secs(2));
     let after = curl(&[]);
-    say!("after teardown: ip={} colo={}", field(&after, "ip"), field(&after, "colo"));
+    say!(
+        "after teardown: ip={} colo={}",
+        field(&after, "ip"),
+        field(&after, "colo")
+    );
     say!("restored: {}", field(&after, "ip") == field(&before, "ip"));
 
     std::fs::write(&out_file, log).ok();

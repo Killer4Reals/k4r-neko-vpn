@@ -76,13 +76,21 @@ fn main() {
 
     match result {
         Ok(body) => {
-            let payload = body.split("\r\n\r\n").nth(1).unwrap_or(&body).trim().to_string();
+            let payload = body
+                .split("\r\n\r\n")
+                .nth(1)
+                .unwrap_or(&body)
+                .trim()
+                .to_string();
             let masked = match payload.split('.').next() {
                 Some(first) if first.chars().all(|c| c.is_ascii_digit()) => {
                     let parts: Vec<&str> = payload.split('.').collect();
                     format!("{}.{}.x.x", parts[0], parts[1])
                 }
-                _ => format!("unexpected answer: {}", payload.chars().take(120).collect::<String>()),
+                _ => format!(
+                    "unexpected answer: {}",
+                    payload.chars().take(120).collect::<String>()
+                ),
             };
             println!("\nTHROUGH TUNNEL: ip={masked}");
         }
@@ -109,13 +117,22 @@ fn curl_through_socks() -> Result<String, String> {
         .map_err(|e| format!("curl: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     if text.is_empty() {
-        return Err(format!("curl failed: {}", String::from_utf8_lossy(&out.stderr)));
+        return Err(format!(
+            "curl failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
     }
     Ok(text)
 }
 
 #[allow(dead_code)]
-fn http_over_socks_domain(host: &str, port: u16, domain: &str, dport: u16, path: &str) -> Result<String, String> {
+fn http_over_socks_domain(
+    host: &str,
+    port: u16,
+    domain: &str,
+    dport: u16,
+    path: &str,
+) -> Result<String, String> {
     let mut s = TcpStream::connect((host, port)).map_err(|e| format!("socks connect: {e}"))?;
     s.set_read_timeout(Some(Duration::from_secs(20))).ok();
 
@@ -132,7 +149,8 @@ fn http_over_socks_domain(host: &str, port: u16, domain: &str, dport: u16, path:
     s.write_all(&req).map_err(|e| e.to_string())?;
 
     let mut head = [0u8; 4];
-    s.read_exact(&mut head).map_err(|e| format!("socks reply: {e}"))?;
+    s.read_exact(&mut head)
+        .map_err(|e| format!("socks reply: {e}"))?;
     if head[1] != 0 {
         return Err(format!("socks: code {}", head[1]));
     }

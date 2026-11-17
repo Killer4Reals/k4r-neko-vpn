@@ -3,23 +3,40 @@ use k4r_neko_vpn_lib::{engine, store};
 
 fn ip(exe: &str) -> String {
     let out = std::process::Command::new(exe)
-        .args(["-sS", "--ssl-no-revoke", "-m", "12", "https://api.ipify.org"])
+        .args([
+            "-sS",
+            "--ssl-no-revoke",
+            "-m",
+            "12",
+            "https://api.ipify.org",
+        ])
         .output();
     match out {
         Ok(o) => {
             let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if t.is_empty() { format!("FAIL({:?})", o.status.code()) } else { t }
+            if t.is_empty() {
+                format!("FAIL({:?})", o.status.code())
+            } else {
+                t
+            }
         }
         Err(e) => format!("ERR {e}"),
     }
 }
 
 fn main() {
-    let dir = std::env::var("APPDATA").map(std::path::PathBuf::from).unwrap().join("ink.k4r.nekoneko.vpn");
+    let dir = std::env::var("APPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap()
+        .join("ink.k4r.nekoneko.vpn");
     let st = store::load(&dir);
-    let profile = st.profiles.iter()
+    let profile = st
+        .profiles
+        .iter()
         .find(|p| format!("{}:{}:{}", p.host, p.port, p.uuid) == st.selected)
-        .or_else(|| st.profiles.first()).cloned().expect("нет профилей");
+        .or_else(|| st.profiles.first())
+        .cloned()
+        .expect("нет профилей");
     let root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from(r"C:\Windows"));
     let curl = format!(r"{root}\System32\curl.exe");
 
@@ -33,9 +50,11 @@ fn main() {
         tunnel_apps: Vec::new(),
         gateway: engine::default_gateway(),
         tg_port: 0,
+        ..engine::NetOptions::default()
     };
     let cfg = engine::build_config(&profile, &[], &opts);
-    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
+    let bin =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
     let log = dir.join("logs").join("engine.log");
     let eng = engine::Engine::default();
     *eng.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));

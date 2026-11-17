@@ -10,7 +10,10 @@ fn ip(args: &[&str]) -> String {
             let text = String::from_utf8_lossy(&o.stdout).trim().to_string();
             if text.is_empty() {
                 let err = String::from_utf8_lossy(&o.stderr).to_string();
-                format!("пусто: {}", err.lines().rev().take(2).collect::<Vec<_>>().join(" | "))
+                format!(
+                    "пусто: {}",
+                    err.lines().rev().take(2).collect::<Vec<_>>().join(" | ")
+                )
             } else {
                 text
             }
@@ -46,15 +49,20 @@ fn main() {
         tunnel_apps: vec!["curltest.exe".into()],
         gateway: engine::default_gateway(),
         tg_port: 1354,
+        ..engine::NetOptions::default()
     };
     let cfg = engine::build_config(&profile, &[], &opts);
-    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
+    let bin =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
     let log = dir.join("logs").join("engine.log");
     let eng = engine::Engine::default();
     *eng.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
 
     let mut out = String::new();
-    out += &format!("до туннеля: {}\n", ip(&["-sS", "-m", "12", "https://api.ipify.org"]));
+    out += &format!(
+        "до туннеля: {}\n",
+        ip(&["-sS", "-m", "12", "https://api.ipify.org"])
+    );
     match engine::start(&eng, &bin, &cfg, &log, &profile.name) {
         Ok(s) => out += &format!("туннель: {:?}\n", s.state),
         Err(e) => {
@@ -67,7 +75,14 @@ fn main() {
 
     out += &format!(
         "через SOCKS5 127.0.0.1:1354: {}\n",
-        ip(&["-sS", "-m", "15", "--socks5-hostname", "127.0.0.1:1354", "https://api.ipify.org"])
+        ip(&[
+            "-sS",
+            "-m",
+            "15",
+            "--socks5-hostname",
+            "127.0.0.1:1354",
+            "https://api.ipify.org"
+        ])
     );
     out += &format!(
         "напрямую в это время: {}\n",
@@ -76,7 +91,10 @@ fn main() {
 
     engine::stop(&eng);
     std::thread::sleep(std::time::Duration::from_millis(900));
-    out += &format!("после остановки: {}\n", ip(&["-sS", "-m", "12", "https://api.ipify.org"]));
+    out += &format!(
+        "после остановки: {}\n",
+        ip(&["-sS", "-m", "12", "https://api.ipify.org"])
+    );
 
     print!("{out}");
     let _ = std::fs::File::create(std::env::temp_dir().join("k4r-tg-probe.txt"))

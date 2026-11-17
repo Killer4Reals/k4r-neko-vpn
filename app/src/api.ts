@@ -131,6 +131,14 @@ export type SubSource = {
   info?: SubInfo | null;
 };
 
+/** Одно правило маршрутизации, как его хранит ядро. */
+export type RouteRule = {
+  kind: "domain" | "suffix" | "keyword" | "ip";
+  value: string;
+  action: "proxy" | "direct" | "block";
+  enabled: boolean;
+};
+
 export type AppState = {
   hwid?: string;
   profiles: Profile[];
@@ -157,4 +165,7 @@ export type AppState = {
   notify?: boolean;
   autostart?: boolean;
   connect_on_start?: boolean;
+  rules?: RouteRule[];
+  route_ru_direct?: boolean;
+  route_block_ads?: boolean;
 };

@@ -4,7 +4,7 @@ import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, nameOf, stripCc } from "./flags";
-import type { ChosenApp } from "./api";
+import type { ChosenApp, RouteRule } from "./api";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -14,6 +14,7 @@ import {
   MaxIcon,
   MinIcon,
   PowerIcon,
+  RouteIcon,
   ServerIcon,
   ShieldIcon,
   SplitIcon,
@@ -21,18 +22,20 @@ import {
 import { HomeScreen } from "./screens/Home";
 import { ServersScreen } from "./screens/Servers";
 import { SplitScreen } from "./screens/Split";
+import { RouteScreen } from "./screens/Route";
 import { ZapretScreen } from "./screens/Zapret";
 import { SettingsScreen } from "./screens/Settings";
 import { LogsScreen } from "./screens/Logs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-export type Screen = "home" | "servers" | "split" | "zapret" | "logs" | "settings";
+export type Screen = "home" | "servers" | "split" | "route" | "zapret" | "logs" | "settings";
 export type Theme = "dark" | "light" | "mascot";
 
 const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "home", key: "navHome", icon: PowerIcon },
   { id: "servers", key: "navServers", icon: ServerIcon },
   { id: "split", key: "navSplit", icon: SplitIcon },
+  { id: "route", key: "navRoute", icon: RouteIcon },
   { id: "zapret", key: "navZapret", icon: ShieldIcon },
   { id: "logs", key: "navLogs", icon: LogIcon },
   { id: "settings", key: "navSettings", icon: GearIcon },
@@ -89,6 +92,10 @@ export default function App() {
   const [splitDirty, setSplitDirty] = useState(false);
   /// "only" = tunnel carries just the chosen programs (the owner's default)
   const [splitMode, setSplitMode] = useState<"only" | "all">("only");
+  // правила маршрутизации: домены/адреса и пресеты списков
+  const [rules, setRules] = useState<RouteRule[]>([]);
+  const [routeRu, setRouteRu] = useState(false);
+  const [routeAds, setRouteAds] = useState(false);
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
   /// real counters from the engine, never a made-up number
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
@@ -231,6 +238,9 @@ export default function App() {
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
         if (typeof st.connect_on_start === "boolean") setConnectOnStart(st.connect_on_start);
+        if (Array.isArray(st.rules)) setRules(st.rules);
+        if (typeof st.route_ru_direct === "boolean") setRouteRu(st.route_ru_direct);
+        if (typeof st.route_block_ads === "boolean") setRouteAds(st.route_block_ads);
         // only what the owner picked is restored — never a full scan dump
         setChosen(
           (st.split ?? []).map((s) => ({
@@ -274,6 +284,9 @@ export default function App() {
           update_url: updateUrl,
           autostart,
           connect_on_start: connectOnStart,
+          rules,
+          route_ru_direct: routeRu,
+          route_block_ads: routeAds,
         })
         .catch(() => undefined);
     }, 700);
@@ -282,7 +295,7 @@ export default function App() {
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
-    zapretPreset, tgProxy,
+    zapretPreset, tgProxy, rules, routeRu, routeAds,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -841,6 +854,19 @@ export default function App() {
             />
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
+          {screen === "route" && (
+            <RouteScreen
+              t={t}
+              rules={rules}
+              setRules={setRules}
+              ruDirect={routeRu}
+              setRuDirect={setRouteRu}
+              blockAds={routeAds}
+              setBlockAds={setRouteAds}
+              connected={conn === "connected"}
+              onReconnect={reconnectTunnel}
+            />
+          )}
           {screen === "zapret" && (
             <ZapretScreen
               t={t}

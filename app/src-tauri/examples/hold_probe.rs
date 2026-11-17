@@ -8,7 +8,9 @@ fn reachable(host: &str, port: u16) -> bool {
     let Ok(mut addrs) = (host, port).to_socket_addrs() else {
         return false;
     };
-    let Some(addr) = addrs.next() else { return false };
+    let Some(addr) = addrs.next() else {
+        return false;
+    };
     TcpStream::connect_timeout(&addr, Duration::from_millis(2500)).is_ok()
 }
 
@@ -16,8 +18,8 @@ fn main() {
     let dir = std::env::temp_dir().join("k4r-hold-probe");
     let _ = std::fs::create_dir_all(&dir);
     let log = dir.join("hold.log");
-    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources/bin/sing-box.exe");
+    let bin =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
 
     let engine = k4r_neko_vpn_lib::engine::Engine::default();
     let started = k4r_neko_vpn_lib::engine::start_hold(&engine, &bin, &log);
@@ -52,6 +54,6 @@ fn main() {
     out += &format!("after stop, outside reachable (должно быть true): {after}\n");
 
     print!("{out}");
-    let _ = std::fs::File::create(dir.join("result.txt"))
-        .and_then(|mut f| f.write_all(out.as_bytes()));
+    let _ =
+        std::fs::File::create(dir.join("result.txt")).and_then(|mut f| f.write_all(out.as_bytes()));
 }

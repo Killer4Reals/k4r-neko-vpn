@@ -56,8 +56,32 @@ pub struct AppState {
     /// поднимать туннель сразу при запуске приложения (не только автозапуск)
     #[serde(default)]
     pub connect_on_start: bool,
+    /// Правила маршрутизации, в порядке применения
+    #[serde(default)]
+    pub rules: Vec<RouteRule>,
+    /// Домены и адреса РФ — напрямую, мимо туннеля
+    #[serde(default)]
+    pub route_ru_direct: bool,
+    /// Реклама и трекеры — в блок
+    #[serde(default)]
+    pub route_block_ads: bool,
     /// 0 = written before the settings existed; bumped when defaults change
     pub schema: u32,
+}
+
+/// Одно правило маршрутизации: признак трафика и что с ним делать.
+///
+/// Порядок в списке — порядок применения: первое совпавшее правило решает.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct RouteRule {
+    /// "domain" (точный), "suffix" (и поддомены), "keyword" (вхождение), "ip" (CIDR)
+    pub kind: String,
+    pub value: String,
+    /// "proxy" (в туннель), "direct" (напрямую), "block" (в блок)
+    pub action: String,
+    #[serde(default = "yes")]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -245,6 +269,13 @@ pub fn load(data_dir: &Path) -> AppState {
         st.split.clear();
         st.schema = SCHEMA;
     }
+    // Правила, которые нечего применять, не храним: пустое значение или
+    // незнакомое действие — это не правило, а мусор от старой версии.
+    st.rules.retain(|r| {
+        !r.value.trim().is_empty()
+            && matches!(r.kind.as_str(), "domain" | "suffix" | "keyword" | "ip")
+            && matches!(r.action.as_str(), "proxy" | "direct" | "block")
+    });
     if st.dns_mode.is_empty() {
         st.dns_mode = "tunnel".into();
     }
@@ -255,10 +286,14 @@ pub fn load(data_dir: &Path) -> AppState {
 }
 
 pub fn save(data_dir: &Path, state: &AppState) -> Result<(), String> {
-    std::fs::create_dir_all(data_dir).map_err(|e| format!("не удалось создать каталог данных: {e}"))?;
+    std::fs::create_dir_all(data_dir)
+        .map_err(|e| format!("не удалось создать каталог данных: {e}"))?;
     let tmp = state_path(data_dir).with_extension("json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(state).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("не удалось сохранить настройки: {e}"))?;
+    std::fs::write(
+        &tmp,
+        serde_json::to_vec_pretty(state).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("не удалось сохранить настройки: {e}"))?;
     std::fs::rename(&tmp, state_path(data_dir))
         .map_err(|e| format!("не удалось заменить настройки: {e}"))
 }
@@ -331,6 +366,72 @@ pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn правила_маршрутизации_переживают_запись() {
+        let dir = std::env::temp_dir().join("k4r-rules-roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut st = AppState::with_defaults();
+        st.rules = vec![
+            RouteRule {
+                kind: "suffix".into(),
+                value: "ozon.ru".into(),
+                action: "direct".into(),
+                enabled: true,
+            },
+            RouteRule {
+                kind: "ip".into(),
+                value: "5.255.255.0/24".into(),
+                action: "block".into(),
+                enabled: false,
+            },
+        ];
+        st.route_ru_direct = true;
+        st.route_block_ads = true;
+        save(&dir, &st).unwrap();
+        let back = load(&dir);
+        assert_eq!(back.rules, st.rules);
+        assert!(back.route_ru_direct);
+        assert!(back.route_block_ads);
+    }
+
+    #[test]
+    fn мусорные_правила_отбрасываются_при_загрузке() {
+        let dir = std::env::temp_dir().join("k4r-rules-junk");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut st = AppState::with_defaults();
+        st.rules = vec![
+            RouteRule {
+                kind: "suffix".into(),
+                value: "  ".into(),
+                action: "direct".into(),
+                enabled: true,
+            },
+            RouteRule {
+                kind: "nonsense".into(),
+                value: "a.example".into(),
+                action: "direct".into(),
+                enabled: true,
+            },
+            RouteRule {
+                kind: "domain".into(),
+                value: "b.example".into(),
+                action: "teleport".into(),
+                enabled: true,
+            },
+            RouteRule {
+                kind: "domain".into(),
+                value: "ok.example".into(),
+                action: "proxy".into(),
+                enabled: true,
+            },
+        ];
+        save(&dir, &st).unwrap();
+        let back = load(&dir);
+        assert_eq!(back.rules.len(), 1);
+        assert_eq!(back.rules[0].value, "ok.example");
+    }
+
     use super::*;
 
     fn sample() -> Profile {
@@ -385,7 +486,10 @@ mod tests {
         std::fs::write(state_path(&dir), old).unwrap();
 
         let st = load(&dir);
-        assert!(st.split.is_empty(), "0.1 auto-filled the whole scan, nothing was chosen");
+        assert!(
+            st.split.is_empty(),
+            "0.1 auto-filled the whole scan, nothing was chosen"
+        );
         assert_eq!(st.schema, 2);
 
         // the owner's own picks survive the next launch
@@ -454,8 +558,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("engine.log");
-        std::fs::write(&path, "строка
-").unwrap();
+        std::fs::write(
+            &path,
+            "строка
+",
+        )
+        .unwrap();
         assert!(!rotate_log_at(&path, 1024));
         assert!(path.exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -468,7 +576,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("engine.log");
         let old = "старое
-".repeat(100);
+"
+        .repeat(100);
         std::fs::write(&path, &old).unwrap();
         assert!(rotate_log_at(&path, 100));
         assert!(!path.exists(), "свежий журнал начинается с пустого файла");
@@ -483,17 +592,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("engine.log");
-        std::fs::write(&path, "первый
-".repeat(50)).unwrap();
+        std::fs::write(
+            &path,
+            "первый
+"
+            .repeat(50),
+        )
+        .unwrap();
         assert!(rotate_log_at(&path, 100));
-        std::fs::write(&path, "второй
-".repeat(50)).unwrap();
+        std::fs::write(
+            &path,
+            "второй
+"
+            .repeat(50),
+        )
+        .unwrap();
         assert!(rotate_log_at(&path, 100));
         // держим ровно один предыдущий кусок, иначе каталог растёт бесконечно
         assert_eq!(
             std::fs::read_to_string(dir.join("engine.log.1")).unwrap(),
             "второй
-".repeat(50)
+"
+            .repeat(50)
         );
         assert!(!dir.join("engine.log.2").exists());
         let _ = std::fs::remove_dir_all(&dir);

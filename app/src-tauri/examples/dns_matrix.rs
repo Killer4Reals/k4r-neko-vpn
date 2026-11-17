@@ -5,7 +5,13 @@ use std::io::Write;
 
 fn ip(exe: &str) -> String {
     let out = std::process::Command::new(exe)
-        .args(["-sS", "--ssl-no-revoke", "-m", "10", "https://api.ipify.org"])
+        .args([
+            "-sS",
+            "--ssl-no-revoke",
+            "-m",
+            "10",
+            "https://api.ipify.org",
+        ])
         .output();
     match out {
         Ok(o) => {
@@ -32,7 +38,8 @@ fn variant(cfg: &mut serde_json::Value, kind: &str, server: &str, detour: bool, 
         "strategy": "ipv4_only"
     });
     if rules {
-        dns["rules"] = serde_json::json!([{ "process_name": ["curltest.exe"], "server": "remote" }]);
+        dns["rules"] =
+            serde_json::json!([{ "process_name": ["curltest.exe"], "server": "remote" }]);
     }
     cfg["dns"] = dns;
 }
@@ -71,13 +78,21 @@ fn main() {
         tunnel_apps: vec!["curltest.exe".into()],
         gateway: gateway.clone(),
         tg_port: 0,
+        ..engine::NetOptions::default()
     };
-    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
+    let bin =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
     let log = dir.join("logs").join("engine.log");
 
     let cases: Vec<(&str, &str, &str, bool, bool)> = vec![
         ("only, DoH via proxy", "https", "1.1.1.1", true, true),
-        ("only, DoH via proxy, dns.google", "https", "dns.google", true, true),
+        (
+            "only, DoH via proxy, dns.google",
+            "https",
+            "dns.google",
+            true,
+            true,
+        ),
         ("only, UDP 1.1.1.1 via proxy", "udp", "1.1.1.1", true, true),
         ("only, everyone via router", "https", "1.1.1.1", true, false),
     ];

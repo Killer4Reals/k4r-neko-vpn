@@ -3,7 +3,10 @@
 use k4r_neko_vpn_lib::{engine, store};
 
 fn main() {
-    let dir = std::env::var("APPDATA").map(std::path::PathBuf::from).unwrap().join("ink.k4r.nekoneko.vpn");
+    let dir = std::env::var("APPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap()
+        .join("ink.k4r.nekoneko.vpn");
     let st = store::load(&dir);
     let Some(profile) = st
         .profiles
@@ -25,6 +28,7 @@ fn main() {
         tunnel_apps: Vec::new(),
         gateway: engine::default_gateway(),
         tg_port: 0,
+        ..engine::NetOptions::default()
     };
     let excluded = vec![
         "deepai code.exe".to_string(),
@@ -35,7 +39,8 @@ fn main() {
         "pwsh.exe".to_string(),
     ];
     let cfg = engine::build_config(&profile, &excluded, &opts);
-    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
+    let bin =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
     let log = dir.join("logs").join("engine.log");
     let eng = engine::Engine::default();
     *eng.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));

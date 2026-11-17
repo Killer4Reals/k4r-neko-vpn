@@ -6,6 +6,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use crate::store::RouteRule;
 use crate::subscription::Profile;
 
 /// CREATE_NO_WINDOW: a console child must never flash a black window on screen.
@@ -91,6 +92,15 @@ pub struct NetOptions {
     /// Local SOCKS5 port inside the tunnel, so Telegram (and any other client
     /// that knows proxies) can be routed by hand. 0 = off.
     pub tg_port: u16,
+    /// Правила маршрутизации владельца: домены, суффиксы, ключевые слова, адреса.
+    /// Применяются раньше правил разделения по программам: явное всегда сильнее.
+    pub rules: Vec<RouteRule>,
+    /// Домены и адреса РФ — напрямую, мимо туннеля
+    pub route_ru_direct: bool,
+    /// Реклама и трекеры — в блок
+    pub route_block_ads: bool,
+    /// Где ядро хранит скачанные списки; пусто — без кэша
+    pub cache_path: String,
 }
 
 impl Default for NetOptions {
@@ -105,6 +115,10 @@ impl Default for NetOptions {
             tunnel_apps: Vec::new(),
             gateway: String::new(),
             tg_port: 0,
+            rules: Vec::new(),
+            route_ru_direct: false,
+            route_block_ads: false,
+            cache_path: String::new(),
         }
     }
 }
@@ -147,7 +161,11 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
 
     match profile.network.as_str() {
         "ws" => {
-            let path = if profile.path.is_empty() { "/" } else { &profile.path };
+            let path = if profile.path.is_empty() {
+                "/"
+            } else {
+                &profile.path
+            };
             outbound["transport"] = json!({ "type": "ws", "path": path });
         }
         "grpc" => {
@@ -160,6 +178,26 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         _ => {}
     }
 
+    // Списки, которые ядро скачивает само (binary .srs) и держит в кэше.
+    // Мы не вшиваем их в установщик: они обновляются чаще, чем наше приложение.
+    let mut rule_sets: Vec<Value> = Vec::new();
+    if opts.route_ru_direct {
+        rule_sets.push(json!({
+            "type": "remote", "tag": "ru-domains", "format": "binary",
+            "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs"
+        }));
+        rule_sets.push(json!({
+            "type": "remote", "tag": "ru-ips", "format": "binary",
+            "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs"
+        }));
+    }
+    if opts.route_block_ads {
+        rule_sets.push(json!({
+            "type": "remote", "tag": "ads", "format": "binary",
+            "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs"
+        }));
+    }
+
     let only_chosen = opts.split_mode == "only";
     let mut rules = vec![
         json!({ "action": "sniff" }),
@@ -167,6 +205,44 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         // the local network is always local, whatever the mode is
         json!({ "ip_is_private": true, "outbound": "direct" }),
     ];
+    // Правила владельца идут раньше разделения по программам: если человек
+    // сказал «этот домен напрямую», спорить с ним не о чем.
+    for rule in &opts.rules {
+        if !rule.enabled {
+            continue;
+        }
+        let value = rule.value.trim();
+        let key = match rule.kind.as_str() {
+            "domain" => "domain",
+            "suffix" => "domain_suffix",
+            "keyword" => "domain_keyword",
+            "ip" => "ip_cidr",
+            _ => continue,
+        };
+        if value.is_empty() {
+            continue;
+        }
+        let mut one = json!({ key: [value] });
+        match rule.action.as_str() {
+            "block" => {
+                one["action"] = json!("reject");
+            }
+            "direct" => {
+                one["outbound"] = json!("direct");
+            }
+            "proxy" => {
+                one["outbound"] = json!("proxy");
+            }
+            _ => continue,
+        }
+        rules.push(one);
+    }
+    if opts.route_ru_direct {
+        rules.push(json!({ "rule_set": ["ru-domains", "ru-ips"], "outbound": "direct" }));
+    }
+    if opts.route_block_ads {
+        rules.push(json!({ "rule_set": ["ads"], "action": "reject" }));
+    }
     if only_chosen {
         if opts.block_ipv6 && !opts.tunnel_apps.is_empty() {
             // a tunnelled program keeps no IPv6 of its own: that would leak
@@ -219,7 +295,11 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         } else {
             json!({ "type": "https", "tag": "remote", "server": raw, })
         };
-        let strategy = if opts.block_ipv6 { "ipv4_only" } else { "prefer_ipv4" };
+        let strategy = if opts.block_ipv6 {
+            "ipv4_only"
+        } else {
+            "prefer_ipv4"
+        };
         // One encrypted resolver for every program. Resolving through the tunnel
         // itself proved unreliable (the server may not relay DNS), and a plain
         // "system" resolver would ask our own adapter and loop.
@@ -256,6 +336,15 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
             "default_domain_resolver": resolver
         }
     });
+    if !rule_sets.is_empty() {
+        config["route"]["rule_set"] = json!(rule_sets);
+        if !opts.cache_path.trim().is_empty() {
+            // Без кэша ядро качало бы списки при каждом запуске
+            config["experimental"] = json!({
+                "cache_file": { "enabled": true, "path": opts.cache_path.trim() }
+            });
+        }
+    }
     if opts.tg_port != 0 {
         // Zapret solves Telegram with a local proxy on 1353; we do the same, only
         // the traffic goes through the tunnel instead of a separate MTProto link.
@@ -414,7 +503,10 @@ pub fn sidecar_with_core(resource_dir: &Path, data_dir: Option<&Path>) -> PathBu
     }
     let mut candidates = vec![
         resource_dir.join("bin").join("sing-box.exe"),
-        resource_dir.join("resources").join("bin").join("sing-box.exe"),
+        resource_dir
+            .join("resources")
+            .join("bin")
+            .join("sing-box.exe"),
     ];
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
@@ -491,7 +583,11 @@ fn have_internet() -> bool {
     let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") else {
         return false;
     };
-    sock.connect("1.1.1.1:53").is_ok() && sock.local_addr().map(|a| !a.ip().is_unspecified()).unwrap_or(false)
+    sock.connect("1.1.1.1:53").is_ok()
+        && sock
+            .local_addr()
+            .map(|a| !a.ip().is_unspecified())
+            .unwrap_or(false)
 }
 
 /// Адрес сервера из конфига: первый outbound с полем server.
@@ -503,7 +599,10 @@ fn config_server(config: &Value) -> Option<(String, u16)> {
         let Some(host) = ob.get("server").and_then(|v| v.as_str()) else {
             continue;
         };
-        let port = ob.get("server_port").and_then(|v| v.as_u64()).unwrap_or(443) as u16;
+        let port = ob
+            .get("server_port")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(443) as u16;
         return Some((host.to_string(), port));
     }
     None
@@ -556,14 +655,18 @@ pub fn start(
         return Err("не найден движок sing-box.exe".into());
     }
     if !is_elevated() {
-        return Err("нужны права администратора: перезапусти приложение от имени администратора".into());
+        return Err(
+            "нужны права администратора: перезапусти приложение от имени администратора".into(),
+        );
     }
 
     if let Some(dir) = log_path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
 
-    let cfg_path = std::env::temp_dir().join("k4r-neko-vpn").join("config.json");
+    let cfg_path = std::env::temp_dir()
+        .join("k4r-neko-vpn")
+        .join("config.json");
     if let Some(dir) = cfg_path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("не удалось создать каталог: {e}"))?;
     }
@@ -765,7 +868,10 @@ pub fn start_hold(engine: &Engine, bin: &Path, log_path: &Path) -> bool {
     cmd.arg("run")
         .arg("-c")
         .arg(&path)
-        .stdout(Stdio::from(log.try_clone().unwrap_or_else(|_| std::fs::File::create(log_path).unwrap())))
+        .stdout(Stdio::from(
+            log.try_clone()
+                .unwrap_or_else(|_| std::fs::File::create(log_path).unwrap()),
+        ))
         .stderr(Stdio::from(log))
         .stdin(Stdio::null());
     hidden(&mut cmd);
@@ -878,7 +984,10 @@ mod tests {
     fn reason_is_words_not_an_exit_code() {
         let cfg: Value = serde_json::from_str(r#"{"outbounds":[{"type":"direct"}]}"#).unwrap();
         let why = failure_reason(&cfg, "Токио", "", "движок завершился с кодом 1");
-        assert!(why.contains("интернет") || why.contains("не отвечает"), "причина: {why}");
+        assert!(
+            why.contains("интернет") || why.contains("не отвечает"),
+            "причина: {why}"
+        );
     }
 
     use super::*;
@@ -967,10 +1076,201 @@ mod tests {
             eprintln!("sing-box нет рядом — проверка конфига движком пропущена");
             return;
         }
-        let cfg = build_config(&sample(), &["steam.exe".to_string()], &NetOptions::default());
+        let cfg = build_config(
+            &sample(),
+            &["steam.exe".to_string()],
+            &NetOptions::default(),
+        );
         let path = std::env::temp_dir().join("k4r-neko-vpn-test-config.json");
         std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
         check_config(&bin, &path).expect("engine rejected the generated config");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn own_rule_sends_a_domain_directly() {
+        let opts = NetOptions {
+            rules: vec![RouteRule {
+                kind: "suffix".into(),
+                value: "ozon.ru".into(),
+                action: "direct".into(),
+                enabled: true,
+            }],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let found = rules
+            .iter()
+            .find(|r| r["domain_suffix"][0] == "ozon.ru")
+            .expect("правило не попало в конфиг");
+        assert_eq!(found["outbound"], "direct");
+    }
+
+    #[test]
+    fn blocked_rule_rejects_instead_of_routing() {
+        let opts = NetOptions {
+            rules: vec![RouteRule {
+                kind: "domain".into(),
+                value: "ads.example".into(),
+                action: "block".into(),
+                enabled: true,
+            }],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let found = rules
+            .iter()
+            .find(|r| r["domain"][0] == "ads.example")
+            .unwrap();
+        assert_eq!(found["action"], "reject");
+        assert!(found.get("outbound").is_none());
+    }
+
+    #[test]
+    fn disabled_and_broken_rules_are_skipped() {
+        let opts = NetOptions {
+            rules: vec![
+                RouteRule {
+                    kind: "suffix".into(),
+                    value: "off.example".into(),
+                    action: "proxy".into(),
+                    enabled: false,
+                },
+                RouteRule {
+                    kind: "suffix".into(),
+                    value: "   ".into(),
+                    action: "proxy".into(),
+                    enabled: true,
+                },
+                RouteRule {
+                    kind: "nonsense".into(),
+                    value: "x.example".into(),
+                    action: "proxy".into(),
+                    enabled: true,
+                },
+                RouteRule {
+                    kind: "suffix".into(),
+                    value: "bad.example".into(),
+                    action: "teleport".into(),
+                    enabled: true,
+                },
+            ],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(!rules.iter().any(|r| r.get("domain_suffix").is_some()));
+    }
+
+    #[test]
+    fn own_rules_come_before_program_split() {
+        // «этот домен напрямую» не должен проигрывать правилу «эта программа в туннель»
+        let opts = NetOptions {
+            split_mode: "only".into(),
+            tunnel_apps: vec!["browser.exe".into()],
+            rules: vec![RouteRule {
+                kind: "suffix".into(),
+                value: "gosuslugi.ru".into(),
+                action: "direct".into(),
+                enabled: true,
+            }],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let own = rules
+            .iter()
+            .position(|r| r.get("domain_suffix").is_some())
+            .unwrap();
+        let program = rules
+            .iter()
+            .position(|r| r.get("process_name").is_some())
+            .unwrap();
+        assert!(own < program);
+    }
+
+    #[test]
+    fn ru_direct_preset_adds_lists_and_cache() {
+        let opts = NetOptions {
+            route_ru_direct: true,
+            cache_path: "C:/data/rule-sets.db".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let sets = cfg["route"]["rule_set"].as_array().unwrap();
+        let tags: Vec<&str> = sets.iter().map(|s| s["tag"].as_str().unwrap()).collect();
+        assert_eq!(tags, vec!["ru-domains", "ru-ips"]);
+        assert_eq!(sets[0]["format"], "binary");
+        assert_eq!(
+            cfg["experimental"]["cache_file"]["path"],
+            "C:/data/rule-sets.db"
+        );
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(rules
+            .iter()
+            .any(|r| r["rule_set"][0] == "ru-domains" && r["outbound"] == "direct"));
+    }
+
+    #[test]
+    fn ads_preset_rejects_and_no_lists_no_cache() {
+        let plain = build_config(&sample(), &[], &NetOptions::default());
+        assert!(plain["route"].get("rule_set").is_none());
+        assert!(plain.get("experimental").is_none());
+
+        let opts = NetOptions {
+            route_block_ads: true,
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(rules
+            .iter()
+            .any(|r| r["rule_set"][0] == "ads" && r["action"] == "reject"));
+    }
+
+    #[test]
+    fn engine_accepts_a_config_with_routing_rules() {
+        let bin = sidecar_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));
+        let real = std::fs::metadata(&bin).map(|m| m.len()).unwrap_or(0) > 1_000_000;
+        if !real {
+            eprintln!("sing-box нет рядом — проверка правил движком пропущена");
+            return;
+        }
+        let opts = NetOptions {
+            rules: vec![
+                RouteRule {
+                    kind: "suffix".into(),
+                    value: "ozon.ru".into(),
+                    action: "direct".into(),
+                    enabled: true,
+                },
+                RouteRule {
+                    kind: "ip".into(),
+                    value: "5.255.255.0/24".into(),
+                    action: "block".into(),
+                    enabled: true,
+                },
+                RouteRule {
+                    kind: "keyword".into(),
+                    value: "tracker".into(),
+                    action: "proxy".into(),
+                    enabled: true,
+                },
+            ],
+            route_ru_direct: true,
+            route_block_ads: true,
+            cache_path: std::env::temp_dir()
+                .join("k4r-rule-sets.db")
+                .display()
+                .to_string(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &["steam.exe".to_string()], &opts);
+        let path = std::env::temp_dir().join("k4r-neko-vpn-rules-test.json");
+        std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
+        check_config(&bin, &path).expect("engine rejected a config with routing rules");
         let _ = std::fs::remove_file(&path);
     }
 
@@ -981,7 +1281,10 @@ mod tests {
         let cfg = build_config(&p, &[], &NetOptions::default());
         assert_eq!(cfg["outbounds"][0]["transport"]["type"], "grpc");
         assert_eq!(cfg["outbounds"][0]["transport"]["service_name"], "api");
-        assert_eq!(cfg["outbounds"][0]["tls"]["reality"]["public_key"], "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0");
+        assert_eq!(
+            cfg["outbounds"][0]["tls"]["reality"]["public_key"],
+            "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0"
+        );
     }
 
     #[test]
@@ -1003,12 +1306,20 @@ mod tests {
         };
         let cfg = build_config(&sample(), &["steam.exe".to_string()], &opts);
         let rules = cfg["route"]["rules"].as_array().unwrap();
-        assert!(rules.iter().any(|r| r["outbound"] == "direct" && r["process_name"][0] == "steam.exe"));
+        assert!(rules
+            .iter()
+            .any(|r| r["outbound"] == "direct" && r["process_name"][0] == "steam.exe"));
         assert_eq!(cfg["route"]["final"], "proxy");
         // direct wins over the IPv6 reject, or an excluded app would lose its stack
-        let direct_at = rules.iter().position(|r| r["outbound"] == "direct" && r.get("process_name").is_some()).unwrap();
+        let direct_at = rules
+            .iter()
+            .position(|r| r["outbound"] == "direct" && r.get("process_name").is_some())
+            .unwrap();
         let v6_at = rules.iter().position(|r| r["ip_version"] == 6).unwrap();
-        assert!(direct_at < v6_at, "process rule must come before the IPv6 reject");
+        assert!(
+            direct_at < v6_at,
+            "process rule must come before the IPv6 reject"
+        );
     }
 
     #[test]
@@ -1045,7 +1356,10 @@ mod tests {
             ..NetOptions::default()
         };
         let cfg = build_config(&sample(), &[], &opts);
-        assert_eq!(cfg["route"]["final"], "direct", "everything else must stay direct");
+        assert_eq!(
+            cfg["route"]["final"], "direct",
+            "everything else must stay direct"
+        );
         let rules = cfg["route"]["rules"].as_array().unwrap();
         let tunnel_rule = rules
             .iter()
@@ -1060,7 +1374,10 @@ mod tests {
         // IPv6 is only refused for the tunnelled program, never for everyone
         let v6 = rules.iter().find(|r| r["ip_version"] == 6);
         if let Some(rule) = v6 {
-            assert!(rule.get("process_name").is_some(), "IPv6 reject must be scoped to the chosen programs");
+            assert!(
+                rule.get("process_name").is_some(),
+                "IPv6 reject must be scoped to the chosen programs"
+            );
         }
     }
 

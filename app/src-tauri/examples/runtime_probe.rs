@@ -34,7 +34,13 @@ fn sh(cmd: &str, args: &[&str]) -> String {
 fn ipinfo() -> String {
     let body = sh(
         "curl",
-        &["-sS", "--ssl-no-revoke", "-m", "15", "https://1.1.1.1/cdn-cgi/trace"],
+        &[
+            "-sS",
+            "--ssl-no-revoke",
+            "-m",
+            "15",
+            "https://1.1.1.1/cdn-cgi/trace",
+        ],
     );
     let get = |k: &str| {
         body.lines()
@@ -88,12 +94,23 @@ fn main() {
         .or_else(|| st.profiles.first())
         .unwrap()
         .clone();
-    say!("server: {} ({}:{})", profile.name, profile.host, profile.port);
+    say!(
+        "server: {} ({}:{})",
+        profile.name,
+        profile.host,
+        profile.port
+    );
 
     say!("before: {}", ipinfo());
 
     // what a leaky machine answers without the tunnel
-    let v6 = ["-6", "-sS", "-m", "8", "https://[2606:4700:4700::1111]/cdn-cgi/trace"];
+    let v6 = [
+        "-6",
+        "-sS",
+        "-m",
+        "8",
+        "https://[2606:4700:4700::1111]/cdn-cgi/trace",
+    ];
     say!("ipv6 before: {}", sh("curl", &v6));
 
     let opts = engine::NetOptions {
@@ -106,6 +123,7 @@ fn main() {
         tunnel_apps: Vec::new(),
         gateway: engine::default_gateway(),
         tg_port: 0,
+        ..engine::NetOptions::default()
     };
     let mut excluded = st
         .split
@@ -128,23 +146,25 @@ fn main() {
     }
     say!("config accepted");
 
-    let guard = KillOnDrop(match Command::new(&bin)
-        .arg("run")
-        .arg("-c")
-        .arg(&cfg_path)
-        .stdout(Stdio::null())
-        .stderr(Stdio::from(
-            std::fs::File::create(std::env::temp_dir().join("k4r-runtime-probe.log")).unwrap(),
-        ))
-        .spawn()
-    {
-        Ok(c) => Some(c),
-        Err(e) => {
-            say!("spawn failed: {e}");
-            std::fs::write(&out_file, log).ok();
-            return;
-        }
-    });
+    let guard = KillOnDrop(
+        match Command::new(&bin)
+            .arg("run")
+            .arg("-c")
+            .arg(&cfg_path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(
+                std::fs::File::create(std::env::temp_dir().join("k4r-runtime-probe.log")).unwrap(),
+            ))
+            .spawn()
+        {
+            Ok(c) => Some(c),
+            Err(e) => {
+                say!("spawn failed: {e}");
+                std::fs::write(&out_file, log).ok();
+                return;
+            }
+        },
+    );
     say!("tunnel pid: {:?}", guard.0.as_ref().map(|c| c.id()));
     std::thread::sleep(Duration::from_secs(10));
 
@@ -159,7 +179,13 @@ fn main() {
         let _ = std::fs::copy(r"C:\Windows\System32\curl.exe", &alt);
         let alt_trace = sh(
             alt.to_str().unwrap_or("curltest.exe"),
-            &["-sS", "--ssl-no-revoke", "-m", "20", "https://ifconfig.co/ip"],
+            &[
+                "-sS",
+                "--ssl-no-revoke",
+                "-m",
+                "20",
+                "https://ifconfig.co/ip",
+            ],
         );
         let alt_ip = alt_trace.trim().to_string();
         say!("same tool, not excluded (curltest.exe): ip={alt_ip}");

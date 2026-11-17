@@ -5,7 +5,14 @@ use std::io::Write;
 
 fn ip_via(exe: &str, socks_ok: bool) -> String {
     let out = std::process::Command::new(exe)
-        .args(["-sS", "-v", "--ssl-no-revoke", "-m", "15", "https://api.ipify.org"])
+        .args([
+            "-sS",
+            "-v",
+            "--ssl-no-revoke",
+            "-m",
+            "15",
+            "https://api.ipify.org",
+        ])
         .output();
     match out {
         Ok(o) if socks_ok => {
@@ -15,7 +22,10 @@ fn ip_via(exe: &str, socks_ok: bool) -> String {
                 let tail: String = err.lines().rev().take(4).collect::<Vec<_>>().join(" | ");
                 format!("пусто (код {:?}): {tail}", o.status.code())
             } else {
-                format!("{text} (строк лога: {})", String::from_utf8_lossy(&o.stderr).lines().count())
+                format!(
+                    "{text} (строк лога: {})",
+                    String::from_utf8_lossy(&o.stderr).lines().count()
+                )
             }
         }
         _ => "n/a".into(),
@@ -57,9 +67,11 @@ fn main() {
         tunnel_apps: Vec::new(),
         gateway: engine::default_gateway(),
         tg_port: 0,
+        ..engine::NetOptions::default()
     };
     let cfg = engine::build_config(&profile, &[], &opts);
-    let bin = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
+    let bin =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/bin/sing-box.exe");
     let log = dir.join("logs").join("engine.log");
     let eng = engine::Engine::default();
     *eng.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));

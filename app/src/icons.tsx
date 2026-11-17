@@ -34,6 +34,14 @@ export const SplitIcon = ({ size, className }: P) => (
   </svg>
 );
 
+export const RouteIcon = ({ size, className }: P) => (
+  <svg {...base(size)} className={className}>
+    <circle cx="6" cy="6" r="2.2" />
+    <circle cx="18" cy="18" r="2.2" />
+    <path d="M8.2 6H14a4 4 0 0 1 0 8h-4a4 4 0 0 0 0 8h5.8" />
+  </svg>
+);
+
 export const ShieldIcon = ({ size, className }: P) => (
   <svg {...base(size)} className={className}>
     <path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3Z" />

@@ -3,7 +3,10 @@
 use k4r_neko_vpn_lib::{probe, store};
 
 fn main() {
-    let dir = std::env::var("APPDATA").map(std::path::PathBuf::from).unwrap().join("ink.k4r.nekoneko.vpn");
+    let dir = std::env::var("APPDATA")
+        .map(std::path::PathBuf::from)
+        .unwrap()
+        .join("ink.k4r.nekoneko.vpn");
     let mut profiles = store::load(&dir).profiles;
     // подмешиваем заведомо мёртвый адрес
     let mut dead = profiles[0].clone();

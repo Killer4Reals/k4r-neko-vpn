@@ -9,9 +9,16 @@ fn main() {
     match subscription::fetch(
         &url,
         "K4R-Neko-VPN/0.1",
-        &[SubHeader { name: "X-HWID".into(), value: hwid.clone() }],
+        &[SubHeader {
+            name: "X-HWID".into(),
+            value: hwid.clone(),
+        }],
     ) {
-        Ok(r) => println!("hwid={hwid} -> {} профилей, warnings={:?}", r.profiles.len(), r.warnings),
+        Ok(r) => println!(
+            "hwid={hwid} -> {} профилей, warnings={:?}",
+            r.profiles.len(),
+            r.warnings
+        ),
         Err(e) => println!("hwid={hwid} -> ошибка: {e}"),
     }
 }

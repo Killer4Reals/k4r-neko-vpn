@@ -7,7 +7,10 @@ fn main() {
     for (section, payload) in zapret::read_settings(&dir) {
         if section == "dns" || section == "telegram_proxy" {
             let v: serde_json::Value = serde_json::from_str(&payload).unwrap_or_default();
-            println!("{section}: {}", serde_json::to_string(&v).unwrap_or_default());
+            println!(
+                "{section}: {}",
+                serde_json::to_string(&v).unwrap_or_default()
+            );
         }
     }
 }

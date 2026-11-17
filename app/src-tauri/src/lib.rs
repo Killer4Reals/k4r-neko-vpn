@@ -10,9 +10,9 @@ pub mod store;
 pub mod subscription;
 pub mod zapret;
 
+use probe::PingResult;
 use serde::Serialize;
 use std::path::PathBuf;
-use probe::PingResult;
 use store::AppState;
 use subscription::{Profile, SubHeader, SubResult};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
@@ -101,7 +101,10 @@ fn core_info(app: tauri::AppHandle) -> Result<CoreInfo, String> {
 fn core_download_url(version: &str) -> Result<String, String> {
     let v = version.trim().trim_start_matches('v');
     let ok = !v.is_empty()
-        && v.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+        && v.chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
         && v.chars().all(|c| c.is_ascii_digit() || c == '.');
     if !ok {
         return Err(format!("не похоже на версию: {version}"));
@@ -184,7 +187,9 @@ async fn core_update(app: tauri::AppHandle, version: String) -> Result<String, S
         let mut found: Option<std::path::PathBuf> = None;
         let mut stack = vec![work.join("out")];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -276,14 +281,36 @@ pub struct InstalledApp {
 
 /// Exe names that are never a program the user wants to route.
 const NOISE_EXE: [&str; 18] = [
-    "unins", "uninstall", "setup", "update", "updater", "vcredist", "dotnet", "crashpad",
-    "crashreporter", "node.exe", "python.exe", "wscript.exe", "jucheck", "jusched",
-    "vctip", "oemdrv", "googleupdate", "msedgewebview2",
+    "unins",
+    "uninstall",
+    "setup",
+    "update",
+    "updater",
+    "vcredist",
+    "dotnet",
+    "crashpad",
+    "crashreporter",
+    "node.exe",
+    "python.exe",
+    "wscript.exe",
+    "jucheck",
+    "jusched",
+    "vctip",
+    "oemdrv",
+    "googleupdate",
+    "msedgewebview2",
 ];
 
 const NOISE_NAME: [&str; 9] = [
-    "update", "updater", "installer", "uninstall", "telemetry", "improvement",
-    "redistributable", "crashpad", "не обновля",
+    "update",
+    "updater",
+    "installer",
+    "uninstall",
+    "telemetry",
+    "improvement",
+    "redistributable",
+    "crashpad",
+    "не обновля",
 ];
 
 fn looks_like_program(path: &str, name: &str) -> bool {
@@ -357,10 +384,10 @@ Get-ItemProperty $keys | ForEach-Object {
 "#;
     let mut scan = std::process::Command::new("powershell");
     scan.args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
         "-Command",
         SCRIPT,
     ]);
@@ -372,7 +399,12 @@ Get-ItemProperty $keys | ForEach-Object {
     for line in String::from_utf8_lossy(&res.stdout).lines() {
         let mut parts = line.split('\t');
         let kind = parts.next().unwrap_or("").trim().to_string();
-        let path = parts.next().unwrap_or("").trim().trim_matches('"').to_string();
+        let path = parts
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_matches('"')
+            .to_string();
         let name = parts.next().unwrap_or("").trim().to_string();
         if path.is_empty() {
             continue;
@@ -403,7 +435,12 @@ pub fn scan_installed() -> Vec<InstalledApp> {
         if !looks_like_program(&row.path, &row.name) || !std::path::Path::new(&row.path).is_file() {
             continue;
         }
-        let exe = row.path.rsplit('\\').next().unwrap_or(&row.path).to_lowercase();
+        let exe = row
+            .path
+            .rsplit('\\')
+            .next()
+            .unwrap_or(&row.path)
+            .to_lowercase();
         if !row.name.is_empty() {
             if row.from_menu {
                 // the Start Menu label is what the owner sees in the Start menu
@@ -436,7 +473,9 @@ pub fn scan_installed() -> Vec<InstalledApp> {
             continue;
         };
         for sub in key.enum_keys().flatten() {
-            let Ok(app) = key.open_subkey(&sub) else { continue };
+            let Ok(app) = key.open_subkey(&sub) else {
+                continue;
+            };
             let path: String = app.get_value::<String, _>("").unwrap_or_default();
             let path = path.trim().trim_matches('"').to_string();
             let exe = sub.to_lowercase();
@@ -485,20 +524,32 @@ fn export_log(app: tauri::AppHandle) -> Result<String, String> {
         .unwrap_or(0);
     let path = out_dir.join(format!("k4r-log-{stamp}.txt"));
     let mut text = String::new();
-    text.push_str("K4R Neko VPN — журнал для поддержки
-");
-    text.push_str(&format!("версия: {}
-", env!("CARGO_PKG_VERSION")));
-    text.push_str(&format!("админ: {}
-", engine::is_elevated()));
-    text.push_str("
+    text.push_str(
+        "K4R Neko VPN — журнал для поддержки
+",
+    );
+    text.push_str(&format!(
+        "версия: {}
+",
+        env!("CARGO_PKG_VERSION")
+    ));
+    text.push_str(&format!(
+        "админ: {}
+",
+        engine::is_elevated()
+    ));
+    text.push_str(
+        "
 --- engine.log ---
-");
+",
+    );
     text.push_str(&store::tail(&dir, "engine", 400));
-    text.push_str("
+    text.push_str(
+        "
 
 --- zapret.log ---
-");
+",
+    );
     text.push_str(&store::tail(&dir, "zapret", 200));
     // never include the subscription url or ids here
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
@@ -540,8 +591,10 @@ async fn sub_fetch(
 #[tauri::command]
 fn state_export(app: tauri::AppHandle) -> Result<String, String> {
     let state = store::load(&data_dir(&app)?);
-    let text = serde_json::to_string_pretty(&state).map_err(|e| format!("не смог собрать файл: {e}"))?;
-    let home = std::env::var("USERPROFILE").map_err(|_| "не нашёл папку пользователя".to_string())?;
+    let text =
+        serde_json::to_string_pretty(&state).map_err(|e| format!("не смог собрать файл: {e}"))?;
+    let home =
+        std::env::var("USERPROFILE").map_err(|_| "не нашёл папку пользователя".to_string())?;
     let dir = std::path::PathBuf::from(home).join("Downloads");
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -592,7 +645,11 @@ async fn dns_leak() -> Result<serde_json::Value, String> {
         if let Ok(mut resp) = agent.get("https://api.ipify.org").call() {
             use std::io::Read as _;
             let mut body = String::new();
-            let _ = resp.body_mut().as_reader().take(64).read_to_string(&mut body);
+            let _ = resp
+                .body_mut()
+                .as_reader()
+                .take(64)
+                .read_to_string(&mut body);
             egress = body.trim().to_string();
         }
         Ok(serde_json::json!({ "resolver": resolver, "egress": egress }))
@@ -619,7 +676,8 @@ async fn update_download(url: String) -> Result<String, String> {
             .call()
             .map_err(|e| format!("не удалось скачать: {e}"))?;
         let path = std::env::temp_dir().join("k4r-neko-update.exe");
-        let mut file = std::fs::File::create(&path).map_err(|e| format!("не смог создать файл: {e}"))?;
+        let mut file =
+            std::fs::File::create(&path).map_err(|e| format!("не смог создать файл: {e}"))?;
         std::io::copy(&mut resp.body_mut().as_reader(), &mut file)
             .map_err(|e| format!("скачивание прервалось: {e}"))?;
         let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
@@ -659,7 +717,11 @@ fn engine_start(
 
     let saved = store::load(&data_dir(&app)?);
     let opts = engine::NetOptions {
-        dns_mode: if saved.dns_mode.is_empty() { "tunnel".into() } else { saved.dns_mode },
+        dns_mode: if saved.dns_mode.is_empty() {
+            "tunnel".into()
+        } else {
+            saved.dns_mode
+        },
         block_ipv6: saved.block_ipv6,
         dns_server: if !dns.trim().is_empty() {
             dns.trim().to_string()
@@ -692,6 +754,11 @@ fn engine_start(
                 .map(|s| s.exe.clone())
                 .collect(),
         },
+        rules: saved.rules.clone(),
+        route_ru_direct: saved.route_ru_direct,
+        route_block_ads: saved.route_block_ads,
+        // Кэш списков рядом с данными приложения: папка установки только для чтения
+        cache_path: data_dir(&app)?.join("rule-sets.db").display().to_string(),
     };
     *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
     *engine.last_sample.lock().unwrap() = None;
@@ -780,8 +847,11 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
                     if kill_switch {
                         let bin = core_bin(&app);
                         if let Ok(d) = data_dir(&app) {
-                            if engine::start_hold(&engine, &bin, &d.join("logs").join("engine.log")) {
-                                message = format!("{message}. Интернет удерживается: нажми «Отключить VPN»");
+                            if engine::start_hold(&engine, &bin, &d.join("logs").join("engine.log"))
+                            {
+                                message = format!(
+                                    "{message}. Интернет удерживается: нажми «Отключить VPN»"
+                                );
                             }
                         }
                     }
@@ -825,8 +895,18 @@ fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
     };
     saved.selected = saved.profiles[idx].id.clone();
     let profile = saved.profiles[idx].clone();
-    let excluded: Vec<String> = saved.split.iter().filter(|e| !e.via).map(|e| e.exe.clone()).collect();
-    let via: Vec<String> = saved.split.iter().filter(|e| e.via).map(|e| e.exe.clone()).collect();
+    let excluded: Vec<String> = saved
+        .split
+        .iter()
+        .filter(|e| !e.via)
+        .map(|e| e.exe.clone())
+        .collect();
+    let via: Vec<String> = saved
+        .split
+        .iter()
+        .filter(|e| e.via)
+        .map(|e| e.exe.clone())
+        .collect();
     let dns = if saved.dns_mode == "tunnel" {
         saved.dns_server.clone()
     } else {
@@ -927,8 +1007,8 @@ fn update_check(manifest_url: String, current: String) -> Result<Option<UpdateIn
         .into_body()
         .read_to_string()
         .map_err(|e| e.to_string())?;
-    let value: serde_json::Value =
-        serde_json::from_str(&body).map_err(|e| format!("ответ не похож на описание версии: {e}"))?;
+    let value: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("ответ не похож на описание версии: {e}"))?;
     let version = value["version"].as_str().unwrap_or("").trim().to_string();
     if version.is_empty() {
         return Err("в описании версии нет поля version".into());
@@ -1050,7 +1130,8 @@ fn stats_add(app: tauri::AppHandle, day: String, down: u64, up: u64) -> Result<(
         return Ok(());
     }
     let text = serde_json::to_string(&map).map_err(|e| e.to_string())?;
-    std::fs::write(stats_path(&app)?, text).map_err(|e| format!("не смог сохранить статистику: {e}"))
+    std::fs::write(stats_path(&app)?, text)
+        .map_err(|e| format!("не смог сохранить статистику: {e}"))
 }
 
 #[tauri::command]
@@ -1111,7 +1192,9 @@ async fn speed_test() -> Result<serde_json::Value, String> {
             .build()
             .into();
         // маленький прогрев: TLS-рукопожатие не должно попасть в замер
-        let _ = agent.get("https://speed.cloudflare.com/__down?bytes=1000").call();
+        let _ = agent
+            .get("https://speed.cloudflare.com/__down?bytes=1000")
+            .call();
         let started = std::time::Instant::now();
         let mut resp = agent
             .get("https://speed.cloudflare.com/__down?bytes=10000000")
@@ -1193,10 +1276,7 @@ fn zapret_presets(dir: String) -> Vec<String> {
 }
 
 #[tauri::command]
-fn zapret_status(
-    app: tauri::AppHandle,
-    state: State<'_, zapret::Zapret>,
-) -> zapret::ZapretStatus {
+fn zapret_status(app: tauri::AppHandle, state: State<'_, zapret::Zapret>) -> zapret::ZapretStatus {
     let status = zapret::poll(&state);
     if status.state == zapret::ZapretState::Off && zapret::external_instance_running() {
         return zapret::ZapretStatus {
@@ -1304,7 +1384,11 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     }
     // шесть — это столько строк, сколько видно в меню без прокрутки
     for (i, p) in saved.profiles.iter().take(6).enumerate() {
-        let mark = if p.id == saved.selected { "● " } else { "   " };
+        let mark = if p.id == saved.selected {
+            "● "
+        } else {
+            "   "
+        };
         let label = format!("{mark}{}", p.name);
         if let Ok(item) = CheckMenuItem::with_id(
             app,
@@ -1320,7 +1404,8 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     if !items.is_empty() {
         items.push(Box::new(PredefinedMenuItem::separator(app)?));
     }
-    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = items.iter().map(|b| b.as_ref()).collect();
+    let refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        items.iter().map(|b| b.as_ref()).collect();
     let mut all: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = refs;
     all.push(&show);
     all.push(&quit);
@@ -1418,8 +1503,18 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
         .ok_or_else(|| "такого сервера больше нет".to_string())?;
     saved.selected = profile.id.clone();
     store::save(&dir, &saved).map_err(|e| format!("не смог сохранить выбор: {e}"))?;
-    let excluded: Vec<String> = saved.split.iter().filter(|e| !e.via).map(|e| e.exe.clone()).collect();
-    let via: Vec<String> = saved.split.iter().filter(|e| e.via).map(|e| e.exe.clone()).collect();
+    let excluded: Vec<String> = saved
+        .split
+        .iter()
+        .filter(|e| !e.via)
+        .map(|e| e.exe.clone())
+        .collect();
+    let via: Vec<String> = saved
+        .split
+        .iter()
+        .filter(|e| e.via)
+        .map(|e| e.exe.clone())
+        .collect();
     let dns = if saved.dns_mode == "tunnel" {
         saved.dns_server.clone()
     } else {
@@ -1708,19 +1803,36 @@ mod core_tests {
     #[test]
     fn core_url_is_built_for_real_versions() {
         let url = core_download_url("1.14.4").unwrap();
-        assert!(url.ends_with("/v1.14.4/sing-box-1.14.4-windows-amd64.zip"), "{url}");
+        assert!(
+            url.ends_with("/v1.14.4/sing-box-1.14.4-windows-amd64.zip"),
+            "{url}"
+        );
         // «v» в начале — как на GitHub, это не ошибка ввода
-        assert_eq!(core_download_url("v1.15.0").unwrap(), core_download_url("1.15.0").unwrap());
+        assert_eq!(
+            core_download_url("v1.15.0").unwrap(),
+            core_download_url("1.15.0").unwrap()
+        );
     }
 
     #[test]
     fn core_url_refuses_anything_that_is_not_a_version() {
         // Сюда нельзя вписать путь или чужой адрес: скачается чужой файл
-        for bad in ["", "latest", "../evil", "1.2.3/../../x", "1.2.3?x=1", "v", "1.2.3-rc1"] {
+        for bad in [
+            "",
+            "latest",
+            "../evil",
+            "1.2.3/../../x",
+            "1.2.3?x=1",
+            "v",
+            "1.2.3-rc1",
+        ] {
             assert!(core_download_url(bad).is_err(), "должно отказать: {bad:?}");
         }
         // пробелы по краям — это не ошибка ввода, их срезаем
-        assert_eq!(core_download_url(" 1.14.4 ").unwrap(), core_download_url("1.14.4").unwrap());
+        assert_eq!(
+            core_download_url(" 1.14.4 ").unwrap(),
+            core_download_url("1.14.4").unwrap()
+        );
     }
 
     #[test]

@@ -10,9 +10,7 @@ fn main() {
         },
         Err(e) => println!("ошибка: {e}"),
     }
-    match std::net::UdpSocket::bind("0.0.0.0:0")
-        .and_then(|s| s.connect("1.1.1.1:53").map(|_| s))
-    {
+    match std::net::UdpSocket::bind("0.0.0.0:0").and_then(|s| s.connect("1.1.1.1:53").map(|_| s)) {
         Ok(_) => println!("UDP до 1.1.1.1:53 доступен"),
         Err(e) => println!("UDP недоступен: {e}"),
     }
