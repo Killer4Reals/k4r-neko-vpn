@@ -380,6 +380,22 @@ const dict: Dict = {
   settingsTitle: { ru: "Настройки", en: "Settings" },
   language: { ru: "Язык", en: "Language" },
   connectOnStart: { ru: "Подключаться при запуске", en: "Connect on launch" },
+  autoSelect: { ru: "Автовыбор сервера", en: "Automatic server choice" },
+  autoSelectHint: {
+    ru: "Раз в выбранный интервал замеряю все серверы и переключаюсь, только если другой быстрее текущего на четверть. По умолчанию выключено.",
+    en: "Every interval I measure all servers and switch only if another one is 25% faster than the current. Off by default.",
+  },
+  autoSelectOff: { ru: "выкл", en: "off" },
+  autoSelectLoss: { ru: "при потере соединения", en: "on connection loss" },
+  autoSelectLossHint: {
+    ru: "Перемерять сразу, как только туннель упал, не дожидаясь таймера",
+    en: "Re-measure as soon as the tunnel drops, without waiting for the timer",
+  },
+  autoSelectSwitched: { ru: "Автовыбор: переключил на", en: "Auto-select: switched to" },
+  busyLater: {
+    ru: "канал занят, переключение отложено до паузы",
+    en: "the link is busy, switching postponed until it idles",
+  },
   connectOnStartHint: {
     ru: "Туннель поднимется сам, как только откроется приложение",
     en: "The tunnel comes up by itself as soon as the app opens",

@@ -177,6 +177,8 @@ export type AppState = {
   notify?: boolean;
   autostart?: boolean;
   connect_on_start?: boolean;
+  auto_select?: number;
+  auto_select_on_loss?: boolean;
   rules?: RouteRule[];
   route_ru_direct?: boolean;
   route_block_ads?: boolean;

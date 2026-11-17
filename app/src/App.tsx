@@ -5,6 +5,7 @@ import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, RouteRule } from "./api";
+import { isBusy, pickServer } from "./autoSelect";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -137,6 +138,10 @@ export default function App() {
   const [zapretPreset, setZapretPreset] = useState("");
   const [autostart, setAutostart] = useState(false);
   const [connectOnStart, setConnectOnStart] = useState(false);
+  // Автовыбор сервера: 0 — выключено. По умолчанию выключен, чтобы не менять
+  // поведение тем, кто уже настроил сервер руками.
+  const [autoSelect, setAutoSelect] = useState(0);
+  const [autoSelectLoss, setAutoSelectLoss] = useState(false);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const [subs, setSubs] = useState<SubSource[]>([]);
@@ -155,6 +160,8 @@ export default function App() {
   const [deviceId, setDeviceId] = useState("");
   const [notifyOn, setNotifyOn] = useState(true);
   const timer = useRef<number | null>(null);
+  /** Идёт автопереключение: не даём таймеру и триггеру потери сработать повторно. */
+  const switching = useRef(false);
   const win = inTauri ? getCurrentWindow() : null;
 
   const t = useT(lang);
@@ -247,6 +254,8 @@ export default function App() {
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
         if (typeof st.connect_on_start === "boolean") setConnectOnStart(st.connect_on_start);
+        if (typeof st.auto_select === "number") setAutoSelect(st.auto_select);
+        if (typeof st.auto_select_on_loss === "boolean") setAutoSelectLoss(st.auto_select_on_loss);
         if (Array.isArray(st.rules)) setRules(st.rules);
         if (typeof st.route_ru_direct === "boolean") setRouteRu(st.route_ru_direct);
         if (typeof st.route_block_ads === "boolean") setRouteAds(st.route_block_ads);
@@ -294,6 +303,8 @@ export default function App() {
           update_url: updateUrl,
           autostart,
           connect_on_start: connectOnStart,
+          auto_select: autoSelect,
+          auto_select_on_loss: autoSelectLoss,
           rules,
           route_ru_direct: routeRu,
           route_block_ads: routeAds,
@@ -611,6 +622,70 @@ export default function App() {
     const timer = window.setTimeout(() => void measurePing(), 800);
     return () => window.clearTimeout(timer);
   }, [profiles, measurePing]);
+
+  /**
+   * Один проход автовыбора: замер всех серверов → решение → переподключение.
+   * Замер идёт по TCP-рукопожатию, трафика не тратит и сервер не нагружает.
+   */
+  const autoTick = useCallback(
+    async (force = false) => {
+      if (!inTauri || profiles.length < 2 || conn !== "connected") return;
+      if (switching.current) return;
+      // Активную закачку не рвём: 2 МБ/с в обе стороны — это заметный трафик.
+      if (!force) {
+        try {
+          const speed = await api.engineTraffic();
+          if (isBusy(speed.down + speed.up)) {
+            setToast({ title: t("autoSelect"), body: t("busyLater") });
+            return;
+          }
+        } catch {
+          /* нет счётчиков — считаем, что не занято */
+        }
+      }
+      const measured = (await measurePing()) ?? lat;
+      const all = profiles.map((p) => ({ id: p.id, ms: measured[p.id] ?? null }));
+      const target = pickServer({ id: selectedId, ms: measured[selectedId] ?? null }, all);
+      if (!target || target === selectedId) return;
+      const chosen = profiles.find((p) => p.id === target);
+      if (!chosen) return;
+      switching.current = true;
+      setSelectedId(target);
+      setToast({
+        title: t("autoSelect"),
+        body: `${t("autoSelectSwitched")} ${chosen.name || chosen.host}`,
+      });
+      try {
+        await reconnectTunnel();
+      } finally {
+        window.setTimeout(() => {
+          switching.current = false;
+        }, 4000);
+      }
+    },
+    [conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t],
+  );
+
+  // Таймер: перемеряем раз в N минут, пока туннель поднят.
+  useEffect(() => {
+    if (!inTauri || autoSelect <= 0) return;
+    const id = window.setInterval(() => void autoTick(), autoSelect * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [autoSelect, autoTick]);
+
+  // Триггер «при потере соединения»: туннель сам упал — сразу ищем живой сервер,
+  // не дожидаясь таймера. Явное отключение человеком сюда не попадает.
+  const wasConnected = useRef(false);
+  useEffect(() => {
+    if (!inTauri || !autoSelectLoss) {
+      wasConnected.current = conn === "connected";
+      return;
+    }
+    if (wasConnected.current && conn !== "connected" && !switching.current) {
+      void autoTick(true);
+    }
+    wasConnected.current = conn === "connected";
+  }, [autoSelectLoss, autoTick, conn]);
 
   // Kill-switch на уровне ОС: спрашиваем helper и слушаем надзор.
   useEffect(() => {
@@ -957,6 +1032,10 @@ export default function App() {
               setKillSwitch={setKillSwitchNow}
               ksState={ksState}
               connected={conn === "connected"}
+              autoSelect={autoSelect}
+              setAutoSelect={setAutoSelect}
+              autoSelectLoss={autoSelectLoss}
+              setAutoSelectLoss={setAutoSelectLoss}
               autostart={autostart}
               connectOnStart={connectOnStart}
               setConnectOnStart={setConnectOnStart}

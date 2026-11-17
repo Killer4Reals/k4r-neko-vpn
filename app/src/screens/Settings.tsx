@@ -14,6 +14,10 @@ type Props = {
   ksState: KillSwitchStatus;
   /** туннель подключён? от него зависит, работает ли сеть при блокировке */
   connected: boolean;
+  autoSelect: number;
+  setAutoSelect: (v: number) => void;
+  autoSelectLoss: boolean;
+  setAutoSelectLoss: (v: boolean) => void;
   autostart: boolean;
   setAutostart: (v: boolean) => void;
   connectOnStart: boolean;
@@ -251,6 +255,30 @@ export function SettingsScreen(p: Props) {
             <b>{t(ksLabel)}</b>
             <span style={{ color: ksColor }}>{ksText}</span>
           </div>
+        </div>
+        <div className="row">
+          <div className="txt">
+            <b>{t("autoSelect")}</b>
+            <span>{t("autoSelectHint")}</span>
+          </div>
+          <div className="seg">
+            {[0, 5, 15, 30, 60].map((m) => (
+              <button key={m} data-on={p.autoSelect === m} onClick={() => p.setAutoSelect(m)}>
+                {m === 0 ? t("autoSelectOff") : `${m}`}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="row">
+          <div className="txt">
+            <b>{t("autoSelectLoss")}</b>
+            <span>{t("autoSelectLossHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={p.autoSelectLoss}
+            onClick={() => p.setAutoSelectLoss(!p.autoSelectLoss)}
+          />
         </div>
         <div className="row">
           <div className="txt">
