@@ -1600,6 +1600,46 @@ pub fn run() {
                 });
             });
             build_tray(app.handle())?;
+            // Zapret — часть нашей работы, а не отдельная программа: если
+            // владелец попросил, поднимаем его сами при запуске.
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let dir = match data_dir(&handle) {
+                        Ok(d) => d,
+                        Err(_) => return,
+                    };
+                    let saved = store::load(&dir);
+                    if !saved.zapret_auto {
+                        return;
+                    }
+                    let zap_dir = if saved.zapret_dir.trim().is_empty() {
+                        zapret::detect_dir()
+                    } else {
+                        Some(std::path::PathBuf::from(saved.zapret_dir.trim()))
+                    };
+                    let Some(zap_dir) = zap_dir else { return };
+                    if !zapret::looks_like_zapret(&zap_dir) {
+                        return;
+                    }
+                    // Чужой запущенный winws2 не трогаем: им управляет человек
+                    if zapret::external_instance_running() {
+                        return;
+                    }
+                    let presets = zapret::list_presets(&zap_dir);
+                    let preset = if presets.iter().any(|p| p == &saved.zapret_preset) {
+                        saved.zapret_preset.clone()
+                    } else {
+                        presets.first().cloned().unwrap_or_default()
+                    };
+                    if preset.is_empty() {
+                        return;
+                    }
+                    let log = dir.join("logs").join("zapret.log");
+                    let state = handle.state::<zapret::Zapret>();
+                    let _ = zapret::start(&state, &zap_dir, &preset, &log);
+                });
+            }
             // Деградация: туннель формально поднят, а данные не идут —
             // переключаемся на следующий сервер сами, а не ждём владельца.
             {

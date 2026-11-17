@@ -149,6 +149,7 @@ export type AppState = {
   split: ChosenApp[];
   zapret_dir: string;
   zapret_preset: string;
+  zapret_auto?: boolean;
   dns_mode?: string;
   block_ipv6?: boolean;
   reconnect?: boolean;

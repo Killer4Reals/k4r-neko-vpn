@@ -4,7 +4,13 @@ use std::path::{Path, PathBuf};
 use crate::subscription::Profile;
 
 /// Bumped whenever a stored file needs a one-time fix on load.
-pub const SCHEMA: u32 = 2;
+pub const SCHEMA: u32 = 3;
+
+/// Где приложение смотрит, не вышла ли новая версия. Маленький манифест в
+/// репозитории: одно поле версии и ссылка на установщик. Пусто у тех, кто
+/// сознательно очистил поле, — их выбор не переписываем.
+pub const UPDATE_URL: &str =
+    "https://raw.githubusercontent.com/Killer4Reals/k4r-neko-vpn/master/version.json";
 
 fn yes() -> bool {
     true
@@ -25,6 +31,9 @@ pub struct AppState {
     pub split: Vec<SplitEntry>,
     pub zapret_dir: String,
     pub zapret_preset: String,
+    /// Поднимать Zapret вместе с приложением, а не отдельной программой
+    #[serde(default)]
+    pub zapret_auto: bool,
     /// "tunnel" or "system"
     pub dns_mode: String,
     pub block_ipv6: bool,
@@ -128,7 +137,7 @@ impl AppState {
             split_mode: "only".into(),
             dns_server: "1.1.1.1".into(),
             sub_refresh_hours: 12,
-            update_url: String::new(),
+            update_url: UPDATE_URL.into(),
             notify: true,
             // opt-in: a portable app must not register itself behind the owner's back
             autostart: false,
@@ -267,6 +276,15 @@ pub fn load(data_dir: &Path) -> AppState {
     if st.schema < 2 {
         // 0.1 wrote every scanned program into the list, so nothing there was a real choice
         st.split.clear();
+        // именно 2, а не SCHEMA: следующие шаги миграции должны выполниться тоже
+        st.schema = 2;
+    }
+    if st.schema < 3 {
+        // До 1.6.1 поле было пустым, и проверка обновлений молчала у всех.
+        // Ставим адрес один раз; если человек потом очистит его сам — не трогаем.
+        if st.update_url.trim().is_empty() {
+            st.update_url = UPDATE_URL.into();
+        }
         st.schema = SCHEMA;
     }
     // Правила, которые нечего применять, не храним: пустое значение или
@@ -366,6 +384,32 @@ pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn старая_запись_получает_адрес_обновлений() {
+        let dir = std::env::temp_dir().join("k4r-update-url-migrate");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut st = AppState::with_defaults();
+        st.schema = 2;
+        st.update_url = String::new();
+        save(&dir, &st).unwrap();
+        assert_eq!(load(&dir).update_url, UPDATE_URL);
+    }
+
+    #[test]
+    fn очищенный_вручную_адрес_не_возвращается() {
+        let dir = std::env::temp_dir().join("k4r-update-url-kept");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut st = AppState::with_defaults();
+        st.update_url = String::new();
+        save(&dir, &st).unwrap();
+        assert_eq!(load(&dir).update_url, "");
+    }
+
+    #[test]
+    fn новые_настройки_сразу_смотрят_за_обновлениями() {
+        assert_eq!(AppState::with_defaults().update_url, UPDATE_URL);
+    }
 
     #[test]
     fn правила_маршрутизации_переживают_запись() {
@@ -490,7 +534,7 @@ mod tests {
             st.split.is_empty(),
             "0.1 auto-filled the whole scan, nothing was chosen"
         );
-        assert_eq!(st.schema, 2);
+        assert_eq!(st.schema, SCHEMA);
 
         // the owner's own picks survive the next launch
         let mut next = st.clone();

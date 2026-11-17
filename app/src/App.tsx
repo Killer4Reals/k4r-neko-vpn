@@ -83,6 +83,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
   const [conn, setConn] = useState<ConnState>((initial.get("state") as ConnState) || "idle");
   const [selectedId, setSelectedId] = useState(demoCatalog[0].id);
+  const [zapretAuto, setZapretAuto] = useState(false);
   const [zapretState, setZapretState] = useState<"off" | "running" | "external" | "error">("off");
   const [killSwitch, setKillSwitch] = useState(true);
   const [catalog, setCatalog] = useState<AppEntry[]>([]);
@@ -234,6 +235,7 @@ export default function App() {
         if (typeof st.sub_refresh_hours === "number") setSubRefreshHours(st.sub_refresh_hours);
         if (st.update_url) setUpdateUrl(st.update_url);
         if (st.zapret_preset) setZapretPreset(st.zapret_preset);
+        if (typeof st.zapret_auto === "boolean") setZapretAuto(st.zapret_auto);
         if (typeof st.tg_proxy === "boolean") setTgProxy(st.tg_proxy);
         if (typeof st.notify === "boolean") setNotifyOn(st.notify);
         if (typeof st.kill_switch === "boolean") setKillSwitch(st.kill_switch);
@@ -266,6 +268,7 @@ export default function App() {
           split: chosen.map((c) => ({ exe: c.exe, name: c.name, via: c.via })),
           zapret_dir: zapretDir ?? "",
           zapret_preset: zapretPreset,
+          zapret_auto: zapretAuto,
           tg_proxy: tgProxy,
           tg_port: 1354,
           subs,
@@ -295,7 +298,7 @@ export default function App() {
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
-    zapretPreset, tgProxy, rules, routeRu, routeAds,
+    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -873,6 +876,8 @@ export default function App() {
               initialDir={zapretDir}
               savedPreset={zapretPreset}
               onPreset={setZapretPreset}
+              auto={zapretAuto}
+              setAuto={setZapretAuto}
               tgProxy={tgProxy}
               setTgProxy={setTgProxy}
               tgPort={1354}

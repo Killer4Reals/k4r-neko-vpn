@@ -1,5 +1,5 @@
 {
-  "version": "1.6.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.6.0/K4R.Neko.VPN_1.6.0_x64-setup.exe",
-  "notes": "Маршрутизация: RU-сайты напрямую, блок рекламы, свои правила по доменам и адресам"
+  "version": "1.7.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.7.0/K4R.Neko.VPN_1.7.0_x64-setup.exe",
+  "notes": "Zapret запускается вместе с приложением, проверка обновлений включена по умолчанию"
 }

@@ -334,6 +334,11 @@ const dict: Dict = {
     en: "Zapret 2 disguises the tunnel from DPI so the connection is not cut"
   },
   preset: { ru: "Пресет", en: "Preset" },
+  zapretAuto: { ru: "Запускать вместе с приложением", en: "Start together with the app" },
+  zapretAutoHint: {
+    ru: "Не нужен отдельный Zapret 2 Dev: приложение само поднимет выбранный пресет при запуске.",
+    en: "No separate Zapret 2 Dev needed: the app raises the chosen preset itself on start.",
+  },
   zapretPath: { ru: "Папка Zapret", en: "Zapret folder" },
   autoRestart: { ru: "Перезапускать при сбое", en: "Restart on failure" },
   health: { ru: "Состояние", en: "Health" },

@@ -6,6 +6,9 @@ type Props = {
   initialDir: string | null;
   savedPreset: string;
   onPreset: (name: string) => void;
+  /** поднимать вместе с приложением, без отдельной программы */
+  auto: boolean;
+  setAuto: (v: boolean) => void;
   /** прокси для Telegram внутри нашего туннеля */
   tgProxy: boolean;
   setTgProxy: (v: boolean) => void;
@@ -18,7 +21,17 @@ type ZapSettings = {
   telegram: { enabled: boolean; mode: string | null; port: number | null; host: string | null };
 };
 
-export function ZapretScreen({ t, initialDir, savedPreset, onPreset, tgProxy, setTgProxy, tgPort }: Props) {
+export function ZapretScreen({
+  t,
+  initialDir,
+  savedPreset,
+  onPreset,
+  auto,
+  setAuto,
+  tgProxy,
+  setTgProxy,
+  tgPort,
+}: Props) {
   const [dir, setDir] = useState(initialDir ?? "");
   const [presets, setPresets] = useState<string[]>([]);
   const [preset, setPreset] = useState("");
@@ -140,6 +153,16 @@ export function ZapretScreen({ t, initialDir, savedPreset, onPreset, tgProxy, se
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="row">
+          <div className="txt">
+            <b>{t("zapretAuto")}</b>
+            <span>{t("zapretAutoHint")}</span>
+          </div>
+          <button className="switch" aria-checked={auto} onClick={() => setAuto(!auto)}>
+            <span />
+          </button>
         </div>
 
         <div className="row">
