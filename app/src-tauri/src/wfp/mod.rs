@@ -61,6 +61,26 @@ static WANTED: AtomicBool = AtomicBool::new(false);
 static OPTS: Mutex<Option<PlanOpts>> = Mutex::new(None);
 static WATCHES: Mutex<usize> = Mutex::new(0);
 
+/// Почему защита снята. Живёт до следующего включения: плашка «Защита снята
+/// из-за сбоя helper'а» не должна молча превращаться в «выключено».
+static LOST: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn lost_reason() -> Option<String> {
+    LOST.lock().ok().and_then(|g| g.clone())
+}
+
+fn set_lost(reason: impl Into<String>) {
+    if let Ok(mut g) = LOST.lock() {
+        *g = Some(reason.into());
+    }
+}
+
+fn clear_lost() {
+    if let Ok(mut g) = LOST.lock() {
+        *g = None;
+    }
+}
+
 /// Разбор аргументов командной строки: helper и `--wfp-off` живут в том же exe.
 pub fn handle_args() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
@@ -79,6 +99,7 @@ pub fn enable(opts: PlanOpts) -> Result<Status, String> {
         *guard = Some(opts.clone());
     }
     WANTED.store(true, Ordering::SeqCst);
+    clear_lost();
     match ask_apply(&opts) {
         Ok(response) => Ok(status_from(response)),
         Err(first) => {
@@ -94,6 +115,7 @@ pub fn enable(opts: PlanOpts) -> Result<Status, String> {
 /// Снять защиту.
 pub fn disable() -> Result<(), String> {
     WANTED.store(false, Ordering::SeqCst);
+    clear_lost();
     match ipc::ask(&Request::Disable) {
         Ok(r) if r.ok => Ok(()),
         Ok(r) => Err(r.message),
@@ -104,7 +126,7 @@ pub fn disable() -> Result<(), String> {
 
 /// Текущее состояние. Если helper не отвечает, но защита была нужна — это Lost.
 pub fn status() -> Status {
-    match ipc::ask(&Request::Status) {
+    let mut st = match ipc::ask(&Request::Status) {
         Ok(r) if r.ok => status_from(r),
         Ok(r) => Status {
             state: State::Unavailable,
@@ -126,7 +148,15 @@ pub fn status() -> Status {
                 }
             }
         }
+    };
+    // Снятие из-за сбоя не маскируем под «выключено пользователем».
+    if st.state == State::Off {
+        if let Some(reason) = lost_reason() {
+            st.state = State::Lost;
+            st.message = reason;
+        }
     }
+    st
 }
 
 fn status_from(r: Response) -> Status {
@@ -150,6 +180,24 @@ fn ask_apply(opts: &PlanOpts) -> Result<Response, String> {
     ipc::ask(&request).and_then(|r| if r.ok { Ok(r) } else { Err(r.message) })
 }
 
+/// Мы внутри job-объекта? У job'ов с kill-on-close потомки умирают вместе с
+/// родителем — для kill-switch это недопустимо.
+#[cfg(windows)]
+fn in_job_object() -> bool {
+    use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    let mut yes = 0;
+    // SAFETY: спрашиваем про текущий процесс, нулевой job — только чтение.
+    unsafe {
+        IsProcessInJob(
+            GetCurrentProcess(),
+            std::ptr::null_mut(),
+            &mut yes,
+        ) != 0
+            && yes != 0
+    }
+}
+
 /// Запускает helper. Права наследуются от приложения: движку TUN они и так нужны.
 fn spawn_helper() -> Result<(), String> {
     if !ipc::current_is_elevated() {
@@ -166,7 +214,20 @@ fn spawn_helper() -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         // CREATE_NO_WINDOW | DETACHED_PROCESS: helper не должен держать консоль
         // и не должен умирать вместе с родителем.
-        cmd.creation_flags(0x0800_0000 | 0x0000_0008);
+        let mut flags = 0x0800_0000u32 | 0x0000_0008u32;
+        // GUI мог оказаться в job-объекте с kill-on-close (терминал, CI,
+        // песочница): тогда helper умер бы вместе с ним. Прорываемся, если job
+        // это разрешает; иначе честно пишем в журнал, что fail-closed под угрозой.
+        let in_job = in_job_object();
+        if in_job {
+            flags |= 0x0100_0000; // CREATE_BREAKAWAY_FROM_JOB
+        }
+        cmd.creation_flags(flags);
+        apply::log_line(&format!(
+            "helper: job-объект = {}, breakaway = {}",
+            if in_job { "да" } else { "нет" },
+            if in_job { "запрошен" } else { "не нужен" }
+        ));
     }
     let child = cmd.spawn().map_err(|e| match e.raw_os_error() {
         // ERROR_ELEVATION_REQUIRED
@@ -213,6 +274,9 @@ where
                 // Не смогли — честно снимаем защиту, чтобы человек не остался
                 // без интернета с мыслью, что он защищён.
                 WANTED.store(false, Ordering::SeqCst);
+                // Причина — конкретная (UAC отклонён, spawn failed, нет доступа),
+                // а не generic «сбой»: человеку нужно знать, что чинить.
+                set_lost(format!("Защита снята: helper не перезапустился ({e}). Интернет открыт"));
                 apply::log_line(&format!("CRITICAL helper не перезапустился: {e}"));
                 emit(Event::Lost(e));
             }

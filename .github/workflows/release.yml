@@ -82,7 +82,7 @@ jobs:
           if (-not $setup) { throw "установщик не собрался" }
           gh release view $tag 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --title "K4R Neko VPN $tag" --notes "Собрано в CI по тегу $tag."
+            gh release create $tag --draft --title "K4R Neko VPN $tag" --notes "Собрано в CI по тегу $tag. Черновик: публикует владелец."
           }
           gh release upload $tag $setup.FullName "dist/K4R-Neko-VPN-portable.zip" --clobber
 

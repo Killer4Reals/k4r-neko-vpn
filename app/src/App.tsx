@@ -618,7 +618,11 @@ export default function App() {
     const poll = () =>
       api
         .killSwitchStatus()
-        .then(setKsState)
+        .then((st) => {
+          setKsState(st);
+          // Защиту снял сбой, а не человек: галка не должна врать.
+          if (st.state === "lost") setKillSwitch(false);
+        })
         .catch((e) =>
           setKsState({ state: "unavailable", tun: false, filters: 0, message: String(e) }),
         );
@@ -632,6 +636,7 @@ export default function App() {
             ...prev,
             state: e.payload === "lost" ? "lost" : e.payload === "on" ? "on" : "restarting",
           }));
+          if (e.payload === "lost") setKillSwitch(false);
         }),
       )
       .then((fn) => {
