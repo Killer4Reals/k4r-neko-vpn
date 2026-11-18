@@ -146,8 +146,10 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $results = @()
-          & $env:EXE --wfp-off
-          $code = $LASTEXITCODE
+          # exe — GUI-приложение: PowerShell его не ждёт и $LASTEXITCODE пуст.
+          # Ждём явно и берём ExitCode процесса.
+          $proc = Start-Process -FilePath $env:EXE -ArgumentList "--wfp-off" -Wait -PassThru
+          $code = $proc.ExitCode
           Start-Sleep -Seconds 2
           & $env:EXE --wfp-dump | Tee-Object -FilePath dump-off.json
           $dump = Get-Content dump-off.json -Raw | ConvertFrom-Json
@@ -193,10 +195,12 @@ jobs:
           # taskkill из ограниченного процесса тоже должен упереться в отказ.
           $helperPid = Get-Content "$env:LOCALAPPDATA\K4R-Neko-VPN\wfp-helper.pid" -ErrorAction SilentlyContinue
           if ($helperPid) {
-            # Вывод runas-процесса собираем через cmd, иначе Start-Process не даёт
-            # перенаправить его без окна.
-            $out = & cmd /c "runas /trustlevel:0x20000 `"taskkill /F /PID $helperPid`" 2>&1"
-            $out | Set-Content -Path taskkill.txt -Encoding utf8
+            # runas не отдаёт stdout напрямую: пишем вывод в файл батником.
+            $bat = "@echo off`r`ntaskkill /F /PID $helperPid > `"$PWD	askkill.txt`" 2>&1`r`n"
+            Set-Content -Path kill.bat -Value $bat -Encoding ascii
+            Start-Process -FilePath "runas" -ArgumentList "/trustlevel:0x20000", "`"$PWD\kill.bat`"" -Wait | Out-Null
+            Start-Sleep -Seconds 2
+            $out = Get-Content taskkill.txt -Raw -ErrorAction SilentlyContinue
             $denied = "$out" -match "Access is denied|Отказано в доступе"
             $results += [pscustomobject]@{ name = "taskkill без прав -> Access denied"; ok = [bool]$denied; detail = "$out" }
           } else {
