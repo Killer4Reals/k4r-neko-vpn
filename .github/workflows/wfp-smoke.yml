@@ -192,19 +192,21 @@ jobs:
           $kept = ($after.blocks -ge 2)
           $results += [pscustomobject]@{ name = "DACL не пускает без прав"; ok = $kept; detail = "runas_exit=$($p.ExitCode) blocks_before=$($before.blocks) blocks_after=$($after.blocks)" }
 
-          # taskkill из ограниченного процесса тоже должен упереться в отказ.
+          # taskkill из ограниченного процесса: проверяем эффект, а не текст
+          # ошибки — helper обязан остаться живым.
           $helperPid = Get-Content "$env:LOCALAPPDATA\K4R-Neko-VPN\wfp-helper.pid" -ErrorAction SilentlyContinue
           if ($helperPid) {
-            # runas не отдаёт stdout напрямую: пишем вывод в файл батником.
-            $bat = "@echo off`r`ntaskkill /F /PID $helperPid > `"$PWD	askkill.txt`" 2>&1`r`n"
-            Set-Content -Path kill.bat -Value $bat -Encoding ascii
-            Start-Process -FilePath "runas" -ArgumentList "/trustlevel:0x20000", "`"$PWD\kill.bat`"" -Wait | Out-Null
+            $target = "cmd /c taskkill /F /PID $helperPid"
+            Start-Process -FilePath "runas" -ArgumentList "/trustlevel:0x20000", "`"$target`"" -Wait | Out-Null
             Start-Sleep -Seconds 2
-            $out = Get-Content taskkill.txt -Raw -ErrorAction SilentlyContinue
-            $denied = "$out" -match "Access is denied|Отказано в доступе"
-            $results += [pscustomobject]@{ name = "taskkill без прав -> Access denied"; ok = [bool]$denied; detail = "$out" }
+            $still = Get-Process -Id $helperPid -ErrorAction SilentlyContinue
+            $results += [pscustomobject]@{
+              name = "taskkill без прав не убивает helper"
+              ok = ($null -ne $still)
+              detail = "pid=$helperPid helper_alive=$($null -ne $still)"
+            }
           } else {
-            $results += [pscustomobject]@{ name = "taskkill без прав -> Access denied"; ok = $false; detail = "pid-файл не найден" }
+            $results += [pscustomobject]@{ name = "taskkill без прав не убивает helper"; ok = $false; detail = "pid-файл не найден" }
           }
 
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-e.json
