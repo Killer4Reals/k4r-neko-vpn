@@ -47,16 +47,28 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $tag = "${{ inputs.tag }}"
-          if (-not $tag) {
-            # /releases включает черновики для токена с доступом к репозиторию
-            $json = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=10" | ConvertFrom-Json
-            $tag = ($json | Where-Object { $_.assets.name -contains "K4R-Neko-VPN-portable.zip" } | Select-Object -First 1).tag_name
+          # /releases отдаёт и черновики (токен имеет доступ к репозиторию), а
+          # `gh release download` черновик не находит — качаем ассет по id.
+          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=20" | ConvertFrom-Json
+          $rel = $null
+          if ($tag) {
+            $rel = $releases | Where-Object { $_.tag_name -eq $tag } | Select-Object -First 1
+          } else {
+            $rel = $releases | Where-Object {
+              ($_.assets | Where-Object { $_.name -eq "K4R-Neko-VPN-portable.zip" }) -ne $null
+            } | Select-Object -First 1
           }
-          if (-not $tag) { throw "не нашёл релиз с portable zip" }
-          Write-Host "релиз: $tag"
-          "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if (-not $rel) { throw "не нашёл релиз с portable zip" }
+          $asset = $rel.assets | Where-Object { $_.name -eq "K4R-Neko-VPN-portable.zip" } | Select-Object -First 1
+          if (-not $asset) { throw "в релизе $($rel.tag_name) нет portable zip" }
+          Write-Host "релиз: $($rel.tag_name), ассет $($asset.id), sha $($asset.digest)"
+          "TAG=$($rel.tag_name)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          gh release download $tag -R "$env:GITHUB_REPOSITORY" --pattern "K4R-Neko-VPN-portable.zip" --dir out --clobber
+          curl.exe -sSL --retry 3 -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/octet-stream" `
+            -o out/K4R-Neko-VPN-portable.zip `
+            "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)"
+          $sha = (Get-FileHash out/K4R-Neko-VPN-portable.zip -Algorithm SHA256).Hash.ToLower()
+          if ($asset.digest -and $asset.digest -ne "sha256:$sha") { throw "sha не совпал: $sha vs $($asset.digest)" }
           Expand-Archive -Path out/K4R-Neko-VPN-portable.zip -DestinationPath app -Force
           $exe = Get-ChildItem app -Recurse -Filter "K4R Neko VPN.exe" | Select-Object -First 1
           if (-not $exe) { throw "в архиве нет exe" }
