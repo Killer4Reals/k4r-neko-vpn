@@ -21,8 +21,10 @@ on:
   schedule:
     - cron: "0 4 * * 1" # каждый понедельник, 04:00 UTC
 
+# write нужен, чтобы токен видел ЧЕРНОВИКИ релизов: с contents: read GitHub
+# прячет draft-релизы, и smoke не находил ни одного portable zip.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   smoke:
