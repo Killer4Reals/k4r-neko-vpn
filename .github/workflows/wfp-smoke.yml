@@ -108,6 +108,8 @@ jobs:
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-a.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_A=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # curl внутри шага возвращает свой код: без явного exit 0 шаг «падает»
+          exit 0
 
       - name: блокировка наружу и живой loopback/DNS
         shell: pwsh
@@ -137,6 +139,7 @@ jobs:
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-b.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_B=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
 
       - name: --wfp-off снимает защиту
         shell: pwsh
@@ -154,6 +157,7 @@ jobs:
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-c.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_C=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
 
       - name: helper переживает смерть родителя (Job Object)
         shell: pwsh
@@ -170,6 +174,7 @@ jobs:
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-d.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_D=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
 
       - name: непривилегированный процесс не может снять защиту (DACL)
         shell: pwsh
@@ -201,6 +206,7 @@ jobs:
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-e.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_E=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          exit 0
 
       - name: финальное снятие и отчёт
         if: always()
@@ -229,6 +235,7 @@ jobs:
             Write-Error "провалено проверок: $($red.Count)"
             exit 1
           }
+          exit 0
 
       - name: артефакты
         if: always()
