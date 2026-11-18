@@ -48,6 +48,23 @@ export function pickServer(
   return best.ms <= currentMs * (1 - margin) ? best.id : null;
 }
 
+/**
+ * Разделить серверы на основные и резервные. Резерв — это «последний шанс»:
+ * он берётся, только если все основные не отвечают или в карантине.
+ */
+export function splitReserve<T extends { id: string }>(
+  all: T[],
+  reserveIds: Set<string>,
+): { main: T[]; reserve: T[] } {
+  const main: T[] = [];
+  const reserve: T[] = [];
+  for (const item of all) {
+    if (reserveIds.has(item.id)) reserve.push(item);
+    else main.push(item);
+  }
+  return { main, reserve };
+}
+
 /** Канал занят? Тогда переключение откладываем до паузы. */
 export function isBusy(bytesPerSec: number, limit: number = BUSY_BYTES_PER_SEC): boolean {
   return bytesPerSec > limit;

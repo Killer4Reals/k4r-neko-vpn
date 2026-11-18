@@ -509,6 +509,14 @@ mod tests {
             fingerprint: String::new(),
             service_name: String::new(),
             path: String::new(),
+            kind: String::new(),
+            wg_private_key: String::new(),
+            wg_peer_public_key: String::new(),
+            wg_preshared_key: String::new(),
+            wg_addresses: Vec::new(),
+            wg_mtu: 0,
+            wg_reserved: Vec::new(),
+            reserve: false,
         }
     }
 

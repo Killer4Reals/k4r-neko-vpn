@@ -26,6 +26,8 @@ type Props = {
   subs: SubSource[];
   addSub: (url: string, ua: string, name: string) => void;
   removeSub: (url: string) => void;
+  onToggleReserve: (id: string) => void;
+  onAddWireguard: (text: string) => Promise<void>;
 };
 
 const shortUrl = (u: string) => {
@@ -74,6 +76,10 @@ export function ServersScreen(p: Props) {
   const [speed, setSpeed] = useState<{ mbytes_per_second: number; bytes: number } | null>(null);
   const [speedBusy, setSpeedBusy] = useState(false);
   const [speedNote, setSpeedNote] = useState("");
+  const [wgOpen, setWgOpen] = useState(false);
+  const [wgText, setWgText] = useState("");
+  const [wgError, setWgError] = useState("");
+  const [wgBusy, setWgBusy] = useState(false);
 
   const doImport = async () => {
     await p.onImport(link);
@@ -255,6 +261,58 @@ export function ServersScreen(p: Props) {
         )}
       </div>
 
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("wgTitle")}</b>
+            <span>{t("wgHint")}</span>
+          </div>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            onClick={() => setWgOpen((v) => !v)}
+          >
+            {wgOpen ? t("wgCancel") : t("wgAdd")}
+          </button>
+        </div>
+        {wgOpen && (
+          <div style={{ marginTop: 10 }}>
+            <div className="field">
+              <label>{t("wgPaste")}</label>
+              <textarea
+                className="input"
+                style={{ height: 130, padding: 10, resize: "vertical", lineHeight: 1.5, fontFamily: "var(--mono)" }}
+                placeholder="[Interface]&#10;PrivateKey = …&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = engage.cloudflareclient.com:2408"
+                value={wgText}
+                onChange={(e) => setWgText(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            {wgError && <div className="muted warn-txt" style={{ marginTop: 6 }}>{wgError}</div>}
+            <button
+              className="btn primary"
+              style={{ width: "auto", marginTop: 8, paddingInline: 16 }}
+              disabled={wgBusy || !wgText.trim()}
+              onClick={async () => {
+                setWgBusy(true);
+                setWgError("");
+                try {
+                  await p.onAddWireguard(wgText);
+                  setWgText("");
+                  setWgOpen(false);
+                } catch (e) {
+                  setWgError(String(e));
+                } finally {
+                  setWgBusy(false);
+                }
+              }}
+            >
+              {wgBusy ? "…" : t("wgAdd")}
+            </button>
+          </div>
+        )}
+      </div>
+
       {servers.length === 0 && (
         <div className="card empty-box">
           <img src="/mascot/offer.webp" alt="" draggable={false} />
@@ -274,14 +332,29 @@ export function ServersScreen(p: Props) {
               className="server"
               aria-current={s.id === selectedId}
               onClick={() => setSelectedId(s.id)}
-              style={{ gridTemplateColumns: "26px minmax(0,1fr) 90px 70px" }}
+              style={{ gridTemplateColumns: "26px minmax(0,1fr) 90px 70px auto" }}
             >
               <Flag cc={s.flag || s.cc} />
               <span>
                 <div className="name">{s.city}</div>
                 <div className="sub">{s.country}</div>
               </span>
-              <span className="sub" style={{ fontFamily: "var(--mono)" }}>{s.tag}</span>
+              <span className="sub" style={{ fontFamily: "var(--mono)" }}>
+                {s.kind === "wireguard" ? "WG" : s.tag}
+              </span>
+              <span
+                role="checkbox"
+                aria-checked={!!s.reserve}
+                title={t("wgReserveHint")}
+                className="sub"
+                style={{ fontSize: 11, opacity: s.reserve ? 1 : 0.45 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  p.onToggleReserve(s.id);
+                }}
+              >
+                {t("wgReserve")}
+              </span>
               <span className="lat" style={{ justifyContent: "flex-end" }}>
                 {p.lat[s.id] === null ? (
                   <span className="dead">{t("serverDead")}</span>

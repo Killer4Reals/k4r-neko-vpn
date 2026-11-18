@@ -143,7 +143,41 @@ impl Default for NetOptions {
 }
 
 /// Builds a sing-box config: TUN in, VLESS out, split tunneling by process name.
+/// Аутбаунд WireGuard: WARP и любые WG-серверы подключаются так же, как VLESS.
+fn wireguard_outbound(profile: &Profile) -> Value {
+    let mut out = json!({
+        "type": "wireguard",
+        "tag": "proxy",
+        "server": profile.host,
+        "server_port": profile.port,
+        "private_key": profile.wg_private_key,
+        "peer_public_key": profile.wg_peer_public_key,
+        "local_address": if profile.wg_addresses.is_empty() {
+            vec!["172.16.0.2/32".to_string()]
+        } else {
+            profile.wg_addresses.clone()
+        },
+        "mtu": if profile.wg_mtu == 0 { 1280 } else { profile.wg_mtu },
+    });
+    if !profile.wg_preshared_key.trim().is_empty() {
+        out["pre_shared_key"] = json!(profile.wg_preshared_key);
+    }
+    if profile.wg_reserved.len() == 3 {
+        // WARP: три байта, которые Cloudflare ждёт в заголовке.
+        out["reserved"] = json!(profile.wg_reserved);
+    }
+    out
+}
+
+/// Builds a sing-box config: TUN in, VLESS or WireGuard out, split by process.
 pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -> Value {
+    if profile.kind == "wireguard" {
+        return build_with_outbound(wireguard_outbound(profile), profile, excluded, opts);
+    }
+    build_with_outbound(vless_outbound(profile), profile, excluded, opts)
+}
+
+fn vless_outbound(profile: &Profile) -> Value {
     let mut outbound = json!({
         "type": "vless",
         "tag": "proxy",
@@ -197,6 +231,15 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
         _ => {}
     }
 
+    outbound
+}
+
+fn build_with_outbound(
+    outbound: Value,
+    profile: &Profile,
+    excluded: &[String],
+    opts: &NetOptions,
+) -> Value {
     // Списки, которые ядро скачивает само (binary .srs) и держит в кэше.
     // Мы не вшиваем их в установщик: они обновляются чаще, чем наше приложение.
     let mut rule_sets: Vec<Value> = Vec::new();
@@ -1040,6 +1083,14 @@ mod tests {
             fingerprint: "chrome".into(),
             service_name: "api".into(),
             path: String::new(),
+            kind: String::new(),
+            wg_private_key: String::new(),
+            wg_peer_public_key: String::new(),
+            wg_preshared_key: String::new(),
+            wg_addresses: Vec::new(),
+            wg_mtu: 0,
+            wg_reserved: Vec::new(),
+            reserve: false,
         }
     }
 
@@ -1221,6 +1272,47 @@ mod tests {
             .position(|r| r.get("process_name").is_some())
             .unwrap();
         assert!(own < program);
+    }
+
+    fn wg_sample() -> Profile {
+        Profile {
+            kind: "wireguard".into(),
+            host: "engage.cloudflareclient.com".into(),
+            port: 2408,
+            wg_private_key: "priv".into(),
+            wg_peer_public_key: "peer".into(),
+            wg_addresses: vec!["172.16.0.2/32".into()],
+            wg_mtu: 1280,
+            wg_reserved: vec![1, 2, 3],
+            ..sample()
+        }
+    }
+
+    #[test]
+    fn wireguard_profile_builds_wireguard_outbound() {
+        let cfg = build_config(&wg_sample(), &[], &NetOptions::default());
+        let out = &cfg["outbounds"][0];
+        assert_eq!(out["type"], "wireguard");
+        assert_eq!(out["server"], "engage.cloudflareclient.com");
+        assert_eq!(out["server_port"], 2408);
+        assert_eq!(out["mtu"], 1280);
+        assert_eq!(out["local_address"][0], "172.16.0.2/32");
+        assert_eq!(out["reserved"], json!([1, 2, 3]));
+        // у WireGuard нет ни UUID, ни TLS — их быть не должно
+        assert!(out.get("uuid").is_none());
+        assert!(out.get("tls").is_none());
+    }
+
+    #[test]
+    fn plain_wireguard_has_no_reserved_field() {
+        let mut profile = wg_sample();
+        profile.wg_reserved.clear();
+        profile.wg_mtu = 0;
+        let cfg = build_config(&profile, &[], &NetOptions::default());
+        let out = &cfg["outbounds"][0];
+        assert!(out.get("reserved").is_none());
+        // нулевой MTU заменяется рабочим значением, иначе ядро ругается
+        assert_eq!(out["mtu"], 1280);
     }
 
     #[test]

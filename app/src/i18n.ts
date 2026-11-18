@@ -403,6 +403,19 @@ const dict: Dict = {
     en: "Re-measure as soon as the tunnel drops, without waiting for the timer",
   },
   autoSelectSwitched: { ru: "Автовыбор: переключил на", en: "Auto-select: switched to" },
+  wgTitle: { ru: "Добавить WireGuard / WARP", en: "Add WireGuard / WARP" },
+  wgHint: {
+    ru: "Вставь текст конфига .conf (WARP или обычный WireGuard-сервер). Он станет отдельным сервером в списке.",
+    en: "Paste a .conf file text (WARP or any WireGuard server). It becomes a separate server.",
+  },
+  wgPaste: { ru: "Вставь сюда конфиг", en: "Paste the config here" },
+  wgAdd: { ru: "Добавить", en: "Add" },
+  wgCancel: { ru: "Отмена", en: "Cancel" },
+  wgReserve: { ru: "резерв", en: "reserve" },
+  wgReserveHint: {
+    ru: "Резервные серверы включаются, только когда основные не работают.",
+    en: "Reserve servers are used only when the main ones fail.",
+  },
   zpImportTitle: { ru: "Забрать списки из Zapret", en: "Import Zapret lists" },
   zpImportHint: {
     ru: "Укажи папку Zapret — возьмём готовые списки блокировок. Ничего в этой папке не меняется, только читаем.",

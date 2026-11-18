@@ -13,6 +13,16 @@ export type Profile = {
   public_key: string;
   short_id: string;
   fingerprint: string;
+  /** "wireguard" — профиль WireGuard/WARP, пусто — VLESS. */
+  kind?: string;
+  wg_private_key?: string;
+  wg_peer_public_key?: string;
+  wg_preshared_key?: string;
+  wg_addresses?: string[];
+  wg_mtu?: number;
+  wg_reserved?: number[];
+  /** Резервный сервер: берётся, только когда основные не работают. */
+  reserve?: boolean;
 };
 
 /** Строка статистики оркестратора (пара «сервер + транспорт»). */
@@ -87,6 +97,7 @@ export const api = {
   killSwitchStatus: () => invoke<KillSwitchStatus>("kill_switch_status"),
   killSwitchSet: (on: boolean) => invoke<KillSwitchStatus>("kill_switch_set", { on }),
   killSwitchSelfcheck: () => invoke<KsCheck[]>("kill_switch_selfcheck"),
+  wireguardAdd: (text: string) => invoke<Profile>("wireguard_add", { text }),
   zapretScan: (dir: string) => invoke<ZapretScan>("zapret_scan", { dir }),
   zapretImport: (dir: string, includeIps: boolean) =>
     invoke<{ rules: RouteRule[]; skipped: number }>("zapret_import", { dir, includeIps }),

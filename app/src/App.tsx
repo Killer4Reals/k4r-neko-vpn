@@ -5,7 +5,7 @@ import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
-import { isBusy, pickServer } from "./autoSelect";
+import { isBusy, pickServer, splitReserve } from "./autoSelect";
 import { pairKey, quarantinedIds } from "./orchestrator";
 import { probeOnce } from "./probe";
 import { describe as describeSubError } from "./subError";
@@ -203,9 +203,21 @@ export default function App() {
       tag: (p.security === "none" ? p.network : p.security).toUpperCase(),
       lat: lat[p.id] ?? 0,
       quality: "good" as const,
+      reserve: p.reserve ?? false,
+      kind: p.kind,
       };
     });
   }, [profiles, lat]);
+
+  const toggleReserve = useCallback((id: string) => {
+    setProfiles((list) => list.map((p) => (p.id === id ? { ...p, reserve: !p.reserve } : p)));
+  }, []);
+
+  const addWireguard = useCallback(async (text: string) => {
+    const p = await api.wireguardAdd(text);
+    setProfiles((list) => [...list, p]);
+    setSelectedId(p.id);
+  }, []);
 
   const selected = useMemo(
     () => viewServers.find((s) => s.id === selectedId) ?? viewServers[0],
@@ -699,10 +711,15 @@ export default function App() {
       // Серверы в карантине не рассматриваем: за них уже проголосовали провалы.
       const blocked = quarantinedIds(orch);
       const usable = all.filter((m) => !blocked.has(m.id));
+      // Резерв — последний шанс: сначала основные, и только если их нет, резервные.
+      const reserveIds = new Set(profiles.filter((p) => p.reserve).map((p) => p.id));
+      const { main, reserve } = splitReserve(usable, reserveIds);
+      const mainAlive = main.filter((m) => typeof m.ms === "number");
+      const pool = mainAlive.length > 0 ? main : reserve;
       const target =
-        blocked.has(selectedId) && usable.length > 0
-          ? pickServer(undefined, usable)
-          : pickServer({ id: selectedId, ms: measured[selectedId] ?? null }, usable);
+        blocked.has(selectedId) && pool.length > 0
+          ? pickServer(undefined, pool)
+          : pickServer({ id: selectedId, ms: measured[selectedId] ?? null }, pool);
       if (!target || target === selectedId) return;
       const chosen = profiles.find((p) => p.id === target);
       if (!chosen) return;
@@ -1162,6 +1179,8 @@ export default function App() {
               subs={subs}
               addSub={addSub}
               removeSub={removeSub}
+              onToggleReserve={toggleReserve}
+              onAddWireguard={addWireguard}
             />
           )}
           {screen === "split" && <SplitScreen {...ctx} />}

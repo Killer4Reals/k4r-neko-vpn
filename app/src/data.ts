@@ -9,6 +9,10 @@ export type Server = {
   tag: string;
   lat: number;
   quality: "good" | "mid" | "bad";
+  /** Резервный сервер: включается, только когда основные не работают. */
+  reserve?: boolean;
+  /** "wireguard" — профиль WireGuard/WARP. */
+  kind?: string;
 };
 
 export const servers: Server[] = [

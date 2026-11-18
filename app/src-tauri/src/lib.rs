@@ -7,6 +7,7 @@ pub mod netwatch;
 pub mod probe;
 pub mod single;
 pub mod store;
+pub mod wgconf;
 pub mod subscription;
 #[cfg(windows)]
 pub mod orchestrator;
@@ -784,6 +785,19 @@ fn auto_history_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// Оркестратор: что мы знаем про пары «сервер + транспорт».
 /// Показать, что лежит в папке zapret, ничего там не меняя.
+/// Добавить WireGuard-профиль (WARP или обычный сервер) из текста .conf.
+#[tauri::command]
+fn wireguard_add(text: String) -> Result<subscription::Profile, String> {
+    let id = format!(
+        "wg-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    wgconf::parse(&text, &id)
+}
+
 #[tauri::command]
 fn zapret_scan(dir: String) -> zapret_lists::Scan {
     zapret_lists::scan(&dir)
@@ -1997,6 +2011,7 @@ pub fn run() {
             dns_leak,
             kill_switch_status,
             kill_switch_selfcheck,
+            wireguard_add,
             zapret_scan,
             zapret_import,
             orchestrator_list,

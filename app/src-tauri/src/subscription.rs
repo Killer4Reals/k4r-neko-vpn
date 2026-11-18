@@ -28,6 +28,26 @@ pub struct Profile {
     /// WebSocket path.
     #[serde(default)]
     pub path: String,
+    /// "wireguard" — профиль WireGuard (в том числе WARP), пусто — VLESS.
+    #[serde(default)]
+    pub kind: String,
+    /// WireGuard: пара ключей, адрес внутри туннеля и MTU.
+    #[serde(default)]
+    pub wg_private_key: String,
+    #[serde(default)]
+    pub wg_peer_public_key: String,
+    #[serde(default)]
+    pub wg_preshared_key: String,
+    #[serde(default)]
+    pub wg_addresses: Vec<String>,
+    #[serde(default)]
+    pub wg_mtu: u16,
+    /// WARP требует три байта reserved; у обычного WireGuard их нет.
+    #[serde(default)]
+    pub wg_reserved: Vec<u8>,
+    /// Резервный сервер: включается, только когда основные не работают.
+    #[serde(default)]
+    pub reserve: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -495,7 +515,16 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
         fingerprint,
         service_name,
         path,
-    })
+    
+            kind: String::new(),
+            wg_private_key: String::new(),
+            wg_peer_public_key: String::new(),
+            wg_preshared_key: String::new(),
+            wg_addresses: Vec::new(),
+            wg_mtu: 0,
+            wg_reserved: Vec::new(),
+            reserve: false,
+        })
 }
 
 fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
@@ -582,7 +611,16 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
         fingerprint,
         service_name,
         path,
-    })
+    
+            kind: String::new(),
+            wg_private_key: String::new(),
+            wg_peer_public_key: String::new(),
+            wg_preshared_key: String::new(),
+            wg_addresses: Vec::new(),
+            wg_mtu: 0,
+            wg_reserved: Vec::new(),
+            reserve: false,
+        })
 }
 
 pub fn parse_link(link: &str) -> Result<Profile, String> {
@@ -639,7 +677,16 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         },
         service_name: get("serviceName"),
         path: get("path"),
-    })
+    
+            kind: String::new(),
+            wg_private_key: String::new(),
+            wg_peer_public_key: String::new(),
+            wg_preshared_key: String::new(),
+            wg_addresses: Vec::new(),
+            wg_mtu: 0,
+            wg_reserved: Vec::new(),
+            reserve: false,
+        })
 }
 
 #[cfg(test)]

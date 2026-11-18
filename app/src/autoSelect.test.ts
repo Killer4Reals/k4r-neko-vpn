@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUSY_BYTES_PER_SEC, isBusy, pickServer } from "./autoSelect";
+import { BUSY_BYTES_PER_SEC, isBusy, pickServer, splitReserve } from "./autoSelect";
 
 const m = (id: string, ms: number | null) => ({ id, ms });
 
@@ -40,5 +40,21 @@ describe("isBusy", () => {
   it("treats a heavy download as busy", () => {
     expect(isBusy(BUSY_BYTES_PER_SEC + 1)).toBe(true);
     expect(isBusy(1024)).toBe(false);
+  });
+});
+
+describe("splitReserve", () => {
+  const list = [{ id: "a" }, { id: "b" }, { id: "r1" }, { id: "r2" }];
+
+  it("separates reserve servers from main ones", () => {
+    const { main, reserve } = splitReserve(list, new Set(["r1", "r2"]));
+    expect(main.map((s) => s.id)).toEqual(["a", "b"]);
+    expect(reserve.map((s) => s.id)).toEqual(["r1", "r2"]);
+  });
+
+  it("keeps everything main when nothing is marked reserve", () => {
+    const { main, reserve } = splitReserve(list, new Set());
+    expect(main).toHaveLength(4);
+    expect(reserve).toHaveLength(0);
   });
 });
