@@ -112,6 +112,7 @@ fn dump_main() -> i32 {
                 "tun_luid": s.tun_luid,
                 "names": s.names,
                 "helper": ipc::alive(),
+                "helper_error": ipc::ask(&Request::Status).err().unwrap_or_default(),
             });
             println!("{payload}");
             0

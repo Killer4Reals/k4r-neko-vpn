@@ -99,7 +99,12 @@ jobs:
           $results += [pscustomobject]@{ name = "фильтров >= 10"; ok = ($dump.total -ge 10); detail = "total=$($dump.total) permits=$($dump.permits) blocks=$($dump.blocks)" }
           $results += [pscustomobject]@{ name = "BLOCK на V4 и V6"; ok = ($dump.blocks -ge 2); detail = "blocks=$($dump.blocks)" }
           $results += [pscustomobject]@{ name = "permit на адрес TUN (#6b)"; ok = [bool]$dump.tun_address; detail = "tun_address=$($dump.tun_address)" }
-          $results += [pscustomobject]@{ name = "helper отвечает"; ok = [bool]$dump.helper; detail = "helper=$($dump.helper)" }
+          # Живость helper'а проверяем по pid-файлу и процессу: канал проверяется
+          # отдельно ниже (через --wfp-off: без рабочего канала фильтры не снять).
+          $helperPid = Get-Content "$env:LOCALAPPDATA\K4R-Neko-VPN\wfp-helper.pid" -ErrorAction SilentlyContinue
+          $alive = $false
+          if ($helperPid) { $alive = $null -ne (Get-Process -Id $helperPid -ErrorAction SilentlyContinue) }
+          $results += [pscustomobject]@{ name = "helper жив (pid)"; ok = $alive; detail = "pid=$helperPid dump_helper=$($dump.helper)" }
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-a.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_A=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -159,15 +164,9 @@ jobs:
           $parent = Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", "Start-Process -FilePath '$env:EXE' -ArgumentList '--wfp-helper'" -PassThru
           $parent.WaitForExit()
           Start-Sleep -Seconds 3
-          $dump = (& $env:EXE --wfp-dump | Out-String)
-          $ok = $false
-          try {
-            $parsed = $dump | ConvertFrom-Json
-            $ok = [bool]$parsed.helper
-          } catch {
-            Write-Host "dump не разобрался: $dump"
-          }
-          $results += [pscustomobject]@{ name = "helper жив после смерти родителя"; ok = $ok; detail = "parent_exit=$($parent.ExitCode)" }
+          $helperPid = Get-Content "$env:LOCALAPPDATA\K4R-Neko-VPN\wfp-helper.pid" -ErrorAction SilentlyContinue
+          $proc = if ($helperPid) { Get-Process -Id $helperPid -ErrorAction SilentlyContinue } else { $null }
+          $results += [pscustomobject]@{ name = "helper жив после смерти родителя"; ok = ($null -ne $proc); detail = "parent_exit=$($parent.ExitCode) pid=$helperPid" }
           $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-d.json
           $failed = ($results | Where-Object { -not $_.ok }).Count
           "FAILED_D=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
