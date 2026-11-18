@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
 import type { Theme } from "../App";
-import { api, inTauri, type KillSwitchStatus } from "../api";
+import { api, inTauri, type KillSwitchStatus, type KsCheck } from "../api";
 import { DnsPick } from "../DnsPick";
 
 type Props = {
@@ -49,6 +49,10 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const { connectOnStart, setConnectOnStart } = p;
+  // Самодиагностика kill-switch: 7 проверок, результат — табличкой.
+  const [ksChecks, setKsChecks] = useState<KsCheck[] | null>(null);
+  const [ksBusy, setKsBusy] = useState(false);
+  const [ksNote, setKsNote] = useState("");
   const [deviceId, setDeviceId] = useState("");
   useEffect(() => {
     if (!inTauri) return;
@@ -254,6 +258,86 @@ export function SettingsScreen(p: Props) {
           <div className="txt" style={{ maxWidth: 560 }}>
             <b>{t(ksLabel)}</b>
             <span style={{ color: ksColor }}>{ksText}</span>
+          </div>
+        </div>
+        <div className="row" style={{ display: "block" }}>
+          <div className="txt" style={{ maxWidth: 560 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="btn"
+                style={{ width: "auto", paddingInline: 14 }}
+                disabled={ksBusy}
+                onClick={async () => {
+                  setKsBusy(true);
+                  setKsNote("");
+                  try {
+                    const res = await api.killSwitchSelfcheck();
+                    setKsChecks(res);
+                    const green = res.filter((c) => c.ok === true).length;
+                    setKsNote(`${t("ksCheckSummary")} ${green} / ${res.length}`);
+                  } catch (e) {
+                    setKsNote(String(e));
+                  } finally {
+                    setKsBusy(false);
+                  }
+                }}
+              >
+                {ksBusy ? t("ksChecking") : t("ksCheck")}
+              </button>
+              {ksChecks && (
+                <button
+                  className="btn"
+                  style={{ width: "auto", paddingInline: 14 }}
+                  onClick={async () => {
+                    // Отчёт — простым текстом: его можно вставить в переписку.
+                    const lines = ksChecks.map(
+                      (c) =>
+                        `${c.ok === true ? "OK  " : c.ok === false ? "FAIL" : "SKIP"} ${c.id}. ${c.title}: ${c.detail}`,
+                    );
+                    const text = [
+                      `K4R Neko VPN ${version} — kill-switch self-check`,
+                      ksNote,
+                      "",
+                      ...lines,
+                    ].join(String.fromCharCode(10));
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setKsNote(t("ksCheckCopied"));
+                    } catch {
+                      setKsNote(text);
+                    }
+                  }}
+                >
+                  {t("ksCheckCopy")}
+                </button>
+              )}
+            </div>
+            {ksNote && <span style={{ color: "var(--txt-3)" }}>{ksNote}</span>}
+            {ksChecks && (
+              <div style={{ marginTop: 6 }}>
+                {ksChecks.map((c) => (
+                  <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span
+                      style={{
+                        color:
+                          c.ok === true
+                            ? "var(--green)"
+                            : c.ok === false
+                              ? "var(--red, #ff5a5a)"
+                              : "var(--txt-3)",
+                        minWidth: 52,
+                      }}
+                    >
+                      {c.ok === true ? "OK" : c.ok === false ? "FAIL" : "SKIP"}
+                    </span>
+                    <span>
+                      <b>{c.title}</b>
+                      <span style={{ color: "var(--txt-3)" }}> — {c.detail}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="row">

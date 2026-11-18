@@ -1,0 +1,231 @@
+name: wfp-smoke
+
+# Проверка kill-switch на реальном Windows с правами администратора.
+# Раннер GitHub Actions запускает шаги elevated, поэтому WFP здесь доступен.
+#
+# Что проверяем: sublayer и фильтры реально легли в ядро, трафик наружу
+# блокируется, loopback и DNS живы, --wfp-off снимает защиту, helper переживает
+# смерть родителя (Job Object), а непривилегированный процесс снять защиту не
+# может (DACL).
+#
+# Чего НЕ проверяем: реальный TUN с sing-box и поведение на живой машине —
+# это остаётся в чек-листе docs/kill-switch.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Тег релиза с portable zip (пусто = последний релиз)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 4 * * 1" # каждый понедельник, 04:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: kill-switch smoke
+    runs-on: windows-latest
+    steps:
+      - name: разрешить длинные пути и включить вывод
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          git config --global core.longpaths true
+          Write-Host "admin: $(([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+
+      - name: скачать portable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ inputs.tag }}"
+          if (-not $tag) {
+            # /releases включает черновики для токена с доступом к репозиторию
+            $json = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=10" | ConvertFrom-Json
+            $tag = ($json | Where-Object { $_.assets.name -contains "K4R-Neko-VPN-portable.zip" } | Select-Object -First 1).tag_name
+          }
+          if (-not $tag) { throw "не нашёл релиз с portable zip" }
+          Write-Host "релиз: $tag"
+          "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          gh release download $tag --pattern "K4R-Neko-VPN-portable.zip" --dir out --clobber
+          Expand-Archive -Path out/K4R-Neko-VPN-portable.zip -DestinationPath app -Force
+          $exe = Get-ChildItem app -Recurse -Filter "K4R Neko VPN.exe" | Select-Object -First 1
+          if (-not $exe) { throw "в архиве нет exe" }
+          "EXE=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "exe: $($exe.FullName)"
+
+      - name: helper -- старт и снимок WFP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Резолвер разрешаем явно: на живой машине его присылает приложение,
+          # а тут helper запускается сам по себе.
+          $dns = (Get-DnsClientServerAddress -AddressFamily IPv4 |
+            Where-Object { $_.ServerAddresses.Count -gt 0 } |
+            Select-Object -First 1).ServerAddresses[0]
+          Write-Host "DNS: $dns"
+          "DNS=$dns" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:K4R_WFP_RESOLVER = $dns
+          Start-Process -FilePath $env:EXE -ArgumentList "--wfp-helper" -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+          netsh wfp show state "file=$PWD\state-on.xml" | Out-Null
+          & $env:EXE --wfp-dump | Tee-Object -FilePath dump-on.json
+          $dump = Get-Content dump-on.json -Raw | ConvertFrom-Json
+          $results = @()
+          $results += [pscustomobject]@{ name = "sublayer существует"; ok = [bool]$dump.sublayer; detail = "total=$($dump.total)" }
+          $results += [pscustomobject]@{ name = "фильтров >= 10"; ok = ($dump.total -ge 10); detail = "total=$($dump.total) permits=$($dump.permits) blocks=$($dump.blocks)" }
+          $results += [pscustomobject]@{ name = "BLOCK на V4 и V6"; ok = ($dump.blocks -ge 2); detail = "blocks=$($dump.blocks)" }
+          $results += [pscustomobject]@{ name = "permit на адрес TUN (#6b)"; ok = [bool]$dump.tun_address; detail = "tun_address=$($dump.tun_address)" }
+          $results += [pscustomobject]@{ name = "helper отвечает"; ok = [bool]$dump.helper; detail = "helper=$($dump.helper)" }
+          $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-a.json
+          $failed = ($results | Where-Object { -not $_.ok }).Count
+          "FAILED_A=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: блокировка наружу и живой loopback/DNS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $results = @()
+
+          # 1. Наружу не пускает: curl должен упасть (или упереться в таймаут).
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $out = & curl.exe -sS --max-time 4 -o NUL -w "%{http_code}" https://1.1.1.1 2>&1
+          $code = $LASTEXITCODE
+          $sw.Stop()
+          $blocked = ($code -ne 0 -and $sw.Elapsed.TotalSeconds -lt 4.5) -or ($code -ne 0)
+          $results += [pscustomobject]@{ name = "curl наружу заблокирован"; ok = ($code -ne 0); detail = "exit=$code за $([math]::Round($sw.Elapsed.TotalSeconds,2))s out=$out" }
+
+          # 2. Loopback не блокирован: отказ должен быть мгновенным (connection refused), не таймаутом.
+          $sw2 = [Diagnostics.Stopwatch]::StartNew()
+          & curl.exe -sS --max-time 4 -o NUL http://127.0.0.1:1 2>$null
+          $code2 = $LASTEXITCODE
+          $sw2.Stop()
+          $results += [pscustomobject]@{ name = "loopback не блокирован"; ok = ($sw2.Elapsed.TotalSeconds -lt 2.5); detail = "exit=$code2 за $([math]::Round($sw2.Elapsed.TotalSeconds,2))s" }
+
+          # 3. DNS разрешён (UDP/53 к системному резолверу).
+          $dns = Resolve-DnsName -Name example.com -Type A -ErrorAction SilentlyContinue
+          $results += [pscustomobject]@{ name = "DNS работает"; ok = [bool]$dns; detail = "answers=$(($dns | Where-Object {$_.IPAddress}).Count)" }
+
+          $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-b.json
+          $failed = ($results | Where-Object { -not $_.ok }).Count
+          "FAILED_B=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: --wfp-off снимает защиту
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $results = @()
+          & $env:EXE --wfp-off
+          $code = $LASTEXITCODE
+          Start-Sleep -Seconds 2
+          & $env:EXE --wfp-dump | Tee-Object -FilePath dump-off.json
+          $dump = Get-Content dump-off.json -Raw | ConvertFrom-Json
+          $results += [pscustomobject]@{ name = "--wfp-off вернул 0"; ok = ($code -eq 0); detail = "exit=$code" }
+          $results += [pscustomobject]@{ name = "фильтры сняты"; ok = ($dump.total -eq 0); detail = "total=$($dump.total)" }
+          netsh wfp show state "file=$PWD\state-off.xml" | Out-Null
+          $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-c.json
+          $failed = ($results | Where-Object { -not $_.ok }).Count
+          "FAILED_C=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: helper переживает смерть родителя (Job Object)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $results = @()
+          # Родитель — отдельный процесс PowerShell, который сразу завершается.
+          $parent = Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", "Start-Process -FilePath '$env:EXE' -ArgumentList '--wfp-helper'" -PassThru
+          $parent.WaitForExit()
+          Start-Sleep -Seconds 3
+          $dump = (& $env:EXE --wfp-dump | Out-String)
+          $ok = $false
+          try {
+            $parsed = $dump | ConvertFrom-Json
+            $ok = [bool]$parsed.helper
+          } catch {
+            Write-Host "dump не разобрался: $dump"
+          }
+          $results += [pscustomobject]@{ name = "helper жив после смерти родителя"; ok = $ok; detail = "parent_exit=$($parent.ExitCode)" }
+          $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-d.json
+          $failed = ($results | Where-Object { -not $_.ok }).Count
+          "FAILED_D=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: непривилегированный процесс не может снять защиту (DACL)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $results = @()
+          $before = (& $env:EXE --wfp-dump | Out-String | ConvertFrom-Json)
+          # runas с trustlevel создаёт процесс с урезанным токеном — без UAC.
+          $target = "`"$env:EXE`" --wfp-off"
+          $p = Start-Process -FilePath "runas" -ArgumentList "/trustlevel:0x20000", $target -Wait -PassThru
+          Start-Sleep -Seconds 2
+          $after = (& $env:EXE --wfp-dump | Out-String | ConvertFrom-Json)
+          $kept = ($after.blocks -ge 2)
+          $results += [pscustomobject]@{ name = "DACL не пускает без прав"; ok = $kept; detail = "runas_exit=$($p.ExitCode) blocks_before=$($before.blocks) blocks_after=$($after.blocks)" }
+
+          # taskkill из ограниченного процесса тоже должен упереться в отказ.
+          $helperPid = Get-Content "$env:LOCALAPPDATA\K4R-Neko-VPN\wfp-helper.pid" -ErrorAction SilentlyContinue
+          if ($helperPid) {
+            # Вывод runas-процесса собираем через cmd, иначе Start-Process не даёт
+            # перенаправить его без окна.
+            $out = & cmd /c "runas /trustlevel:0x20000 `"taskkill /F /PID $helperPid`" 2>&1"
+            $out | Set-Content -Path taskkill.txt -Encoding utf8
+            $denied = "$out" -match "Access is denied|Отказано в доступе"
+            $results += [pscustomobject]@{ name = "taskkill без прав -> Access denied"; ok = [bool]$denied; detail = "$out" }
+          } else {
+            $results += [pscustomobject]@{ name = "taskkill без прав -> Access denied"; ok = $false; detail = "pid-файл не найден" }
+          }
+
+          $results | ConvertTo-Json -Depth 4 | Tee-Object -FilePath results-e.json
+          $failed = ($results | Where-Object { -not $_.ok }).Count
+          "FAILED_E=$failed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: финальное снятие и отчёт
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          if ($env:EXE) { & $env:EXE --wfp-off }
+          $log = Join-Path $env:LOCALAPPDATA "K4R-Neko-VPN\killswitch.log"
+          if (Test-Path $log) { Copy-Item $log -Destination helper.log }
+
+          $all = @()
+          foreach ($f in @("results-a.json", "results-b.json", "results-c.json", "results-d.json", "results-e.json")) {
+            if (Test-Path $f) { $all += Get-Content $f -Raw | ConvertFrom-Json }
+          }
+          $green = ($all | Where-Object { $_.ok }).Count
+          $red = ($all | Where-Object { -not $_.ok })
+          $md = @("# WFP kill-switch smoke", "", "Релиз: $env:TAG", "", "| проверка | итог | детали |", "| --- | --- | --- |")
+          foreach ($r in $all) {
+            $md += "| $($r.name) | $(if ($r.ok) { 'OK' } else { 'FAIL' }) | $($r.detail) |"
+          }
+          $md += ""
+          $md += "Зелёных: $green из $($all.Count)"
+          $md | Set-Content -Path smoke-report.md -Encoding utf8
+          Get-Content smoke-report.md
+          if ($red.Count -gt 0) {
+            Write-Error "провалено проверок: $($red.Count)"
+            exit 1
+          }
+
+      - name: артефакты
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wfp-smoke-${{ github.run_id }}
+          path: |
+            state-on.xml
+            state-off.xml
+            dump-on.json
+            dump-off.json
+            results-*.json
+            smoke-report.md
+            helper.log
+            taskkill.txt
+            taskkill.err
+          if-no-files-found: warn

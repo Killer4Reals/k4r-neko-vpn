@@ -240,6 +240,11 @@ const dict: Dict = {
     en: "The kill switch requires administrator rights.",
   },
   ksFilters: { ru: "фильтров", en: "filters" },
+  ksCheck: { ru: "Проверить kill-switch", en: "Check the kill switch" },
+  ksChecking: { ru: "Проверяю…", en: "Checking…" },
+  ksCheckSummary: { ru: "зелёных: %1 из %2", en: "green: %1 of %2" },
+  ksCheckCopy: { ru: "Скопировать отчёт", en: "Copy the report" },
+  ksCheckCopied: { ru: "Отчёт в буфере обмена", en: "Report copied" },
   ksBlockedNet: {
     ru: "Заблокировано kill-switch: подключите VPN или выключите блокировку",
     en: "Blocked by the kill switch: connect the VPN or turn the switch off",

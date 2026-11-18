@@ -733,6 +733,29 @@ fn wfp_opts(app: &tauri::AppHandle, saved: &store::AppState) -> wfp::filters::Pl
     }
 }
 
+/// Самодиагностика kill-switch: 7 автопроверок вместо ручного чек-листа.
+#[tauri::command]
+fn kill_switch_selfcheck(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let saved = store::load(&data_dir(&app)?);
+    let running = matches!(
+        engine::poll(&app.state::<engine::Engine>()).state,
+        engine::EngineState::Running
+    );
+    let checks = wfp::selfcheck::run(wfp::selfcheck::Ctx {
+        opts: wfp_opts(&app, &saved),
+        engine_running: running,
+    });
+    Ok(serde_json::json!(checks
+        .into_iter()
+        .map(|c| serde_json::json!({
+            "id": c.id,
+            "title": c.title,
+            "ok": c.ok,
+            "detail": c.detail,
+        }))
+        .collect::<Vec<_>>()))
+}
+
 #[tauri::command]
 fn kill_switch_status() -> wfp::Status {
     wfp::status()
@@ -1870,6 +1893,7 @@ pub fn run() {
             state_import,
             dns_leak,
             kill_switch_status,
+            kill_switch_selfcheck,
             kill_switch_set,
             update_download,
             speed_test,

@@ -10,7 +10,8 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use wfp::{
     AppIdConditionBuilder, FilterBuilder, FilterEngine, FilterEngineBuilder, FilterEnumerator,
     FilterWeight, Guid, InterfaceConditionBuilder, IpAddressConditionBuilder, Layer,
-    PortConditionBuilder, ProtocolConditionBuilder, SubLayerBuilder, Transaction,
+    PortConditionBuilder, ProtocolConditionBuilder, SubLayerBuilder, SubLayerEnumerator,
+    Transaction,
 };
 
 use super::filters::{self, Action, Cond, Family, PlanOpts, RuleSpec};
@@ -290,4 +291,80 @@ pub fn parse_v4(raw: &Option<String>) -> Option<Ipv4Addr> {
 
 pub fn parse_v6(raw: &Option<String>) -> Option<Ipv6Addr> {
     raw.as_deref().and_then(|s| s.trim().parse().ok())
+}
+
+/// Снимок того, что реально лежит в WFP: по нему работает диагностика в
+/// настройках и CI smoke test. Читаем перечислением, без изменения состояния.
+pub struct Snapshot {
+    pub sublayer: bool,
+    pub total: usize,
+    pub blocks: usize,
+    pub permits: usize,
+    pub tun_address: bool,
+    pub tun_luid: bool,
+    pub names: Vec<String>,
+    pub weights: Vec<u16>,
+}
+
+impl Snapshot {
+    pub fn has(&self, name: &str) -> bool {
+        self.names.iter().any(|n| n == name)
+    }
+}
+
+/// Читает текущее состояние нашего sublayer'а.
+pub fn snapshot() -> Result<Snapshot, String> {
+    let mut engine = FilterEngineBuilder::default().open().map_err(friendly)?;
+    let mut transaction = Transaction::new(&mut engine).map_err(friendly)?;
+    let mut out = Snapshot {
+        sublayer: false,
+        total: 0,
+        blocks: 0,
+        permits: 0,
+        tun_address: false,
+        tun_luid: false,
+        names: Vec::new(),
+        weights: Vec::new(),
+    };
+
+    if let Ok(mut list) = SubLayerEnumerator::new(&transaction) {
+        while let Some(item) = list.next() {
+            if let Ok(sl) = item {
+                if sl
+                    .name()
+                    .map(|n| n.to_string_lossy() == filters::SUBLAYER_NAME)
+                    .unwrap_or(false)
+                {
+                    out.sublayer = true;
+                }
+            }
+        }
+    }
+
+    let Ok(mut list) = FilterEnumerator::new(&transaction) else {
+        return Ok(out);
+    };
+    while let Some(item) = list.next() {
+        let Ok(filter) = item else { continue };
+        let Some(name) = filter.name() else { continue };
+        let name = name.to_string_lossy().to_string();
+        if !name.starts_with("k4r:") {
+            continue;
+        }
+        out.total += 1;
+        if name == filters::BLOCK_NAME {
+            out.blocks += 1;
+        } else {
+            out.permits += 1;
+        }
+        if name == filters::TUN_ADDR_NAME {
+            out.tun_address = true;
+        }
+        if name == filters::TUN_LUID_NAME {
+            out.tun_luid = true;
+        }
+        out.names.push(name);
+    }
+    let _ = transaction; // держим сессию до конца чтения
+    Ok(out)
 }

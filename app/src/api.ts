@@ -65,6 +65,7 @@ export const api = {
   engineStop: (release = true) => invoke<EngineStatus>("engine_stop", { release }),
   killSwitchStatus: () => invoke<KillSwitchStatus>("kill_switch_status"),
   killSwitchSet: (on: boolean) => invoke<KillSwitchStatus>("kill_switch_set", { on }),
+  killSwitchSelfcheck: () => invoke<KsCheck[]>("kill_switch_selfcheck"),
   engineStatus: () => invoke<EngineStatus>("engine_status"),
   engineTraffic: () => invoke<Traffic>("engine_traffic"),
   isAdmin: () => invoke<boolean>("app_is_admin"),
@@ -141,6 +142,9 @@ export type RouteRule = {
   action: "proxy" | "direct" | "block";
   enabled: boolean;
 };
+
+/** Одна автопроверка kill-switch. `ok = null` — проверить не удалось. */
+export type KsCheck = { id: number; title: string; ok: boolean | null; detail: string };
 
 /** Состояние защиты на уровне ОС (WFP). */
 export type KillSwitchStatus = {

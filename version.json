@@ -1,5 +1,5 @@
 {
-  "version": "1.8.2",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.8.2/K4R.Neko.VPN_1.8.2_x64-setup.exe",
-  "notes": "Понятные ошибки списков маршрутизации (.srs)"
+  "version": "1.8.3",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.8.3/K4R.Neko.VPN_1.8.3_x64-setup.exe",
+  "notes": "Самодиагностика kill-switch одной кнопкой, CI smoke test защиты"
 }

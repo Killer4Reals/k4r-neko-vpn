@@ -7,6 +7,7 @@
 pub mod apply;
 pub mod filters;
 pub mod ipc;
+pub mod selfcheck;
 pub mod tun;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -90,7 +91,36 @@ pub fn handle_args() -> Option<i32> {
     if args.iter().any(|a| a == "--wfp-off") {
         return Some(off_main());
     }
+    // Диагностика и CI: напечатать JSON-снимок того, что реально лежит в WFP.
+    if args.iter().any(|a| a == "--wfp-dump") {
+        return Some(dump_main());
+    }
     None
+}
+
+/// Печатает снимок WFP в JSON. Нужен smoke test'у в CI и ручной диагностике:
+/// netsh wfp show state — это мегабайты XML, а тут ровно то, что мы ставим.
+fn dump_main() -> i32 {
+    match apply::snapshot() {
+        Ok(s) => {
+            let payload = serde_json::json!({
+                "sublayer": s.sublayer,
+                "total": s.total,
+                "blocks": s.blocks,
+                "permits": s.permits,
+                "tun_address": s.tun_address,
+                "tun_luid": s.tun_luid,
+                "names": s.names,
+                "helper": ipc::alive(),
+            });
+            println!("{payload}");
+            0
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            4
+        }
+    }
 }
 
 /// Включить защиту: поднять helper (если нужно) и применить план.
@@ -315,6 +345,24 @@ impl Drop for Supervisor {
 // ---------------------------------------------------------------- helper ----
 
 /// Процесс-хранитель: держит динамическую сессию и фильтры.
+/// Опции для автономного запуска helper'а (CI, диагностика).
+fn helper_opts() -> PlanOpts {
+    let mut opts = PlanOpts::default();
+    if let Ok(exe) = std::env::current_exe() {
+        opts.engine_paths.push(exe.display().to_string());
+    }
+    if let Ok(raw) = std::env::var("K4R_WFP_RESOLVER") {
+        for part in raw.split(',') {
+            match part.trim().parse::<std::net::IpAddr>() {
+                Ok(std::net::IpAddr::V4(ip)) => opts.resolver_v4 = Some(ip),
+                Ok(std::net::IpAddr::V6(ip)) => opts.resolver_v6 = Some(ip),
+                _ => {}
+            }
+        }
+    }
+    opts
+}
+
 fn helper_main() -> i32 {
     if !ipc::current_is_elevated() {
         eprintln!("ELEVATION_REQUIRED: helper нужно запускать с правами администратора");
@@ -332,6 +380,15 @@ fn helper_main() -> i32 {
             return 3;
         }
     };
+    // Без плана helper ставит только BLOCK: этого достаточно для защиты, но
+    // диагностике и CI smoke test нужны и разрешения. Резолвер можно задать
+    // переменной окружения — на живой машине его присылает приложение.
+    let mut keeper = keeper;
+    let opts = helper_opts();
+    match keeper.apply(&opts) {
+        Ok(n) => apply::log_line(&format!("helper: стартовый план применён, фильтров {n}")),
+        Err(e) => apply::log_line(&format!("helper: стартовый план не применён: {e}")),
+    }
     let keeper = Arc::new(Mutex::new(Some(keeper)));
 
     // Watcher TUN: #6 добавляется через миллисекунды после появления адаптера.
