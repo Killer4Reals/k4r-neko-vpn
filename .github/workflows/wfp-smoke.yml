@@ -29,6 +29,10 @@ jobs:
     name: kill-switch smoke
     runs-on: windows-latest
     steps:
+      # gh release download без репозитория в контексте ругается «not a git
+      # repository», поэтому клонируем — заодно видно, какой тег проверяем.
+      - uses: actions/checkout@v4
+
       - name: разрешить длинные пути и включить вывод
         shell: pwsh
         run: |
@@ -52,7 +56,7 @@ jobs:
           Write-Host "релиз: $tag"
           "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          gh release download $tag --pattern "K4R-Neko-VPN-portable.zip" --dir out --clobber
+          gh release download $tag -R "$env:GITHUB_REPOSITORY" --pattern "K4R-Neko-VPN-portable.zip" --dir out --clobber
           Expand-Archive -Path out/K4R-Neko-VPN-portable.zip -DestinationPath app -Force
           $exe = Get-ChildItem app -Recurse -Filter "K4R Neko VPN.exe" | Select-Object -First 1
           if (-not $exe) { throw "в архиве нет exe" }
