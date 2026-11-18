@@ -1901,3 +1901,229 @@ input {
 .rule-row .chip.ghost:disabled {
   opacity: 0.35;
 }
+
+/* ================= визуальный слой: глобус, бой, помощник ================= */
+
+.globe {
+  position: relative;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.globe canvas {
+  display: block;
+  filter: drop-shadow(0 0 18px rgba(57, 255, 20, 0.18));
+}
+
+.globe-label {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  white-space: nowrap;
+}
+
+.globe-bg {
+  position: absolute;
+  inset: -30px 0 auto 0;
+  display: grid;
+  place-items: center;
+  z-index: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  mask-image: radial-gradient(circle at 50% 45%, #000 55%, transparent 78%);
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 55%, transparent 78%);
+}
+
+.hero > *:not(.globe-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- бой с РКН ---------- */
+.fight {
+  position: relative;
+  height: 190px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 14px;
+  background: radial-gradient(120% 140% at 50% 40%, #1a0b22 0%, #0a0710 70%);
+  border: 1px solid rgba(57, 255, 20, 0.14);
+}
+
+.fight-hero {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.3;
+  filter: saturate(0.8) blur(0.5px);
+}
+
+.fight-mascot,
+.fight-rkn {
+  position: absolute;
+  bottom: 0;
+  height: 88%;
+  width: auto;
+  max-width: 42%;
+  object-fit: contain;
+  transition: transform 120ms ease-out;
+  filter: drop-shadow(0 0 14px rgba(57, 255, 20, 0.35));
+}
+
+.fight-mascot {
+  left: 4%;
+  transform-origin: 80% 100%;
+}
+
+.fight-rkn {
+  right: 4%;
+  filter: drop-shadow(0 0 12px rgba(90, 160, 255, 0.3));
+}
+
+.fight-live .fight-mascot {
+  animation: fight-bob 1.6s ease-in-out infinite;
+}
+
+.fight-hit .fight-mascot {
+  animation: none;
+  transform: translateX(10px) scale(1.04);
+}
+
+.fight-hit {
+  animation: fight-shake 220ms ease-out;
+}
+
+.fight-hit .fight-rkn {
+  transform: translateX(14px) rotate(6deg);
+}
+
+.fight-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 52% 55%, rgba(255, 255, 255, 0.9), rgba(57, 255, 20, 0.5) 22%, transparent 55%);
+  pointer-events: none;
+  animation: fight-flash 240ms ease-out;
+}
+
+.fight-bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.fight-status {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+}
+
+.fight-mute {
+  background: rgba(10, 7, 16, 0.72);
+  border: 1px solid rgba(57, 255, 20, 0.24);
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--txt);
+}
+
+@keyframes fight-bob {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-4px) rotate(1deg); }
+}
+
+@keyframes fight-shake {
+  0% { transform: translate(0, 0); }
+  30% { transform: translate(-5px, 2px); }
+  60% { transform: translate(4px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes fight-flash {
+  from { opacity: 0.95; }
+  to { opacity: 0; }
+}
+
+/* ---------- помощник-маскот ---------- */
+.hint-wrap {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hint-fab {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--green-line);
+  background: rgba(10, 7, 16, 0.82);
+  color: var(--green);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.hint-bubble {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  max-width: 380px;
+  padding: 10px 12px 10px 8px;
+  border-radius: 16px;
+  border: 1px solid var(--green-line);
+  background: linear-gradient(160deg, rgba(20, 12, 28, 0.96), rgba(10, 7, 16, 0.96));
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  animation: hint-in 220ms ease-out;
+}
+
+.hint-bubble img {
+  width: 76px;
+  height: auto;
+  align-self: flex-end;
+  filter: drop-shadow(0 0 12px rgba(57, 255, 20, 0.35));
+}
+
+.hint-body p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--txt);
+}
+
+.hint-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@keyframes hint-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fight-live .fight-mascot,
+  .fight-hit,
+  .fight-flash,
+  .hint-bubble {
+    animation: none !important;
+  }
+}

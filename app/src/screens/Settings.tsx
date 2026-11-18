@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
 import type { Theme } from "../App";
+import { play, setSoundOn, setVolume, soundOn, volume } from "../sound";
 import { api, inTauri, type KillSwitchStatus, type KsCheck } from "../api";
 import { DnsPick } from "../DnsPick";
 
@@ -88,6 +89,8 @@ export function SettingsScreen(p: Props) {
   const [leak, setLeak] = useState<import("../api").LeakReport | null>(null);
   const [leakBusy, setLeakBusy] = useState(false);
   const [leakError, setLeakError] = useState("");
+  const [sound, setSound] = useState(() => soundOn());
+  const [vol, setVol] = useState(() => Math.round(volume() * 100));
   const [stats, setStats] = useState<{ day: string; down: number; up: number }[]>([]);
 
   useEffect(() => {
@@ -373,6 +376,43 @@ export function SettingsScreen(p: Props) {
                 </span>
               ))}
             </div>
+          </div>
+        )}
+        <div className="row">
+          <div className="txt">
+            <b>{t("soundTitle")}</b>
+            <span>{t("soundHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={sound}
+            onClick={() => {
+              const next = !sound;
+              setSound(next);
+              setSoundOn(next);
+              if (next) play("click");
+            }}
+          />
+        </div>
+        {sound && (
+          <div className="row" style={{ display: "block" }}>
+            <div className="txt" style={{ maxWidth: 420 }}>
+              <b>{t("soundVolume")}</b>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={vol}
+              style={{ marginTop: 8, maxWidth: 320 }}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setVol(value);
+                setVolume(value / 100);
+              }}
+              onMouseUp={() => play("click")}
+              aria-label={t("soundVolume")}
+            />
           </div>
         )}
         <div className="row">

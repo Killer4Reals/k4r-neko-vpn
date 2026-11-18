@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Globe } from "../GlobeView";
+import { countryOf } from "../globe";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
@@ -106,6 +108,14 @@ export function HomeScreen(p: Props) {
       )}
       <section className="hero">
         <div className="grid-lines" />
+        <div className="globe-bg">
+          <Globe
+            size={430}
+            target={countryOf(selected.flag || selected.cc)}
+            connected={conn === "connected"}
+            label={`${selected.city}${selected.lat ? ` · ${selected.lat} ms` : ""}`}
+          />
+        </div>
 
         <div className="status-pill" data-state={view}>
           <span className="dot" />

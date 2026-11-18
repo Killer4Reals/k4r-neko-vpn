@@ -31,11 +31,36 @@ import { RouteScreen } from "./screens/Route";
 import { ZapretScreen } from "./screens/Zapret";
 import { SettingsScreen } from "./screens/Settings";
 import { StatsScreen } from "./screens/Stats";
+import { MascotHint, type Pose } from "./MascotHint";
+import { play } from "./sound";
 import { LogsScreen } from "./screens/Logs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export type Screen = "home" | "servers" | "split" | "route" | "zapret" | "stats" | "logs" | "settings";
 export type Theme = "dark" | "light" | "mascot";
+
+/** Что говорит маскот на каждой вкладке. */
+const HINT_KEY: Record<Screen, string> = {
+  home: "hintHome",
+  servers: "hintServers",
+  split: "hintSplit",
+  route: "hintRoute",
+  zapret: "hintZapret",
+  stats: "hintStats",
+  logs: "hintLogs",
+  settings: "hintSettings",
+};
+
+const HINT_POSE: Record<Screen, Pose> = {
+  home: 1,
+  servers: 2,
+  split: 5,
+  route: 3,
+  zapret: 4,
+  stats: 2,
+  logs: 6,
+  settings: 3,
+};
 
 const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "home", key: "navHome", icon: PowerIcon },
@@ -814,6 +839,18 @@ export default function App() {
     wasConnected.current = conn === "connected";
   }, [autoSelectLoss, autoTick, conn]);
 
+  // Звук состояния: подключились — короткий сигнал, оборвались — низкий тон.
+  const prevConnSound = useRef<ConnState | null>(null);
+  useEffect(() => {
+    const was = prevConnSound.current;
+    if (was && was !== conn) {
+      if (conn === "connected") play("connect");
+      if (conn === "error") play("error");
+      if (conn === "idle" && was === "connected") play("disconnect");
+    }
+    prevConnSound.current = conn;
+  }, [conn]);
+
   // Kill-switch на уровне ОС: спрашиваем helper и слушаем надзор.
   useEffect(() => {
     if (!inTauri) return;
@@ -1134,6 +1171,11 @@ export default function App() {
         </nav>
 
         <main className="content">
+          <MascotHint
+            screen={screen}
+            text={t(HINT_KEY[screen] ?? "hintHome")}
+            pose={HINT_POSE[screen] ?? 1}
+          />
           {screen === "home" && (
             <HomeScreen
               {...ctx}

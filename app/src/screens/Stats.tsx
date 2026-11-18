@@ -68,7 +68,7 @@ export function StatsScreen({ t }: Props) {
                     style={{
                       height: `${barHeight(value, peak)}%`,
                       minHeight: value > 0 ? 3 : 2,
-                      background: value > 0 ? "var(--accent, #7C5CFF)" : "rgba(136,136,136,0.25)",
+                      background: value > 0 ? "var(--green, #39FF14)" : "rgba(136,136,136,0.25)",
                       borderRadius: 4,
                     }}
                   />

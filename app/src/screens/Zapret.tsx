@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, inTauri, type ZapretStatus } from "../api";
+import { FightScene } from "../FightScene";
 
 type Props = {
   t: (k: string) => string;
@@ -38,6 +39,7 @@ export function ZapretScreen({
   const [status, setStatus] = useState<ZapretStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hits, setHits] = useState(0);
   const [zp, setZp] = useState<ZapSettings | null>(null);
 
   useEffect(() => {
@@ -81,6 +83,8 @@ export function ZapretScreen({
       if (status?.state === "running") {
         setStatus(await api.zapretStop());
       } else {
+        // каждое включение — новый удар по РКН
+        setHits((n) => n + 1);
         const st = await api.zapretStart(dir, preset);
         setStatus(st);
         if (st.state === "external") setError(st.message);
@@ -111,6 +115,7 @@ export function ZapretScreen({
 
   return (
     <>
+      <FightScene active={status?.state === "running" || status?.state === "external"} hits={hits} />
       <div className="page-head">
         <h1>{t("zapretTitle")}</h1>
         <span className="tag beta">beta</span>

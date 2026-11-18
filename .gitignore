@@ -41,3 +41,5 @@ android/keystore.properties
 android/app/libs/*.aar
 *.apk
 *.aab
+
+# исходный арт (большой) не кладём в установщик, только в репозиторий

@@ -412,6 +412,44 @@ const dict: Dict = {
   },
   autoSelectSwitched: { ru: "Автовыбор: переключил на", en: "Auto-select: switched to" },
   navStats: { ru: "Статистика", en: "Stats" },
+  hintHome: {
+    ru: "Большая кнопка — включить или выключить VPN. Шар показывает, где сейчас твой выход в интернет; при смене сервера он доворачивается.",
+    en: "The big button turns the VPN on and off. The globe shows where your traffic exits; it turns when you switch servers.",
+  },
+  hintServers: {
+    ru: "Здесь серверы: пинг, скорость и метка «резерв». Резервный включается, только если основные не работают. Кнопка «Включить WARP» добавит бесплатный запасной канал.",
+    en: "Servers live here: ping, speed and a reserve mark. Reserve is used only when the main ones fail. The WARP button adds a free fallback.",
+  },
+  hintSplit: {
+    ru: "Выбери, какие программы идут через VPN, а какие напрямую. Игры обычно лучше пускать мимо туннеля — так меньше задержка.",
+    en: "Choose which programs go through the VPN and which go direct. Games usually do better outside the tunnel — lower ping.",
+  },
+  hintRoute: {
+    ru: "Правила: что в туннель, что напрямую, что в блок. Можно забрать готовые списки из Zapret — папка только читается.",
+    en: "Rules: what goes through the tunnel, what goes direct, what is blocked. You can import Zapret lists — the folder is read-only.",
+  },
+  hintZapret: {
+    ru: "Zapret — обход блокировок без VPN. Выбери пресет и нажми запуск: маскот покажет, что бывает с РКН. Звук можно выключить справа снизу.",
+    en: "Zapret bypasses blocks without a VPN. Pick a preset and start it: the mascot shows what happens to the censor. Sound can be muted at the bottom right.",
+  },
+  hintStats: {
+    ru: "Сколько прошло через туннель по дням. Столбики — по 7 или 30 дней; данные никуда не уходят.",
+    en: "How much went through the tunnel, day by day. Bars for 7 or 30 days; data never leaves this computer.",
+  },
+  hintLogs: {
+    ru: "Журнал: что делало приложение. Если что-то сломалось — «Экспорт логов» и пришли файл.",
+    en: "The log: what the app did. If something breaks, use Export logs and send the file.",
+  },
+  hintSettings: {
+    ru: "Настройки: защита, звук, обновления. Кнопка «Проверить kill-switch» покажет, реально ли работает блокировка.",
+    en: "Settings: protection, sound, updates. The kill-switch check button shows whether blocking really works.",
+  },
+  soundTitle: { ru: "Звук", en: "Sound" },
+  soundHint: {
+    ru: "Клики, удары и сигналы подключения. Синтезируются на месте — файлов нет, вес не растёт.",
+    en: "Clicks, impacts and connection chimes. Synthesised on the fly — no files, no extra weight.",
+  },
+  soundVolume: { ru: "Громкость", en: "Volume" },
   leakRun: { ru: "Проверить", en: "Check" },
   leakBusy: { ru: "Проверяю…", en: "Checking…" },
   leakV6Ok: { ru: "IPv6 наружу не проходит", en: "IPv6 does not leak" },
