@@ -410,6 +410,12 @@ const dict: Dict = {
   },
   wgPaste: { ru: "Вставь сюда конфиг", en: "Paste the config here" },
   wgAdd: { ru: "Добавить", en: "Add" },
+  warpButton: { ru: "Включить WARP", en: "Turn on WARP" },
+  warpHint: {
+    ru: "Бесплатный WARP от Cloudflare без аккаунта: приложение само зарегистрирует устройство. Добавится как резервный сервер.",
+    en: "Free Cloudflare WARP without an account: the app registers a device itself and adds it as a reserve server.",
+  },
+  warpBusy: { ru: "Регистрирую WARP…", en: "Registering WARP…" },
   wgCancel: { ru: "Отмена", en: "Cancel" },
   wgReserve: { ru: "резерв", en: "reserve" },
   wgReserveHint: {

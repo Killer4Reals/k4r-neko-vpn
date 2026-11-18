@@ -213,10 +213,11 @@ export default function App() {
     setProfiles((list) => list.map((p) => (p.id === id ? { ...p, reserve: !p.reserve } : p)));
   }, []);
 
-  const addWireguard = useCallback(async (text: string) => {
-    const p = await api.wireguardAdd(text);
-    setProfiles((list) => [...list, p]);
-    setSelectedId(p.id);
+  const addWireguard = useCallback(async (text: string | null) => {
+    // null = «зарегистрируй бесплатный WARP сам»
+    const profile = text === null ? await api.warpRegister() : await api.wireguardAdd(text);
+    setProfiles((list) => [...list, profile]);
+    setSelectedId(profile.id);
   }, []);
 
   const selected = useMemo(

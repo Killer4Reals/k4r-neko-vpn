@@ -1,5 +1,5 @@
 {
-  "version": "1.12.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.12.0/K4R.Neko.VPN_1.12.0_x64-setup.exe",
-  "notes": "WireGuard/WARP и резервные серверы"
+  "version": "1.13.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.13.0/K4R.Neko.VPN_1.13.0_x64-setup.exe",
+  "notes": "WARP в один клик: бесплатный резервный сервер без аккаунта"
 }

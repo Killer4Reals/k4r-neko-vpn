@@ -27,7 +27,8 @@ type Props = {
   addSub: (url: string, ua: string, name: string) => void;
   removeSub: (url: string) => void;
   onToggleReserve: (id: string) => void;
-  onAddWireguard: (text: string) => Promise<void>;
+  /** text = конфиг, null = зарегистрировать WARP автоматически */
+  onAddWireguard: (text: string | null) => Promise<void>;
 };
 
 const shortUrl = (u: string) => {
@@ -80,6 +81,8 @@ export function ServersScreen(p: Props) {
   const [wgText, setWgText] = useState("");
   const [wgError, setWgError] = useState("");
   const [wgBusy, setWgBusy] = useState(false);
+  const [warpBusy, setWarpBusy] = useState(false);
+  const [warpNote, setWarpNote] = useState("");
 
   const doImport = async () => {
     await p.onImport(link);
@@ -267,14 +270,38 @@ export function ServersScreen(p: Props) {
             <b>{t("wgTitle")}</b>
             <span>{t("wgHint")}</span>
           </div>
-          <button
-            className="btn"
-            style={{ width: "auto", paddingInline: 14 }}
-            onClick={() => setWgOpen((v) => !v)}
-          >
-            {wgOpen ? t("wgCancel") : t("wgAdd")}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button
+              className="btn primary"
+              style={{ width: "auto", paddingInline: 14 }}
+              disabled={warpBusy}
+              title={t("warpHint")}
+              onClick={async () => {
+                setWarpBusy(true);
+                setWarpNote("");
+                try {
+                  await p.onAddWireguard(null);
+                  setWarpNote("");
+                } catch (e) {
+                  setWarpNote(String(e));
+                } finally {
+                  setWarpBusy(false);
+                }
+              }}
+            >
+              {warpBusy ? t("warpBusy") : t("warpButton")}
+            </button>
+            <button
+              className="btn"
+              style={{ width: "auto", paddingInline: 14 }}
+              onClick={() => setWgOpen((v) => !v)}
+            >
+              {wgOpen ? t("wgCancel") : t("wgAdd")}
+            </button>
+          </div>
         </div>
+        <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>{t("warpHint")}</div>
+        {warpNote && <div className="muted warn-txt" style={{ marginTop: 6 }}>{warpNote}</div>}
         {wgOpen && (
           <div style={{ marginTop: 10 }}>
             <div className="field">
