@@ -372,6 +372,12 @@ fn helper_main() -> i32 {
     let pid_path = apply::pid_path();
     let _ = std::fs::write(&pid_path, std::process::id().to_string());
     apply::log_line("helper стартует");
+    // Защита от убийства процессом того же пользователя без прав: taskkill не
+    // требует UAC, и без этого любой процесс пользователя снимал бы защиту.
+    match ipc::harden_self() {
+        Ok(()) => apply::log_line("DACL процесса: только SYSTEM и администраторы"),
+        Err(e) => apply::log_line(&format!("CRITICAL не смог закрыть процесс: {e}")),
+    }
 
     let keeper = match apply::Keeper::open() {
         Ok(k) => k,

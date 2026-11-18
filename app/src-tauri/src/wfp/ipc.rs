@@ -283,6 +283,71 @@ fn log_denied(pipe: HANDLE) {
     }
 }
 
+/// Защищает helper от убийства процессом того же пользователя без прав.
+///
+/// По умолчанию владелец процесса может его убить независимо от целостности
+/// (taskkill не требует UAC). Для kill-switch это дыра: любая программа,
+/// запущенная от пользователя, снимала бы защиту, просто убив helper. Ставим
+/// на процесс DACL «только SYSTEM и администраторы» — тогда ограниченный токен
+/// получает отказ, а администратор по-прежнему может снять защиту (`--wfp-off`).
+pub fn harden_self() -> Result<(), String> {
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SetSecurityInfo, SE_KERNEL_OBJECT,
+    };
+    use windows_sys::Win32::Security::{
+        GetSecurityDescriptorDacl, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR,
+    };
+
+    // GA — полный доступ; SY — SYSTEM, BA — администраторы.
+    let sddl: Vec<u16> = "D:(A;;GA;;;SY)(A;;GA;;;BA)"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+    // SAFETY: передаём валидную UTF-16 строку и получаем выделенный дескриптор,
+    // который освобождаем LocalFree ниже.
+    unsafe {
+        let ok = ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl.as_ptr(),
+            1, // SDDL_REVISION_1
+            &mut sd,
+            std::ptr::null_mut(),
+        );
+        if ok == 0 {
+            return Err(format!(
+                "не смог собрать DACL: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let mut present = 0i32;
+        let mut defaulted = 0i32;
+        let got = GetSecurityDescriptorDacl(sd, &mut present, &mut dacl, &mut defaulted);
+        if got == 0 || present == 0 {
+            windows_sys::Win32::Foundation::LocalFree(sd as isize as *mut _);
+            return Err("в дескрипторе нет DACL".into());
+        }
+        use windows_sys::Win32::System::Threading::GetCurrentProcess;
+        let rc = SetSecurityInfo(
+            GetCurrentProcess(),
+            SE_KERNEL_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            dacl,
+            std::ptr::null_mut(),
+        );
+        windows_sys::Win32::Foundation::LocalFree(sd as isize as *mut _);
+        if rc != 0 {
+            return Err(format!(
+                "не смог поставить DACL на процесс: {}",
+                std::io::Error::from_raw_os_error(rc as i32)
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub fn current_is_elevated() -> bool {
     unsafe {
         let mut token: HANDLE = std::ptr::null_mut();
