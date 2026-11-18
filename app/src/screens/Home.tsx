@@ -110,10 +110,9 @@ export function HomeScreen(p: Props) {
         <div className="grid-lines" />
         <div className="globe-bg">
           <Globe
-            size={430}
+            size={400}
             target={countryOf(selected.flag || selected.cc)}
             connected={conn === "connected"}
-            label={`${selected.city}${selected.lat ? ` · ${selected.lat} ms` : ""}`}
           />
         </div>
 

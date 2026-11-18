@@ -32,13 +32,14 @@ export function MascotHint({ screen, text, pose = 1, auto = true }: Props) {
   if (hidden) return null;
 
   return (
-    <div className="hint-wrap">
+    <>
       {!open && (
         <button className="hint-fab" onClick={() => setOpen(true)} aria-label="Подсказка">
           ?
         </button>
       )}
       {open && (
+        <div className="hint-wrap">
         <div className="hint-bubble" role="status">
           <img src={`/fx/pose-${pose}.webp`} alt="" draggable={false} />
           <div className="hint-body">
@@ -59,7 +60,8 @@ export function MascotHint({ screen, text, pose = 1, auto = true }: Props) {
             </div>
           </div>
         </div>
+        </div>
       )}
-    </div>
+    </>
   );
 }

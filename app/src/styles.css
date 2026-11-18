@@ -1918,7 +1918,7 @@ input {
 
 .globe-label {
   position: absolute;
-  bottom: 6px;
+  bottom: 54px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 11px;
@@ -1930,11 +1930,11 @@ input {
 
 .globe-bg {
   position: absolute;
-  inset: -30px 0 auto 0;
+  inset: -56px 0 auto 0;
   display: grid;
   place-items: center;
   z-index: 0;
-  opacity: 0.5;
+  opacity: 0.45;
   pointer-events: none;
   mask-image: radial-gradient(circle at 50% 45%, #000 55%, transparent 78%);
   -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 55%, transparent 78%);
@@ -1948,7 +1948,7 @@ input {
 /* ---------- бой с РКН ---------- */
 .fight {
   position: relative;
-  height: 190px;
+  height: 152px;
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 14px;
@@ -1969,10 +1969,10 @@ input {
 .fight-mascot,
 .fight-rkn {
   position: absolute;
-  bottom: 0;
-  height: 88%;
+  bottom: 10px;
+  height: 82%;
   width: auto;
-  max-width: 42%;
+  max-width: 32%;
   object-fit: contain;
   transition: transform 120ms ease-out;
   filter: drop-shadow(0 0 14px rgba(57, 255, 20, 0.35));
@@ -2015,9 +2015,11 @@ input {
 
 .fight-bar {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 8px;
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 8px 12px 18px;
+  background: linear-gradient(to bottom, rgba(8, 6, 12, 0.82), transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2069,6 +2071,10 @@ input {
 }
 
 .hint-fab {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 40;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -2091,6 +2097,7 @@ input {
   border: 1px solid var(--green-line);
   background: linear-gradient(160deg, rgba(20, 12, 28, 0.96), rgba(10, 7, 16, 0.96));
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  color: #E9EEF7;
   animation: hint-in 220ms ease-out;
 }
 
@@ -2105,7 +2112,12 @@ input {
   margin: 0 0 8px;
   font-size: 12.5px;
   line-height: 1.45;
-  color: var(--txt);
+  color: #E9EEF7;
+}
+
+.hint-bubble .ghost-btn {
+  color: #C9D3E4;
+  border-color: rgba(233, 238, 247, 0.18);
 }
 
 .hint-actions {

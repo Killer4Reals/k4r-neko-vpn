@@ -21,6 +21,7 @@ export function FightScene({ active, hits }: Props) {
   const [quiet, setQuiet] = useState(isMuted());
   const timers = useRef<number[]>([]);
   const reduce = useRef(false);
+  const idle = !active && frame === 0;
 
   useEffect(() => {
     reduce.current = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -72,8 +73,8 @@ export function FightScene({ active, hits }: Props) {
   return (
     <div className={`fight${active ? " fight-live" : ""}${flash ? " fight-hit" : ""}`}>
       <img className="fight-hero" src="/fx/hero.webp" alt="" draggable={false} />
-      <img className="fight-mascot" src={KICK[frame]} alt="" draggable={false} />
-      <img className="fight-rkn" src={RKN[Math.min(8, frame)]} alt="" draggable={false} />
+      <img className="fight-mascot" src={idle ? "/fx/pose-2.webp" : KICK[frame]} alt="" draggable={false} />
+      <img className="fight-rkn" src={idle ? RKN[0] : RKN[Math.min(8, frame)]} alt="" draggable={false} />
       {flash && <span className="fight-flash" aria-hidden />}
       <div className="fight-bar">
         <span className="fight-status">{active ? "РКН в нокдауне" : "РКН на страже"}</span>

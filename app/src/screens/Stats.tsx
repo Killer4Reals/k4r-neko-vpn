@@ -23,6 +23,7 @@ export function StatsScreen({ t }: Props) {
   const view = useMemo(() => windowOf(days, span), [days, span]);
   const sum = useMemo(() => totals(view), [view]);
   const peak = Math.max(1, ...view.map((d) => d.down + d.up));
+  const hasData = sum.total > 0;
 
   return (
     <>
@@ -123,7 +124,11 @@ export function StatsScreen({ t }: Props) {
               {t("statsResetYes")}
             </button>
           ) : (
-            <button className="btn" style={{ width: "auto", paddingInline: 14 }} onClick={() => setConfirm(true)}>
+            <button
+              className="ghost-btn"
+              disabled={!hasData}
+              onClick={() => setConfirm(true)}
+            >
               {t("statsReset")}
             </button>
           )}
