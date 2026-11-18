@@ -1,5 +1,5 @@
 {
-  "version": "1.10.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.10.0/K4R.Neko.VPN_1.10.0_x64-setup.exe",
-  "notes": "Обновление ставится само, история автовыбора"
+  "version": "1.11.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.11.0/K4R.Neko.VPN_1.11.0_x64-setup.exe",
+  "notes": "Оркестратор серверов, импорт списков Zapret, игровой режим"
 }

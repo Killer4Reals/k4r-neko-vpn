@@ -4,8 +4,10 @@ import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, nameOf, stripCc } from "./flags";
-import type { ChosenApp, KillSwitchStatus, RouteRule } from "./api";
+import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
 import { isBusy, pickServer } from "./autoSelect";
+import { pairKey, quarantinedIds } from "./orchestrator";
+import { probeOnce } from "./probe";
 import { describe as describeSubError } from "./subError";
 import { describe as describeSrsError } from "./srsError";
 import type { SubInfo, SubSource } from "./api";
@@ -150,6 +152,9 @@ export default function App() {
   const [autoSelect, setAutoSelect] = useState(0);
   const [autoSelectLoss, setAutoSelectLoss] = useState(false);
   const [autoHistory, setAutoHistory] = useState<string[]>([]);
+  // Оркестратор: счётчики «сервер + транспорт» и состояние проб.
+  const [orch, setOrch] = useState<OrchRow[]>([]);
+  const probeFail = useRef(0);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const [subs, setSubs] = useState<SubSource[]>([]);
@@ -159,6 +164,8 @@ export default function App() {
   const [updateUrl, setUpdateUrl] = useState("");
   const [dnsMode, setDnsMode] = useState<"tunnel" | "system">("tunnel");
   const [blockIpv6, setBlockIpv6] = useState(true);
+  const [gameMode, setGameMode] = useState(false);
+  const [gamePorts, setGamePorts] = useState("");
   /// resolver inside the tunnel: "1.1.1.1", "https://dns.google/dns-query" or "tls://..."
   const [dnsServer, setDnsServer] = useState("1.1.1.1");
   const [hotkey, setHotkey] = useState("Ctrl+Alt+V");
@@ -249,6 +256,8 @@ export default function App() {
         if (st.subs) setSubs(st.subs);
         if (st.dns_mode === "system" || st.dns_mode === "tunnel") setDnsMode(st.dns_mode);
         if (typeof st.block_ipv6 === "boolean") setBlockIpv6(st.block_ipv6);
+        if (typeof st.game_mode === "boolean") setGameMode(st.game_mode);
+        if (Array.isArray(st.game_ports)) setGamePorts(st.game_ports.join(", "));
         if (st.hotkey) setHotkey(st.hotkey);
         if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
         if (typeof st.minimize_to_tray === "boolean") setMinimizeToTray(st.minimize_to_tray);
@@ -298,6 +307,11 @@ export default function App() {
           subs,
           dns_mode: dnsMode,
           block_ipv6: blockIpv6,
+          game_mode: gameMode,
+          game_ports: gamePorts
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
           reconnect: true,
           hotkey,
           close_to_tray: closeToTray,
@@ -322,7 +336,7 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
-    subs, dnsMode, blockIpv6, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
+    subs, dnsMode, blockIpv6, gameMode, gamePorts, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
     zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto,
   ]);
@@ -682,7 +696,13 @@ export default function App() {
       }
       const measured = (await measurePing()) ?? lat;
       const all = profiles.map((p) => ({ id: p.id, ms: measured[p.id] ?? null }));
-      const target = pickServer({ id: selectedId, ms: measured[selectedId] ?? null }, all);
+      // Серверы в карантине не рассматриваем: за них уже проголосовали провалы.
+      const blocked = quarantinedIds(orch);
+      const usable = all.filter((m) => !blocked.has(m.id));
+      const target =
+        blocked.has(selectedId) && usable.length > 0
+          ? pickServer(undefined, usable)
+          : pickServer({ id: selectedId, ms: measured[selectedId] ?? null }, usable);
       if (!target || target === selectedId) return;
       const chosen = profiles.find((p) => p.id === target);
       if (!chosen) return;
@@ -706,8 +726,52 @@ export default function App() {
         }, 4000);
       }
     },
-    [conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t],
+    [conn, lat, measurePing, orch, profiles, reconnectTunnel, selectedId, t],
   );
+
+  /**
+   * Проба «туннель реально работает». Ловит самую частую беду: соединение
+   * поднято, а трафик молча выкидывается провайдером (silent drop).
+   */
+  const probeTunnel = useCallback(async () => {
+    if (!inTauri || conn !== "connected") return;
+    const current = profiles.find((p) => p.id === selectedId);
+    if (!current) return;
+    const key = pairKey(current);
+    const res = await probeOnce();
+    if (res.ok) {
+      probeFail.current = 0;
+      const rows = await api.orchestratorRecord(key, true, res.ms).catch(() => undefined);
+      if (rows) setOrch(rows);
+      return;
+    }
+    probeFail.current += 1;
+    if (probeFail.current < 2) return;
+    const rows = await api.orchestratorRecord(key, false, 0).catch(() => undefined);
+    if (rows) setOrch(rows);
+    probeFail.current = 0;
+    setToast({ title: t("autoSelect"), body: t("orchDead") });
+    // Один сервер — только переподключение; несколько — выбираем живой.
+    if (profiles.length > 1) {
+      void autoTick(true);
+    } else {
+      void reconnectTunnel().catch(() => undefined);
+    }
+  }, [autoTick, conn, profiles, reconnectTunnel, selectedId, t]);
+
+  // Пока туннель поднят — раз в 15 секунд проверяем, что интернет реально идёт.
+  useEffect(() => {
+    if (!inTauri || conn !== "connected") {
+      probeFail.current = 0;
+      return;
+    }
+    const id = window.setInterval(() => void probeTunnel(), 15_000);
+    const first = window.setTimeout(() => void probeTunnel(), 4_000);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(first);
+    };
+  }, [conn, probeTunnel]);
 
   // Таймер: перемеряем раз в N минут, пока туннель поднят.
   useEffect(() => {
@@ -746,6 +810,7 @@ export default function App() {
         );
     void poll();
     api.autoHistoryGet().then(setAutoHistory).catch(() => undefined);
+    api.orchestratorList().then(setOrch).catch(() => undefined);
     const id = window.setInterval(poll, 3000);
     let un: (() => void) | undefined;
     import("@tauri-apps/api/event")
@@ -1141,6 +1206,8 @@ export default function App() {
               autoSelect={autoSelect}
               setAutoSelect={setAutoSelect}
               autoHistory={autoHistory}
+              orch={orch}
+              onOrchReset={() => api.orchestratorReset().then(setOrch).catch(() => undefined)}
               autoSelectLoss={autoSelectLoss}
               setAutoSelectLoss={setAutoSelectLoss}
               autostart={autostart}
@@ -1154,6 +1221,10 @@ export default function App() {
               dnsServer={dnsServer}
               setDnsServer={setDnsServer}
               blockIpv6={blockIpv6}
+              gameMode={gameMode}
+              setGameMode={setGameMode}
+              gamePorts={gamePorts}
+              setGamePorts={setGamePorts}
               setBlockIpv6={setBlockIpv6}
               closeToTray={closeToTray}
               setCloseToTray={setCloseToTray}

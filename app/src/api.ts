@@ -15,6 +15,27 @@ export type Profile = {
   fingerprint: string;
 };
 
+/** Строка статистики оркестратора (пара «сервер + транспорт»). */
+export type OrchRow = {
+  key: string;
+  ok: number;
+  fail: number;
+  latency_ms: number;
+  score: number;
+  quarantined: boolean;
+};
+
+/** Что нашлось в папке zapret (только чтение). */
+export type ZapretScan = {
+  dir: string;
+  domains: number;
+  google: number;
+  excluded: number;
+  ips: number;
+  excluded_ips: number;
+  exists: boolean;
+};
+
 export type SubResult = {
   profiles: Profile[];
   warnings: string[];
@@ -66,6 +87,13 @@ export const api = {
   killSwitchStatus: () => invoke<KillSwitchStatus>("kill_switch_status"),
   killSwitchSet: (on: boolean) => invoke<KillSwitchStatus>("kill_switch_set", { on }),
   killSwitchSelfcheck: () => invoke<KsCheck[]>("kill_switch_selfcheck"),
+  zapretScan: (dir: string) => invoke<ZapretScan>("zapret_scan", { dir }),
+  zapretImport: (dir: string, includeIps: boolean) =>
+    invoke<{ rules: RouteRule[]; skipped: number }>("zapret_import", { dir, includeIps }),
+  orchestratorList: () => invoke<OrchRow[]>("orchestrator_list"),
+  orchestratorRecord: (key: string, success: boolean, latencyMs: number) =>
+    invoke<OrchRow[]>("orchestrator_record", { key, success, latencyMs }),
+  orchestratorReset: () => invoke<OrchRow[]>("orchestrator_reset"),
   autoHistoryGet: () => invoke<string[]>("auto_history_get"),
   autoHistoryAdd: (line: string) => invoke<string[]>("auto_history_add", { line }),
   engineStatus: () => invoke<EngineStatus>("engine_status"),
@@ -189,4 +217,6 @@ export type AppState = {
   rules?: RouteRule[];
   route_ru_direct?: boolean;
   route_block_ads?: boolean;
+  game_mode?: boolean;
+  game_ports?: string[];
 };

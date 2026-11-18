@@ -1,5 +1,7 @@
 import { useState } from "react";
-import type { RouteRule } from "../api";
+import { api } from "../api";
+import type { RouteRule, ZapretScan } from "../api";
+import { mergeRules } from "../rulesMerge";
 
 type Props = {
   t: (k: string) => string;
@@ -50,6 +52,12 @@ export function RouteScreen({
   const [action, setAction] = useState<RouteRule["action"]>("direct");
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
+  // Импорт списков zapret: только чтение чужой папки.
+  const [zpDir, setZpDir] = useState(() => localStorage.getItem("k4r-zapret-dir") || "");
+  const [zpScan, setZpScan] = useState<ZapretScan | null>(null);
+  const [zpIps, setZpIps] = useState(false);
+  const [zpBusy, setZpBusy] = useState(false);
+  const [zpNote, setZpNote] = useState("");
 
   const add = () => {
     const v = value.trim();
@@ -90,6 +98,84 @@ export function RouteScreen({
       <div className="page-head">
         <h1>{t("routeTitle")}</h1>
         <p>{t("routeSub")}</p>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row" style={{ display: "block" }}>
+          <div className="txt" style={{ maxWidth: 560 }}>
+            <b>{t("zpImportTitle")}</b>
+            <span>{t("zpImportHint")}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <input
+              className="input"
+              style={{ flex: 1, minWidth: 280 }}
+              value={zpDir}
+              spellCheck={false}
+              placeholder="C:\Users\you\Desktop\zapret-discord-youtube-main"
+              onChange={(e) => setZpDir(e.target.value)}
+              aria-label={t("zpImportTitle")}
+            />
+            <button
+              className="btn"
+              style={{ width: "auto", paddingInline: 14 }}
+              disabled={zpBusy}
+              onClick={async () => {
+                const dir = zpDir.trim();
+                if (!dir) {
+                  setZpNote(t("zpImportNeedDir"));
+                  return;
+                }
+                localStorage.setItem("k4r-zapret-dir", dir);
+                setZpBusy(true);
+                try {
+                  const res = await api.zapretScan(dir);
+                  setZpScan(res);
+                  setZpNote(
+                    res.exists
+                      ? `домены: ${res.domains + res.google}, исключения: ${res.excluded}, адреса: ${res.ips}`
+                      : t("zpImportMissing"),
+                  );
+                } catch (e) {
+                  setZpNote(String(e));
+                } finally {
+                  setZpBusy(false);
+                }
+              }}
+            >
+              {t("zpImportScan")}
+            </button>
+            <button
+              className="btn primary"
+              style={{ width: "auto", paddingInline: 14 }}
+              disabled={zpBusy || !zpScan?.exists}
+              onClick={async () => {
+                setZpBusy(true);
+                try {
+                  const res = await api.zapretImport(zpDir.trim(), zpIps);
+                  const merged = mergeRules(rules, res.rules);
+                  setRules(merged.rules);
+                  setZpNote(`${t("zpImportDone")}: ${merged.added}`);
+                } catch (e) {
+                  setZpNote(String(e));
+                } finally {
+                  setZpBusy(false);
+                }
+              }}
+            >
+              {t("zpImportDo")}
+            </button>
+          </div>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, fontSize: 12 }}>
+            <input type="checkbox" checked={zpIps} onChange={(e) => setZpIps(e.target.checked)} />
+            {t("zpImportIps")}
+          </label>
+          {zpNote && (
+            <div className="muted" style={{ marginTop: 8 }}>
+              {zpNote}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>

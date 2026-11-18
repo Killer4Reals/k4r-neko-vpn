@@ -72,6 +72,20 @@ impl Default for Engine {
     }
 }
 
+/// Игровые и голосовые порты по умолчанию: Steam, Discord RTC, STUN, консоли.
+/// Список намеренно узкий: «всё выше 1024» отправило бы мимо туннеля весь
+/// интернет, и VPN стал бы бесполезным.
+pub const GAME_PORTS: &[&str] = &[
+    "27015:27050", // Steam / Source / CS2 / TF2
+    "3478:3481",   // STUN: голос и NAT-пробивка
+    "50000:50100", // Discord voice (RTC)
+    "19294:19344", // Discord voice (альтернативный диапазон)
+    "3074",        // Xbox Live
+    "3659",        // Battlefield / EA
+    "10000:10100", // Riot / Valorant
+    "5000:5500",   // Riot launcher / League
+];
+
 /// Choices that change the generated config but not the server.
 #[derive(Debug, Clone)]
 pub struct NetOptions {
@@ -99,6 +113,9 @@ pub struct NetOptions {
     pub route_ru_direct: bool,
     /// Реклама и трекеры — в блок
     pub route_block_ads: bool,
+    /// Игровой режим: эти порты идут напрямую, мимо туннеля
+    pub game_mode: bool,
+    pub game_ports: Vec<String>,
     /// Где ядро хранит скачанные списки; пусто — без кэша
     pub cache_path: String,
 }
@@ -118,6 +135,8 @@ impl Default for NetOptions {
             rules: Vec::new(),
             route_ru_direct: false,
             route_block_ads: false,
+            game_mode: false,
+            game_ports: Vec::new(),
             cache_path: String::new(),
         }
     }
@@ -236,6 +255,19 @@ pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -
             _ => continue,
         }
         rules.push(one);
+    }
+    if opts.game_mode {
+        // Игры и голос — напрямую: задержка важнее, а прятать игровой трафик
+        // в туннеле всё равно бессмысленно.
+        let ports: Vec<String> = opts
+            .game_ports
+            .iter()
+            .map(|p| p.trim().replace('-', ":"))
+            .filter(|p| !p.is_empty())
+            .collect();
+        if !ports.is_empty() {
+            rules.push(json!({ "port": ports, "outbound": "direct" }));
+        }
     }
     if opts.route_ru_direct {
         rules.push(json!({ "rule_set": ["ru-domains", "ru-ips"], "outbound": "direct" }));
@@ -1192,6 +1224,40 @@ mod tests {
     }
 
     #[test]
+    fn game_mode_sends_its_ports_direct() {
+        // Игровой режим не должен утаскивать в туннель голос и игровые порты.
+        let opts = NetOptions {
+            game_mode: true,
+            game_ports: GAME_PORTS.iter().map(|p| p.to_string()).collect(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let game = rules
+            .iter()
+            .find(|r| r.get("port").is_some())
+            .expect("game rule");
+        assert_eq!(game["outbound"], "direct");
+        let ports: Vec<String> = game["port"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(ports.iter().any(|p| p == "27015:27050"));
+        // Разделитель обязан быть в формате sing-box, а не дефисом.
+        assert!(ports.iter().all(|p| !p.contains('-')));
+    }
+
+    #[test]
+    fn game_mode_off_adds_no_port_rule() {
+        let opts = NetOptions::default();
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        assert!(!rules.iter().any(|r| r.get("port").is_some()));
+    }
+
+    #[test]
     fn ru_direct_preset_adds_lists_and_cache() {
         let opts = NetOptions {
             route_ru_direct: true,
@@ -1221,6 +1287,8 @@ mod tests {
 
         let opts = NetOptions {
             route_block_ads: true,
+            game_mode: false,
+            game_ports: Vec::new(),
             ..NetOptions::default()
         };
         let cfg = build_config(&sample(), &[], &opts);

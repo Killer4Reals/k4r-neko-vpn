@@ -17,6 +17,12 @@ type Props = {
   autoSelect: number;
   setAutoSelect: (v: number) => void;
   autoHistory: string[];
+  gameMode: boolean;
+  setGameMode: (v: boolean) => void;
+  gamePorts: string;
+  setGamePorts: (v: string) => void;
+  orch: import("../api").OrchRow[];
+  onOrchReset: () => void;
   autoSelectLoss: boolean;
   setAutoSelectLoss: (v: boolean) => void;
   autostart: boolean;
@@ -366,6 +372,57 @@ export function SettingsScreen(p: Props) {
             </div>
           </div>
         )}
+        <div className="row">
+          <div className="txt">
+            <b>{t("gameTitle")}</b>
+            <span>{t("gameHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={p.gameMode}
+            onClick={() => p.setGameMode(!p.gameMode)}
+          />
+        </div>
+        {p.gameMode && (
+          <div className="row" style={{ display: "block" }}>
+            <div className="txt" style={{ maxWidth: 520 }}>
+              <b>{t("gamePorts")}</b>
+            </div>
+            <input
+              className="input"
+              style={{ marginTop: 8, maxWidth: 520 }}
+              value={p.gamePorts}
+              spellCheck={false}
+              placeholder="27015-27050, 3478-3481, 50000-50100"
+              onChange={(e) => p.setGamePorts(e.target.value)}
+              aria-label={t("gamePorts")}
+            />
+          </div>
+        )}
+        <div className="row" style={{ display: "block" }}>
+          <div className="txt" style={{ maxWidth: 560 }}>
+            <b>{t("orchTitle")}</b>
+            <span>{t("orchHint")}</span>
+            {p.orch.length === 0 ? (
+              <span style={{ color: "var(--txt-3)", fontSize: 12 }}>{t("orchEmpty")}</span>
+            ) : (
+              p.orch.slice(0, 6).map((row) => {
+                const name = row.key.split("|")[0];
+                const transport = row.key.split("|").slice(1).filter(Boolean).join("/") || "tcp";
+                const good = Math.round(row.score * 100);
+                return (
+                  <span key={row.key} style={{ color: "var(--txt-3)", fontSize: 12 }}>
+                    {name} · {transport} — {good}% ({row.ok}/{row.ok + row.fail}), {row.latency_ms} мс
+                    {row.quarantined ? ` · ${t("orchQuarantine")}` : ""}
+                  </span>
+                );
+              })
+            )}
+            <button className="ghost-btn" style={{ marginTop: 8 }} onClick={p.onOrchReset}>
+              {t("orchReset")}
+            </button>
+          </div>
+        </div>
         <div className="row">
           <div className="txt">
             <b>{t("autoSelectLoss")}</b>

@@ -82,6 +82,13 @@ pub struct AppState {
     /// Реклама и трекеры — в блок
     #[serde(default)]
     pub route_block_ads: bool,
+    /// Игровой режим: игровой и голосовой трафик идёт напрямую, мимо туннеля.
+    /// Так меньше задержка и не рвётся голос, когда VPN переключается.
+    #[serde(default)]
+    pub game_mode: bool,
+    /// Порты игрового режима. Пусто — берём встроенный список.
+    #[serde(default)]
+    pub game_ports: Vec<String>,
     /// 0 = written before the settings existed; bumped when defaults change
     pub schema: u32,
 }

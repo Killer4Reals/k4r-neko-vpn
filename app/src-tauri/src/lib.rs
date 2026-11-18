@@ -9,8 +9,10 @@ pub mod single;
 pub mod store;
 pub mod subscription;
 #[cfg(windows)]
+pub mod orchestrator;
 pub mod wfp;
 pub mod zapret;
+pub mod zapret_lists;
 
 use probe::PingResult;
 use serde::Serialize;
@@ -780,6 +782,42 @@ fn auto_history_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(data_dir(app)?.join("auto_history.json"))
 }
 
+/// Оркестратор: что мы знаем про пары «сервер + транспорт».
+/// Показать, что лежит в папке zapret, ничего там не меняя.
+#[tauri::command]
+fn zapret_scan(dir: String) -> zapret_lists::Scan {
+    zapret_lists::scan(&dir)
+}
+
+/// Превратить списки zapret в наши правила маршрутизации.
+#[tauri::command]
+fn zapret_import(dir: String, include_ips: bool) -> zapret_lists::Imported {
+    zapret_lists::import(&dir, include_ips)
+}
+
+#[tauri::command]
+fn orchestrator_list(app: tauri::AppHandle) -> Result<Vec<orchestrator::Row>, String> {
+    let dir = data_dir(&app)?;
+    Ok(orchestrator::rows(&orchestrator::load(&dir)))
+}
+
+#[tauri::command]
+fn orchestrator_record(
+    app: tauri::AppHandle,
+    key: String,
+    success: bool,
+    latency_ms: u32,
+) -> Result<Vec<orchestrator::Row>, String> {
+    let dir = data_dir(&app)?;
+    Ok(orchestrator::record(&dir, &key, success, latency_ms))
+}
+
+#[tauri::command]
+fn orchestrator_reset(app: tauri::AppHandle) -> Result<Vec<orchestrator::Row>, String> {
+    let dir = data_dir(&app)?;
+    Ok(orchestrator::reset(&dir))
+}
+
 #[tauri::command]
 fn auto_history_get(app: tauri::AppHandle) -> Vec<String> {
     let Ok(path) = auto_history_path(&app) else {
@@ -896,6 +934,12 @@ fn engine_start(
         rules: saved.rules.clone(),
         route_ru_direct: saved.route_ru_direct,
         route_block_ads: saved.route_block_ads,
+        game_mode: saved.game_mode,
+        game_ports: if saved.game_ports.is_empty() {
+            engine::GAME_PORTS.iter().map(|p| p.to_string()).collect()
+        } else {
+            saved.game_ports.clone()
+        },
         // Кэш списков рядом с данными приложения: папка установки только для чтения
         cache_path: data_dir(&app)?.join("rule-sets.db").display().to_string(),
     };
@@ -1953,6 +1997,11 @@ pub fn run() {
             dns_leak,
             kill_switch_status,
             kill_switch_selfcheck,
+            zapret_scan,
+            zapret_import,
+            orchestrator_list,
+            orchestrator_record,
+            orchestrator_reset,
             auto_history_get,
             auto_history_add,
             kill_switch_set,
