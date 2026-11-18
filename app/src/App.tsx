@@ -144,6 +144,7 @@ export default function App() {
   // поведение тем, кто уже настроил сервер руками.
   const [autoSelect, setAutoSelect] = useState(0);
   const [autoSelectLoss, setAutoSelectLoss] = useState(false);
+  const [autoHistory, setAutoHistory] = useState<string[]>([]);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const [subs, setSubs] = useState<SubSource[]>([]);
@@ -686,6 +687,12 @@ export default function App() {
         title: t("autoSelect"),
         body: `${t("autoSelectSwitched")} ${chosen.name || chosen.host}`,
       });
+      {
+        const from = profiles.find((p) => p.id === selectedId);
+        const stamp = new Date().toLocaleString();
+        const line = `${stamp}  ${from?.name || selectedId} -> ${chosen.name || chosen.host}`;
+        api.autoHistoryAdd(line).then(setAutoHistory).catch(() => undefined);
+      }
       try {
         await reconnectTunnel();
       } finally {
@@ -733,6 +740,7 @@ export default function App() {
           setKsState({ state: "unavailable", tun: false, filters: 0, message: String(e) }),
         );
     void poll();
+    api.autoHistoryGet().then(setAutoHistory).catch(() => undefined);
     const id = window.setInterval(poll, 3000);
     let un: (() => void) | undefined;
     import("@tauri-apps/api/event")
@@ -1065,6 +1073,7 @@ export default function App() {
               connected={conn === "connected"}
               autoSelect={autoSelect}
               setAutoSelect={setAutoSelect}
+              autoHistory={autoHistory}
               autoSelectLoss={autoSelectLoss}
               setAutoSelectLoss={setAutoSelectLoss}
               autostart={autostart}

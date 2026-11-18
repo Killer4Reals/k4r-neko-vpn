@@ -16,6 +16,7 @@ type Props = {
   connected: boolean;
   autoSelect: number;
   setAutoSelect: (v: number) => void;
+  autoHistory: string[];
   autoSelectLoss: boolean;
   setAutoSelectLoss: (v: boolean) => void;
   autostart: boolean;
@@ -353,6 +354,18 @@ export function SettingsScreen(p: Props) {
             ))}
           </div>
         </div>
+        {p.autoHistory.length > 0 && (
+          <div className="row" style={{ display: "block" }}>
+            <div className="txt" style={{ maxWidth: 560 }}>
+              <b>{t("autoSelectHistory")}</b>
+              {p.autoHistory.slice(-5).reverse().map((line, i) => (
+                <span key={i} style={{ color: "var(--txt-3)", fontSize: 12 }}>
+                  {line}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="row">
           <div className="txt">
             <b>{t("autoSelectLoss")}</b>

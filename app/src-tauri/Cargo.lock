@@ -1994,7 +1994,7 @@ dependencies = [
 
 [[package]]
 name = "k4r-neko-vpn"
-version = "1.8.3"
+version = "1.9.0"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",

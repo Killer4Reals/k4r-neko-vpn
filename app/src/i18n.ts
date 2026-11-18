@@ -397,6 +397,7 @@ const dict: Dict = {
     en: "Re-measure as soon as the tunnel drops, without waiting for the timer",
   },
   autoSelectSwitched: { ru: "Автовыбор: переключил на", en: "Auto-select: switched to" },
+  autoSelectHistory: { ru: "Последние переключения", en: "Recent switches" },
   busyLater: {
     ru: "канал занят, переключение отложено до паузы",
     en: "the link is busy, switching postponed until it idles",

@@ -124,6 +124,50 @@ fn dump_main() -> i32 {
     }
 }
 
+/// Имя задачи в планировщике: по ней защита возвращается после перезагрузки.
+const TASK_NAME: &str = "K4R Neko VPN kill-switch";
+
+/// Ставит задачу «запустить helper при входе в Windows».
+///
+/// WFP-фильтры живут в ядре, но только пока жив helper: после ребута его нет.
+/// Задача поднимает его с правами администратора, и защита возвращается даже
+/// если само приложение не запущено.
+pub fn task_install() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let tr = format!("\"{}\" --wfp-helper", exe.display());
+    let out = std::process::Command::new("schtasks")
+        .args([
+            "/create",
+            "/f",
+            "/tn",
+            TASK_NAME,
+            "/tr",
+            &tr,
+            "/sc",
+            "onlogon",
+            "/rl",
+            "highest",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => apply::log_line("задача «защита при входе» поставлена"),
+        Ok(o) => apply::log_line(&format!(
+            "не смог поставить задачу: {}",
+            String::from_utf8_lossy(&o.stderr).trim()
+        )),
+        Err(e) => apply::log_line(&format!("не смог поставить задачу: {e}")),
+    }
+}
+
+/// Убирает задачу: защита больше не нужна.
+pub fn task_remove() {
+    let _ = std::process::Command::new("schtasks")
+        .args(["/delete", "/f", "/tn", TASK_NAME])
+        .output();
+}
+
 /// Включить защиту: поднять helper (если нужно) и применить план.
 pub fn enable(opts: PlanOpts) -> Result<Status, String> {
     if let Ok(mut guard) = OPTS.lock() {
@@ -132,13 +176,18 @@ pub fn enable(opts: PlanOpts) -> Result<Status, String> {
     WANTED.store(true, Ordering::SeqCst);
     clear_lost();
     match ask_apply(&opts) {
-        Ok(response) => Ok(status_from(response)),
+        Ok(response) => {
+            task_install();
+            Ok(status_from(response))
+        }
         Err(first) => {
             // Helper мог не быть запущен: пробуем поднять и повторить.
             spawn_helper()?;
-            ask_apply(&opts)
+            let status = ask_apply(&opts)
                 .map(status_from)
-                .map_err(|e| format!("{first}; после запуска helper'а: {e}"))
+                .map_err(|e| format!("{first}; после запуска helper'а: {e}"))?;
+            task_install();
+            Ok(status)
         }
     }
 }
@@ -147,6 +196,7 @@ pub fn enable(opts: PlanOpts) -> Result<Status, String> {
 pub fn disable() -> Result<(), String> {
     WANTED.store(false, Ordering::SeqCst);
     clear_lost();
+    task_remove();
     match ipc::ask(&Request::Disable) {
         Ok(r) if r.ok => Ok(()),
         Ok(r) => Err(r.message),

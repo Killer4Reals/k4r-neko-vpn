@@ -1,5 +1,5 @@
 {
-  "version": "1.8.4",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.8.4/K4R.Neko.VPN_1.8.4_x64-setup.exe",
-  "notes": "Защита helper-процесса от убийства без прав, самодиагностика kill-switch"
+  "version": "1.9.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.9.0/K4R.Neko.VPN_1.9.0_x64-setup.exe",
+  "notes": "Защита включается после перезагрузки, история автовыбора"
 }

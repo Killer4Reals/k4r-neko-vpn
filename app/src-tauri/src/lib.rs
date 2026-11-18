@@ -756,6 +756,43 @@ fn kill_switch_selfcheck(app: tauri::AppHandle) -> Result<serde_json::Value, Str
         .collect::<Vec<_>>()))
 }
 
+/// История автовыбора лежит отдельно от состояния: её пишет и читает только
+/// приложение, а общий `state_save` не должен её затирать.
+fn auto_history_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("auto_history.json"))
+}
+
+#[tauri::command]
+fn auto_history_get(app: tauri::AppHandle) -> Vec<String> {
+    let Ok(path) = auto_history_path(&app) else {
+        return Vec::new();
+    };
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn auto_history_add(app: tauri::AppHandle, line: String) -> Vec<String> {
+    let Ok(path) = auto_history_path(&app) else {
+        return Vec::new();
+    };
+    let mut list = auto_history_get(app.clone());
+    list.push(line);
+    // Храним последние 10: больше в настройках всё равно не покажем.
+    while list.len() > 10 {
+        list.remove(0);
+    }
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(&list) {
+        let _ = std::fs::write(path, text);
+    }
+    list
+}
+
 #[tauri::command]
 fn kill_switch_status() -> wfp::Status {
     wfp::status()
@@ -1719,7 +1756,10 @@ pub fn run() {
                 std::thread::spawn(move || {
                     let Ok(dir) = data_dir(&handle) else { return };
                     let saved = store::load(&dir);
-                    if saved.kill_switch && wfp::ipc::alive() {
+                    // Kill-switch включён в настройках → защита обязана стоять и
+                    // после перезагрузки: включаем её, даже если helper'а нет
+                    // (enable поднимет его и поставит задачу на вход в Windows).
+                    if saved.kill_switch {
                         let opts = wfp_opts(&handle, &saved);
                         let _ = wfp::enable(opts);
                     }
@@ -1894,6 +1934,8 @@ pub fn run() {
             dns_leak,
             kill_switch_status,
             kill_switch_selfcheck,
+            auto_history_get,
+            auto_history_add,
             kill_switch_set,
             update_download,
             speed_test,
