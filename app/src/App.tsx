@@ -7,6 +7,7 @@ import { ccFromName, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, RouteRule } from "./api";
 import { isBusy, pickServer } from "./autoSelect";
 import { describe as describeSubError } from "./subError";
+import { describe as describeSrsError } from "./srsError";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -425,6 +426,21 @@ export default function App() {
     setConn("idle");
   }, []);
 
+  /**
+   * Текст ошибки запуска движка. Списки маршрутизации (.srs) качает само ядро,
+   * и раньше их беды выглядели как «движок не запустился». Если блокировка ОС
+   * включена, добавляем ту же подсказку, что и для подписок.
+   */
+  const engineErrorText = useCallback(
+    (raw: string) => {
+      const srs = describeSrsError(raw);
+      const base = srs ?? raw;
+      const blocked = ksState.state === "on" && conn !== "connected";
+      return blocked ? `${base} ${t("ksBlockedNet")}` : base;
+    },
+    [conn, ksState.state, t],
+  );
+
   const startTunnel = useCallback(async () => {
     setError("");
     setConn("connecting");
@@ -448,10 +464,10 @@ export default function App() {
           via,
         );
         setConn(st.state === "running" ? "connected" : "error");
-        if (st.state !== "running") setError(st.message);
+        if (st.state !== "running") setError(engineErrorText(st.message));
       } catch (e) {
         setConn("error");
-        setError(String(e));
+        setError(engineErrorText(String(e)));
       }
       return;
     }
