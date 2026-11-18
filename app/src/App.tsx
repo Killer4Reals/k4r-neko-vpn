@@ -108,6 +108,11 @@ export default function App() {
   const [routeRu, setRouteRu] = useState(false);
   const [routeAds, setRouteAds] = useState(false);
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
+  // Автообновление: тихо проверяем версию и показываем баннер, если вышла новая.
+  const [upd, setUpd] = useState<{ version: string; url: string } | null>(null);
+  const [updBusy, setUpdBusy] = useState(false);
+  const [ver, setVer] = useState("");
+  const autoUpd = useRef(false);
   /// real counters from the engine, never a made-up number
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
   const [tgProxy, setTgProxy] = useState(false);
@@ -840,6 +845,46 @@ export default function App() {
     setToast({ title, body });
   }, [conn, notifyOn, selected, error, t]);
 
+  useEffect(() => {
+    api.appVersion().then(setVer).catch(() => undefined);
+  }, []);
+
+  // Тихая проверка обновлений: один раз за запуск, через 12 секунд после старта,
+  // чтобы не мешать подключению. При включённой защите без VPN сеть закрыта —
+  // тогда молчим, обход защиты не делаем.
+  useEffect(() => {
+    if (autoUpd.current) return;
+    autoUpd.current = true;
+    const id = window.setTimeout(async () => {
+      if (!updateUrl.trim()) return;
+      if (killSwitch && conn !== "connected") return;
+      try {
+        const res = await api.updateCheck(updateUrl, ver || (await api.appVersion()));
+        if (!res) return;
+        const skipped = localStorage.getItem("k4r-skip-update");
+        if (skipped === res.version) return;
+        setUpd({ version: res.version, url: res.url });
+      } catch {
+        // нет сети или адрес не задан — это не ошибка для человека
+      }
+    }, 12000);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startUpdate = async () => {
+    if (!upd || updBusy) return;
+    setUpdBusy(true);
+    setToast({ title: t("updReadyTitle"), body: t("updInstalling") });
+    try {
+      const path = await api.updateDownload(upd.url);
+      await api.updateInstall(path);
+    } catch (e) {
+      setUpdBusy(false);
+      setToast({ title: t("updReadyTitle"), body: String(e) });
+    }
+  };
+
   // the card fades away by itself, like a toast should
   useEffect(() => {
     if (!toast) return;
@@ -962,6 +1007,28 @@ export default function App() {
           <button className="btn primary" style={{ width: "auto", paddingInline: 14 }} onClick={() => api.relaunchAdmin()}>
             Перезапустить как администратор
           </button>
+        </div>
+      )}
+
+      {upd && (
+        <div className="banner">
+          <span>
+            <b>{t("updReadyTitle")}</b> {upd.version} — {t("updReadyBody")}
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn primary" style={{ width: "auto", paddingInline: 14 }} disabled={updBusy} onClick={startUpdate}>
+              {updBusy ? "…" : t("updInstall")}
+            </button>
+            <button
+              className="ghost-btn"
+              onClick={() => {
+                localStorage.setItem("k4r-skip-update", upd.version);
+                setUpd(null);
+              }}
+            >
+              {t("updLater")}
+            </button>
+          </div>
         </div>
       )}
 

@@ -89,6 +89,7 @@ export const api = {
   coreUpdate: (version: string) => invoke<string>("core_update", { version }),
   coreReset: () => invoke<string>("core_reset"),
   updateDownload: (url: string) => invoke<string>("update_download", { url }),
+  updateInstall: (path: string) => invoke<void>("update_install", { path }),
   zapretSettings: () =>
     invoke<{
       dir: string;

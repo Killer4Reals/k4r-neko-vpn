@@ -695,6 +695,24 @@ async fn update_download(url: String) -> Result<String, String> {
     .map_err(|e| format!("задача упала: {e}"))?
 }
 
+/// Запустить скачанный установщик и выйти: иначе Windows не даст заменить файлы.
+#[tauri::command]
+fn update_install(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let file = std::path::PathBuf::from(&path);
+    if !file.is_file() {
+        return Err("установщик не найден — скачайте обновление заново".into());
+    }
+    std::process::Command::new(&file)
+        .spawn()
+        .map_err(|e| format!("не смог запустить установщик: {e}"))?;
+    // Даём установщику мгновение встать в очередь и закрываемся.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        app.exit(0);
+    });
+    Ok(())
+}
+
 #[tauri::command]
 fn install_id(app: tauri::AppHandle) -> Result<String, String> {
     Ok(store::install_id(&data_dir(&app)?))
@@ -1928,6 +1946,7 @@ pub fn run() {
             profiles_import,
             probe_ping,
             update_check,
+            update_install,
             my_ip,
             state_export,
             state_import,
