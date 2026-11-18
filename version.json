@@ -1,5 +1,5 @@
 {
-  "version": "1.13.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.13.0/K4R.Neko.VPN_1.13.0_x64-setup.exe",
-  "notes": "WARP в один клик: бесплатный резервный сервер без аккаунта"
+  "version": "1.14.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.14.0/K4R.Neko.VPN_1.14.0_x64-setup.exe",
+  "notes": "Статистика по дням, проверка утечек IPv6/DNS/выхода, полировка"
 }

@@ -3,6 +3,7 @@
 
 pub mod engine;
 pub mod health;
+pub mod leak;
 pub mod netwatch;
 pub mod probe;
 pub mod single;
@@ -1377,6 +1378,21 @@ fn stats_add(app: tauri::AppHandle, day: String, down: u64, up: u64) -> Result<(
         .map_err(|e| format!("не смог сохранить статистику: {e}"))
 }
 
+/// Проверка утечек: IPv6, адрес выхода, DNS-резолвер.
+#[tauri::command]
+async fn leak_check() -> Result<leak::LeakReport, String> {
+    tauri::async_runtime::spawn_blocking(leak::check)
+        .await
+        .map_err(|e| format!("задача упала: {e}"))
+}
+
+/// Сброс статистики трафика: только локальные цифры.
+#[tauri::command]
+fn stats_reset(app: tauri::AppHandle) -> Result<(), String> {
+    let path = stats_path(&app)?;
+    std::fs::write(path, "{}").map_err(|e| format!("не смог очистить статистику: {e}"))
+}
+
 #[tauri::command]
 fn stats_read(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let map = stats_load(&app);
@@ -2043,6 +2059,8 @@ pub fn run() {
             speed_test,
             zapret_settings,
             stats_add,
+            stats_reset,
+            leak_check,
             stats_read,
             app_version,
             open_url,

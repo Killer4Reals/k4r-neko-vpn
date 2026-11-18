@@ -25,6 +25,17 @@ export type Profile = {
   reserve?: boolean;
 };
 
+/** Результат проверки утечек. */
+export type LeakReport = {
+  ipv6_blocked: boolean;
+  ipv6_detail: string;
+  exit_ip: string;
+  exit_colo: string;
+  exit_detail: string;
+  dns_resolver: string;
+  dns_detail: string;
+};
+
 /** Строка статистики оркестратора (пара «сервер + транспорт»). */
 export type OrchRow = {
   key: string;
@@ -139,6 +150,8 @@ export const api = {
   statsAdd: (day: string, down: number, up: number) =>
     invoke<void>("stats_add", { day, down: Math.round(down), up: Math.round(up) }),
   statsRead: () => invoke<{ day: string; down: number; up: number }[]>("stats_read"),
+  statsReset: () => invoke<void>("stats_reset"),
+  leakCheck: () => invoke<LeakReport>("leak_check"),
   speedTest: () =>
     invoke<{ bytes: number; seconds: number; mbytes_per_second: number }>("speed_test"),
   updateCheck: (manifestUrl: string, current: string) =>

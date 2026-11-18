@@ -30,10 +30,11 @@ import { SplitScreen } from "./screens/Split";
 import { RouteScreen } from "./screens/Route";
 import { ZapretScreen } from "./screens/Zapret";
 import { SettingsScreen } from "./screens/Settings";
+import { StatsScreen } from "./screens/Stats";
 import { LogsScreen } from "./screens/Logs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-export type Screen = "home" | "servers" | "split" | "route" | "zapret" | "logs" | "settings";
+export type Screen = "home" | "servers" | "split" | "route" | "zapret" | "stats" | "logs" | "settings";
 export type Theme = "dark" | "light" | "mascot";
 
 const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
@@ -42,6 +43,7 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "split", key: "navSplit", icon: SplitIcon },
   { id: "route", key: "navRoute", icon: RouteIcon },
   { id: "zapret", key: "navZapret", icon: ShieldIcon },
+  { id: "stats", key: "navStats", icon: RouteIcon },
   { id: "logs", key: "navLogs", icon: LogIcon },
   { id: "settings", key: "navSettings", icon: GearIcon },
 ];
@@ -1185,6 +1187,7 @@ export default function App() {
             />
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
+          {screen === "stats" && <StatsScreen t={t} />}
           {screen === "route" && (
             <RouteScreen
               t={t}
@@ -1227,6 +1230,9 @@ export default function App() {
               setAutoSelect={setAutoSelect}
               autoHistory={autoHistory}
               orch={orch}
+              serverNames={Object.fromEntries(
+                profiles.map((pr) => [pr.id, pr.name || pr.host]),
+              )}
               onOrchReset={() => api.orchestratorReset().then(setOrch).catch(() => undefined)}
               autoSelectLoss={autoSelectLoss}
               setAutoSelectLoss={setAutoSelectLoss}

@@ -22,6 +22,8 @@ type Props = {
   gamePorts: string;
   setGamePorts: (v: string) => void;
   orch: import("../api").OrchRow[];
+  /** id профиля → человеческое имя, чтобы в статистике не было «srv-7f3a» */
+  serverNames: Record<string, string>;
   onOrchReset: () => void;
   autoSelectLoss: boolean;
   setAutoSelectLoss: (v: boolean) => void;
@@ -82,7 +84,8 @@ export function SettingsScreen(p: Props) {
   const [core, setCore] = useState<{ version: string; updated: boolean }>({ version: "", updated: false });
   const [coreBusy, setCoreBusy] = useState(false);
   const [coreNote, setCoreNote] = useState("");
-  const [leak, setLeak] = useState<{ resolver: string; egress: string } | null>(null);
+  // Результат проверки утечек: IPv6, адрес выхода, отвечающий резолвер.
+  const [leak, setLeak] = useState<import("../api").LeakReport | null>(null);
   const [leakBusy, setLeakBusy] = useState(false);
   const [leakError, setLeakError] = useState("");
   const [stats, setStats] = useState<{ day: string; down: number; up: number }[]>([]);
@@ -407,7 +410,8 @@ export function SettingsScreen(p: Props) {
               <span style={{ color: "var(--txt-3)", fontSize: 12 }}>{t("orchEmpty")}</span>
             ) : (
               p.orch.slice(0, 6).map((row) => {
-                const name = row.key.split("|")[0];
+                const rawId = row.key.split("|")[0];
+                const name = p.serverNames[rawId] || rawId;
                 const transport = row.key.split("|").slice(1).filter(Boolean).join("/") || "tcp";
                 const good = Math.round(row.score * 100);
                 return (
@@ -496,6 +500,68 @@ export function SettingsScreen(p: Props) {
             <span>{t("ipv6Hint")}</span>
           </div>
           <button className="switch" aria-checked={p.blockIpv6} onClick={() => p.setBlockIpv6(!p.blockIpv6)} />
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row" style={{ display: "block" }}>
+          <div className="txt" style={{ maxWidth: 560 }}>
+            <b>{t("leakTitle")}</b>
+            <span>{t("leakHint")}</span>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button
+                className="btn"
+                style={{ width: "auto", paddingInline: 14 }}
+                disabled={leakBusy}
+                onClick={async () => {
+                  setLeakBusy(true);
+                  try {
+                    setLeak(await api.leakCheck());
+                  } catch (e) {
+                    setLeak({
+                      ipv6_blocked: false,
+                      ipv6_detail: String(e),
+                      exit_ip: "",
+                      exit_colo: "",
+                      exit_detail: "",
+                      dns_resolver: "",
+                      dns_detail: "",
+                    });
+                  } finally {
+                    setLeakBusy(false);
+                  }
+                }}
+              >
+                {leakBusy ? t("leakBusy") : t("leakRun")}
+              </button>
+            </div>
+            {leak && (
+              <div style={{ marginTop: 10, display: "grid", gap: 6, fontSize: 12 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ color: leak.ipv6_blocked ? "var(--green)" : "var(--red, #ff5a5a)", minWidth: 52 }}>
+                    {leak.ipv6_blocked ? "OK" : "!"}
+                  </span>
+                  <span>
+                    {leak.ipv6_blocked ? t("leakV6Ok") : t("leakV6Bad")} — {leak.ipv6_detail}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ color: "var(--txt-3)", minWidth: 52 }}>IP</span>
+                  <span>
+                    {t("leakExit")}: <b>{leak.exit_ip || "—"}</b>
+                    {leak.exit_colo ? ` (${leak.exit_colo})` : ""} — {leak.exit_detail}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ color: "var(--txt-3)", minWidth: 52 }}>DNS</span>
+                  <span>
+                    {t("leakDns")}: <b>{leak.dns_resolver || "—"}</b> — {leak.dns_detail}
+                    {leak.dns_resolver ? ` · ${t("leakDnsWarn")}` : ""}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -683,7 +749,7 @@ export function SettingsScreen(p: Props) {
               setLeakBusy(true);
               setLeakError("");
               try {
-                setLeak(await api.dnsLeak());
+                setLeak(await api.leakCheck());
               } catch (e) {
                 setLeak(null);
                 setLeakError(String(e));
@@ -692,16 +758,27 @@ export function SettingsScreen(p: Props) {
               }
             }}
           >
-            {leakBusy ? "…" : t("leakCheck")}
+            {leakBusy ? t("leakBusy") : t("leakRun")}
           </button>
         </div>
         {leak && (
           <div className="leak-out">
             <div>
-              <span className="muted">{t("leakResolver")}</span> <b className="mono">{leak.resolver || "—"}</b>
+              <span className="muted">IPv6</span>{" "}
+              <b style={{ color: leak.ipv6_blocked ? "var(--green)" : "var(--red, #ff5a5a)" }}>
+                {leak.ipv6_blocked ? t("leakV6Ok") : t("leakV6Bad")}
+              </b>{" "}
+              <span className="muted">— {leak.ipv6_detail}</span>
             </div>
             <div>
-              <span className="muted">{t("leakEgress")}</span> <b className="mono">{leak.egress || "—"}</b>
+              <span className="muted">{t("leakExit")}:</span>{" "}
+              <b className="mono">{leak.exit_ip || "—"}</b>
+              {leak.exit_colo ? <span className="muted"> ({leak.exit_colo})</span> : null}
+            </div>
+            <div>
+              <span className="muted">{t("leakDns")}:</span>{" "}
+              <b className="mono">{leak.dns_resolver || "—"}</b>
+              <span className="muted"> — {t("leakDnsWarn")}</span>
             </div>
             <div className="muted" style={{ marginTop: 6 }}>{t("leakHow")}</div>
           </div>
