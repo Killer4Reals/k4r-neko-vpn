@@ -54,3 +54,30 @@ describe("projection", () => {
     expect(countryOf(undefined)).toBeNull();
   });
 });
+
+describe("центрирование страны", () => {
+  // Страны из реальной подписки (DE, NL, NO, EE, SE, TR, KZ, JP, US, RU):
+  // после доворота метка обязана стоять ровно в центре диска.
+  const codes = ["DE", "NL", "NO", "EE", "SE", "TR", "KZ", "JP", "US", "RU", "BR", "AU", "ZA", "SG"];
+
+  it("каждая страна после доворота попадает в центр", () => {
+    for (const cc of codes) {
+      const c = countryOf(cc);
+      expect(c, cc).toBeTruthy();
+      if (!c) continue;
+      const tilt = Math.max(-68, Math.min(68, c.lat));
+      const p = project(c, rotationFor(c), tilt);
+      expect(Math.abs(p.x), cc).toBeLessThan(1e-9);
+      expect(Math.abs(p.y), cc).toBeLessThan(1e-9);
+      expect(p.z, cc).toBeGreaterThan(0.9);
+    }
+  });
+
+  it("страна видна, то есть на передней стороне шара", () => {
+    for (const cc of codes) {
+      const c = countryOf(cc)!;
+      const p = project(c, rotationFor(c), c.lat);
+      expect(p.z, cc).toBeGreaterThan(0);
+    }
+  });
+});

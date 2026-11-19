@@ -93,6 +93,28 @@ export function HomeScreen(p: Props) {
   const heroRef = useRef<HTMLElement | null>(null);
   const [globeSize, setGlobeSize] = useState(360);
 
+  // Дуга подключения: пока идёт рукопожатие — заполняется до 85% и ждёт,
+  // на «подключено» доходит до 100%. Никаких выдуманных «этапов».
+  const [fill, setFill] = useState(0);
+  useEffect(() => {
+    if (conn === "connected") {
+      setFill(1);
+      return;
+    }
+    if (conn !== "connecting") {
+      setFill(0);
+      return;
+    }
+    const started = performance.now();
+    const id = window.setInterval(() => {
+      const t = (performance.now() - started) / 2600;
+      setFill(Math.min(0.85, t * 0.85));
+    }, 90);
+    return () => window.clearInterval(id);
+  }, [conn]);
+
+  const CIRC = 2 * Math.PI * 49;
+
   useEffect(() => {
     const el = heroRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -155,6 +177,17 @@ export function HomeScreen(p: Props) {
             title={t(hintKey)}
           >
             <span className="globe-ring" aria-hidden />
+            <svg className="globe-progress" viewBox="0 0 100 100" aria-hidden data-state={view}>
+              <circle className="pg-track" cx="50" cy="50" r="49" />
+              <circle
+                className="pg-fill"
+                cx="50"
+                cy="50"
+                r="49"
+                strokeDasharray={CIRC}
+                strokeDashoffset={CIRC * (1 - fill)}
+              />
+            </svg>
             <Globe
               size={globeSize}
               target={countryOf(selected.flag || selected.cc)}
