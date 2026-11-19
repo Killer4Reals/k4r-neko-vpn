@@ -89,8 +89,8 @@ function GlobeDots({ target, connected = false, label, size = 300 }: Omit<Props,
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
     goal: target ? rotationFor(target) : 0,
-    tilt: target ? Math.max(-18, Math.min(18, target.lat)) : TILT,
-    goalTilt: target ? Math.max(-18, Math.min(18, target.lat)) : TILT,
+    tilt: target ? Math.max(-68, Math.min(68, target.lat)) : TILT,
+    goalTilt: target ? Math.max(-68, Math.min(68, target.lat)) : TILT,
     hold: target ? HOLD_SECS : 0,
   });
 
@@ -99,7 +99,7 @@ function GlobeDots({ target, connected = false, label, size = 300 }: Omit<Props,
     const s = state.current;
     const goal = rotationFor(target);
     s.goal = s.angle + shortestDelta(s.angle, goal);
-    s.goalTilt = Math.max(-18, Math.min(18, target.lat));
+    s.goalTilt = Math.max(-68, Math.min(68, target.lat));
     s.hold = HOLD_SECS;
   }, [target]);
 

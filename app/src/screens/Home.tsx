@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Globe } from "../GlobeView";
 import { countryOf } from "../globe";
 import type { ConnState, Server } from "../data";
@@ -88,6 +88,31 @@ export function HomeScreen(p: Props) {
   const mm = String(Math.floor(uptime / 60)).padStart(2, "0");
   const ss = String(uptime % 60).padStart(2, "0");
 
+  // Глобус подстраивается под ширину блока: в узком окне шар меньше, а кнопка
+  // уезжает под него, чтобы шар и маскот больше не наезжали друг на друга.
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const [globeBox, setGlobeBox] = useState({ size: 392, stack: false, compact: false });
+
+  useEffect(() => {
+    const el = topRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const w = el.clientWidth || 0;
+      const stack = w < 400;
+      const compact = !stack && w < 640;
+      const size = stack
+        ? Math.max(180, Math.min(280, Math.round(w - 56)))
+        : Math.max(170, Math.min(392, Math.round(w - (compact ? 246 : 214))));
+      setGlobeBox((prev) =>
+        prev.size === size && prev.stack === stack && prev.compact === compact ? prev : { size, stack, compact },
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div className="home" data-nosub={p.realCount === 0 && !p.error ? "true" : undefined}>
       {p.realCount === 0 && !p.error && (
@@ -108,41 +133,48 @@ export function HomeScreen(p: Props) {
       )}
       <section className="hero">
         <div className="grid-lines" />
-        <div className="globe-bg">
-          <Globe
-            size={460}
-            target={countryOf(selected.flag || selected.cc)}
-            connected={conn === "connected"}
-          />
-        </div>
-
-        <div className="status-pill" data-state={view}>
-          <span className="dot" />
-          {t(statusKey)}
-        </div>
-
-        <button
-          className="orb"
-          data-state={view}
-          onClick={toggleConnection}
-          aria-label={`${t(statusKey)}. ${t(hintKey)}`}
-          title={t(hintKey)}
+        {/* Планета слева, кнопка справа: маскот больше не садится на шар */}
+        <div className="hero-top" ref={topRef} data-stack={globeBox.stack ? "true" : "false"}
+          data-compact={globeBox.compact ? "true" : "false"}
         >
-          <span className="ring" />
-          <img className="mascot" src={m} alt="" draggable={false} />
-        </button>
+          <div className="hero-globe">
+            <Globe
+              size={globeBox.size}
+              target={countryOf(selected.flag || selected.cc)}
+              connected={conn === "connected"}
+            />
+          </div>
 
-        {/* Кружок — единственная кнопка включения: подпись под ним
-            объясняет, что нажатие делает, чтобы это не приходилось угадывать */}
-        <div className="orb-hint" data-state={view}>
-          {t(hintKey)}
-        </div>
+          <div className="hero-ctl">
+            <div className="status-pill" data-state={view}>
+              <span className="dot" />
+              {t(statusKey)}
+            </div>
 
-        <div className="server-line">
-          <Flag cc={selected.flag || selected.cc} size="sm" />
-          <strong>{selected.city}</strong>
-          <span>{selected.country}</span>
-          <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
+            <button
+              className="orb"
+              data-state={view}
+              onClick={toggleConnection}
+              aria-label={`${t(statusKey)}. ${t(hintKey)}`}
+              title={t(hintKey)}
+            >
+              <span className="ring" />
+              <img className="mascot" src={m} alt="" draggable={false} />
+            </button>
+
+            {/* Кружок — единственная кнопка включения: подпись под ним
+                объясняет, что нажатие делает, чтобы это не приходилось угадывать */}
+            <div className="orb-hint" data-state={view}>
+              {t(hintKey)}
+            </div>
+
+            <div className="server-line">
+              <Flag cc={selected.flag || selected.cc} size="sm" />
+              <strong>{selected.city}</strong>
+              <span>{selected.country}</span>
+              <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
+            </div>
+          </div>
         </div>
 
         {p.error && <div className="hero-error">{p.error}</div>}

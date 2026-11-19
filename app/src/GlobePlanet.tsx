@@ -47,13 +47,13 @@ uniform float uConnected;
 
 void main() {
   vec3 n = normalize(vNormal);
-  vec3 sun = normalize(vec3(-0.42, 0.40, 0.82));
+  vec3 sun = normalize(vec3(-0.26, 0.34, 0.90));
   vec3 eye = vec3(0.0, 0.0, 1.0);
   float ndl = dot(n, sun);
   float day = smoothstep(-0.30, 0.45, ndl);
 
   vec3 base = texture2D(uDay, vUv).rgb;
-  vec3 col = base * (0.32 + 1.02 * max(ndl, 0.0)) + vec3(0.02, 0.04, 0.08);
+  vec3 col = base * (0.36 + 1.02 * max(ndl, 0.0)) + vec3(0.02, 0.04, 0.09);
 
   // ночные огни городов
   vec3 lights = texture2D(uLights, vUv).rgb;
@@ -175,8 +175,8 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
     goal: target ? rotationFor(target) : 0,
-    tilt: target ? Math.max(-18, Math.min(18, target.lat)) : TILT,
-    goalTilt: target ? Math.max(-18, Math.min(18, target.lat)) : TILT,
+    tilt: target ? Math.max(-68, Math.min(68, target.lat)) : TILT,
+    goalTilt: target ? Math.max(-68, Math.min(68, target.lat)) : TILT,
     hold: target ? HOLD_SECS : 0,
     cloud: 0,
   });
@@ -186,7 +186,7 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
     const s = state.current;
     const goal = rotationFor(target);
     s.goal = s.angle + shortestDelta(s.angle, goal);
-    s.goalTilt = Math.max(-18, Math.min(18, target.lat));
+    s.goalTilt = Math.max(-68, Math.min(68, target.lat));
     s.hold = HOLD_SECS;
   }, [target]);
 
