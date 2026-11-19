@@ -85,7 +85,13 @@ mod tests {
         // даём потоку встать в accept
         std::thread::sleep(Duration::from_millis(150));
         assert!(wake_existing(PORT + 2), "сосед должен ответить");
-        std::thread::sleep(Duration::from_millis(250));
+        // Ждём событие, а не фиксированные 250 мс: на медленном раннере
+        // поток мог ещё не дойти до инкремента, и тест падал случайно.
+        let mut waited = 0;
+        while hits.load(Ordering::SeqCst) == 0 && waited < 3_000 {
+            std::thread::sleep(Duration::from_millis(25));
+            waited += 25;
+        }
         assert_eq!(hits.load(Ordering::SeqCst), 1);
     }
 
