@@ -79,6 +79,10 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
     goal: target ? rotationFor(target) : 0,
+    // Наклон ведём за широтой страны: тогда она оказывается в центре диска,
+    // а не «где-то сверху». Свободное вращение возвращает обычный наклон.
+    tilt: target ? Math.max(-28, Math.min(28, target.lat)) : TILT,
+    goalTilt: target ? Math.max(-28, Math.min(28, target.lat)) : TILT,
     hold: target ? HOLD_SECS : 0,
   });
 
@@ -88,6 +92,7 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
     const s = state.current;
     const goal = rotationFor(target);
     s.goal = s.angle + shortestDelta(s.angle, goal);
+    s.goalTilt = Math.max(-28, Math.min(28, target.lat));
     s.hold = HOLD_SECS;
   }, [target]);
 
@@ -141,6 +146,7 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
 
       if (reduce) {
         s.angle = s.goal;
+        s.tilt = s.goalTilt;
       } else {
         if (s.hold > 0) {
           // держим страну перед зрителем, чуть покачивая: шар «дышит»
@@ -150,7 +156,9 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
         } else {
           s.angle += dt * DRIFT;
           s.goal = s.angle;
+          s.goalTilt = TILT;
         }
+        s.tilt += (s.goalTilt - s.tilt) * Math.min(1, dt * 2.4);
       }
 
       ctx.clearRect(0, 0, size, size);
@@ -206,7 +214,7 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
         const rot = (s.angle * Math.PI) / 180;
         const cosR = Math.cos(rot);
         const sinR = Math.sin(rot);
-        const tiltR = (TILT * Math.PI) / 180;
+        const tiltR = (s.tilt * Math.PI) / 180;
         const ct = Math.cos(tiltR);
         const stt = Math.sin(tiltR);
         const far = new Path2D();
@@ -247,8 +255,8 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
         for (let i = 0; i < steps; i++) {
           const a = greatCircle(HOME, target, i / steps);
           const b = greatCircle(HOME, target, (i + 1) / steps);
-          const pa = project(a, s.angle, TILT);
-          const pb = project(b, s.angle, TILT);
+          const pa = project(a, s.angle, s.tilt);
+          const pb = project(b, s.angle, s.tilt);
           if (pa.z <= 0.02 || pb.z <= 0.02) continue;
           const fade = Math.min(pa.z, pb.z);
           ctx.globalAlpha = (connected ? 0.55 : 0.3) * fade;
@@ -264,7 +272,7 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
           const k = (t * 0.35) % 1;
           for (let j = 0; j < 3; j++) {
             const at = greatCircle(HOME, target, (k - j * 0.02 + 1) % 1);
-            const pp = project(at, s.angle, TILT);
+            const pp = project(at, s.angle, s.tilt);
             if (pp.z <= 0.02) continue;
             ctx.globalAlpha = 0.9 - j * 0.3;
             ctx.fillStyle = accent;
@@ -278,7 +286,7 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
 
       // точка «ты»
       {
-        const p = project(HOME, s.angle, TILT);
+        const p = project(HOME, s.angle, s.tilt);
         if (p.z > 0.02) {
           const x = cx + p.x * R;
           const y = cy - p.y * R;
@@ -293,7 +301,7 @@ export function Globe({ target, connected = false, label, size = 300 }: Props) {
 
       // выбранная страна: кольцо, пульс, точка
       if (target) {
-        const p = project(target, s.angle, TILT);
+        const p = project(target, s.angle, s.tilt);
         if (p.z > 0.02) {
           const x = cx + p.x * R;
           const y = cy - p.y * R;
