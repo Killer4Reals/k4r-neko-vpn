@@ -63,7 +63,7 @@ void main() {
   float water = texture2D(uWater, vUv).r;
   vec3 h = normalize(sun + eye);
   float spec = pow(max(dot(n, h), 0.0), 110.0) * water * day;
-  col += vec3(1.0, 0.96, 0.86) * spec * 0.28;
+  col += vec3(1.0, 0.96, 0.86) * spec * 0.2;
 
   // облака чуть быстрее планеты
   float cloud = texture2D(uClouds, vec2(vUv.x + uCloudShift, vUv.y)).r;
@@ -375,18 +375,18 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
           ctx.globalAlpha = 0.1 + pulse * 0.18;
           ctx.fillStyle = accent;
           ctx.beginPath();
-          ctx.arc(x, y, 15 + pulse * 11, 0, Math.PI * 2);
+          ctx.arc(x, y, 10 + pulse * 7, 0, Math.PI * 2);
           ctx.fill();
           ctx.globalAlpha = 0.6;
           ctx.strokeStyle = accent;
           ctx.lineWidth = 1.2;
           ctx.beginPath();
-          ctx.arc(x, y, 9, 0, Math.PI * 2);
+          ctx.arc(x, y, 7, 0, Math.PI * 2);
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.fillStyle = accent;
           ctx.beginPath();
-          ctx.arc(x, y, 3.6, 0, Math.PI * 2);
+          ctx.arc(x, y, 3.2, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -449,8 +449,10 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
     if (!canvas) return;
     let dragging = false;
     let lastX = 0;
+    let moved = 0;
     const down = (e: PointerEvent) => {
       dragging = true;
+      moved = 0;
       lastX = e.clientX;
       canvas.setPointerCapture(e.pointerId);
       state.current.hold = 0;
@@ -459,10 +461,13 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
       if (!dragging) return;
       const dx = e.clientX - lastX;
       lastX = e.clientX;
+      moved += Math.abs(dx);
       state.current.angle -= dx * 0.35;
       state.current.goal = state.current.angle;
     };
     const up = () => {
+      // потянул шар — это не нажатие «включить»
+      if (dragging && moved > 4) canvas.dataset.dragged = "1";
       dragging = false;
     };
     canvas.addEventListener("pointerdown", down);
