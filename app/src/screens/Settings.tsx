@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
 import type { Theme } from "../App";
 import { play, setSoundOn, setVolume, soundOn, volume } from "../sound";
+import { globeStyle, setGlobeStyle, type GlobeStyle } from "../globeStyle";
 import { api, inTauri, type KillSwitchStatus, type KsCheck } from "../api";
 import { DnsPick } from "../DnsPick";
 
@@ -90,6 +91,7 @@ export function SettingsScreen(p: Props) {
   const [leakBusy, setLeakBusy] = useState(false);
   const [leakError, setLeakError] = useState("");
   const [sound, setSound] = useState(() => soundOn());
+  const [globe, setGlobe] = useState<GlobeStyle>(() => globeStyle());
   const [vol, setVol] = useState(() => Math.round(volume() * 100));
   const [stats, setStats] = useState<{ day: string; down: number; up: number }[]>([]);
 
@@ -378,6 +380,28 @@ export function SettingsScreen(p: Props) {
             </div>
           </div>
         )}
+        <div className="row">
+          <div className="txt">
+            <b>{t("globeStyleTitle")}</b>
+            <span>{t("globeStyleHint")}</span>
+          </div>
+          <div className="seg" style={{ display: "flex", gap: 8 }}>
+            {(["neon", "planet"] as GlobeStyle[]).map((g) => (
+              <button
+                key={g}
+                className={`btn${globe === g ? " primary" : ""}`}
+                style={{ width: "auto", paddingInline: 14 }}
+                onClick={() => {
+                  setGlobe(g);
+                  setGlobeStyle(g);
+                  play("click");
+                }}
+              >
+                {t(g === "neon" ? "globeNeon" : "globePlanet")}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="row">
           <div className="txt">
             <b>{t("soundTitle")}</b>

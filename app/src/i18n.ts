@@ -447,6 +447,13 @@ const dict: Dict = {
     ru: "Настройки: защита, звук, обновления. Кнопка «Проверить kill-switch» покажет, реально ли работает блокировка.",
     en: "Settings: protection, sound, updates. The kill-switch check button shows whether blocking really works.",
   },
+  globeStyleTitle: { ru: "Вид глобуса", en: "Globe look" },
+  globeStyleHint: {
+    ru: "«Неон» — шар из точек в цвет темы. «Планета» — океан, материки и атмосфера.",
+    en: "Neon is the dot sphere in your theme colour. Planet is ocean, continents and atmosphere.",
+  },
+  globeNeon: { ru: "Неон", en: "Neon" },
+  globePlanet: { ru: "Планета", en: "Planet" },
   soundTitle: { ru: "Звук", en: "Sound" },
   soundHint: {
     ru: "Клики, удары и сигналы подключения. Синтезируются на месте — файлов нет, вес не растёт.",
