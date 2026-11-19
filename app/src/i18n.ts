@@ -412,6 +412,9 @@ const dict: Dict = {
   },
   autoSelectSwitched: { ru: "Автовыбор: переключил на", en: "Auto-select: switched to" },
   navStats: { ru: "Статистика", en: "Stats" },
+  mapTitle: { ru: "Карта выходов", en: "Where you exit" },
+  mapHint: { ru: "Нажми на точку, чтобы выбрать сервер", en: "Click a dot to pick a server" },
+  mapYou: { ru: "ты", en: "you" },
   hintHome: {
     ru: "Большая кнопка — включить или выключить VPN. Шар показывает, где сейчас твой выход в интернет; при смене сервера он доворачивается.",
     en: "The big button turns the VPN on and off. The globe shows where your traffic exits; it turns when you switch servers.",

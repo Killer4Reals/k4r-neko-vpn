@@ -111,6 +111,17 @@ export function SplitScreen({
         <p>{t("splitSub")}</p>
       </div>
 
+      <div className="split-sum">
+        <span className="split-stat" data-kind="via">
+          <i />
+          {via.length} {t("viaVpn")}
+        </span>
+        <span className="split-stat" data-kind="direct">
+          <i />
+          {direct.length} {t("direct")}
+        </span>
+      </div>
+
       <div className="split-mode">
         <div className="seg">
           <button data-on={mode === "only"} onClick={() => setMode("only")}>

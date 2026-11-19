@@ -253,7 +253,11 @@ export function RouteScreen({
         ) : (
           <div className="rule-list">
             {rules.map((r, i) => (
-              <div key={`${r.kind}:${r.value}`} className="rule-row">
+              <div
+                key={`${r.kind}:${r.value}`}
+                className="rule-row"
+                style={{ animationDelay: `${Math.min(i, 14) * 26}ms` }}
+              >
                 <button
                   className="switch"
                   aria-checked={r.enabled}
@@ -262,6 +266,12 @@ export function RouteScreen({
                 >
                   <span />
                 </button>
+                <span
+                  className="rule-light"
+                  data-act={r.action}
+                  data-on={r.enabled}
+                  title={t(actionLabel[r.action])}
+                />
                 <span className="rule-kind">{t(kindLabel[r.kind])}</span>
                 <span className="rule-value" title={r.value}>{r.value}</span>
                 <select

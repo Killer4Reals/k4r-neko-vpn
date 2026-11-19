@@ -5,6 +5,7 @@ import { QrSheet } from "../Qr";
 import { api } from "../api";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
+import { ServerMap } from "../ServerMap";
 
 type Props = {
   t: (k: string) => string;
@@ -348,6 +349,15 @@ export function ServersScreen(p: Props) {
             <p className="muted">{t("noServersText")}</p>
           </div>
         </div>
+      )}
+
+      {servers.length > 0 && (
+        <ServerMap
+          servers={servers}
+          selectedId={selectedId}
+          onPick={setSelectedId}
+          t={t}
+        />
       )}
 
       {servers.length > 0 && (
