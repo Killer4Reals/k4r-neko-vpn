@@ -1940,6 +1940,12 @@ input {
   -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 55%, transparent 78%);
 }
 
+/* планета — не фон, а главный объект: свет и текстура не должны тускнеть */
+.globe-bg:has(.globe-3d) {
+  opacity: 1;
+  inset: -96px 0 auto 0;
+}
+
 .hero > *:not(.globe-bg) {
   position: relative;
   z-index: 1;
@@ -2294,4 +2300,41 @@ input {
 
 .split .chip:active {
   transform: scale(0.96);
+}
+
+/* ── глобус-планета (WebGL) ─────────────────────────────────────────── */
+.globe-3d {
+  position: relative;
+  isolation: isolate;
+}
+.globe-3d canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.globe-3d canvas:last-of-type {
+  cursor: grab;
+}
+.globe-3d canvas:last-of-type:active {
+  cursor: grabbing;
+}
+.globe-halo {
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 42% 34%,
+    rgba(120, 190, 255, 0.22),
+    rgba(70, 120, 220, 0.1) 58%,
+    rgba(40, 60, 120, 0) 72%
+  );
+  filter: blur(8px);
+  z-index: -1;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .globe-halo {
+    filter: blur(8px) none;
+  }
 }

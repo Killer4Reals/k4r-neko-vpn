@@ -10,9 +10,9 @@ const EVENT = "k4r:globe-style";
 
 export function globeStyle(): GlobeStyle {
   try {
-    return localStorage.getItem(KEY) === "planet" ? "planet" : "neon";
+    return localStorage.getItem(KEY) === "neon" ? "neon" : "planet";
   } catch {
-    return "neon";
+    return "planet";
   }
 }
 

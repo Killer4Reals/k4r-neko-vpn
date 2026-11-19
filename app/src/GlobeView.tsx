@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { landDots, project, rotationFor, shortestDelta, type LatLon } from "./globe";
 import { HOME } from "./map";
 import { globeStyle, onGlobeStyle, type GlobeStyle } from "./globeStyle";
+import { GlobePlanet } from "./GlobePlanet";
 
 type Props = {
   /** Куда повернуть шар: страна выбранного сервера. */
@@ -62,15 +63,8 @@ function biome(lat: number): number {
  * Шар вращается сам, при смене сервера доворачивается к стране и держит её
  * перед зрителем. Крутится и мышью: потянул — завертелся.
  */
-export function Globe({ target, connected = false, label, size = 300, style }: Props) {
+function GlobeDots({ target, connected = false, label, size = 300 }: Omit<Props, "style">) {
   const ref = useRef<HTMLCanvasElement | null>(null);
-  const [kind, setKind] = useState<GlobeStyle>(() => style ?? globeStyle());
-
-  useEffect(() => {
-    if (style) setKind(style);
-  }, [style]);
-
-  useEffect(() => onGlobeStyle(setKind), []);
 
   const geom = useMemo(() => {
     const list = landDots(2);
@@ -135,7 +129,7 @@ export function Globe({ target, connected = false, label, size = 300, style }: P
     const R = size / 2 - 12;
     const cx = size / 2;
     const cy = size / 2;
-    const planet = kind === "planet";
+    const planet = false;
 
     const stars = Array.from({ length: 44 }, (_, i) => {
       const a = hash(i * 3.1) * Math.PI * 2;
@@ -432,7 +426,7 @@ export function Globe({ target, connected = false, label, size = 300, style }: P
       cancelAnimationFrame(raf);
       themeWatch.disconnect();
     };
-  }, [geom, size, target, connected, kind]);
+  }, [geom, size, target, connected]);
 
   // Крутить шар мышью: потянул влево — планета поехала влево.
   useEffect(() => {
@@ -477,4 +471,23 @@ export function Globe({ target, connected = false, label, size = 300, style }: P
       {label && <span className="globe-label">{label}</span>}
     </div>
   );
+}
+
+/**
+ * Глобус на главной. «Планета» — WebGL-сфера с настоящей текстурой Земли,
+ * «Неон» — лёгкий шар из точек. Вид переключается в настройках.
+ */
+export function Globe({ target, connected = false, label, size = 300, style }: Props) {
+  const [kind, setKind] = useState<GlobeStyle>(() => style ?? globeStyle());
+
+  useEffect(() => {
+    if (style) setKind(style);
+  }, [style]);
+
+  useEffect(() => onGlobeStyle(setKind), []);
+
+  if (kind === "planet") {
+    return <GlobePlanet target={target} connected={connected} label={label} size={size} />;
+  }
+  return <GlobeDots target={target} connected={connected} label={label} size={size} />;
 }
