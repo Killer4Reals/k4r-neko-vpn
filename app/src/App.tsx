@@ -726,6 +726,14 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [profiles, measurePing]);
 
+  // Серверы отваливаются и возвращаются сами. Без повторного замера «не
+  // отвечает» залипает навсегда, хотя узел уже жив — и человек выбирает наугад.
+  useEffect(() => {
+    if (!inTauri || profiles.length === 0) return;
+    const timer = window.setInterval(() => void measurePing(), 10 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [profiles.length, measurePing, profiles]);
+
   /**
    * Один проход автовыбора: замер всех серверов → решение → переподключение.
    * Замер идёт по TCP-рукопожатию, трафика не тратит и сервер не нагружает.
@@ -784,6 +792,35 @@ export default function App() {
       }
     },
     [conn, lat, measurePing, orch, profiles, reconnectTunnel, selectedId, t],
+  );
+
+  /**
+   * Игровой режим включают перед игрой, и в этот момент честнее выбрать узел
+   * по замеру, чем оставить тот, что был выбран для браузера.
+   */
+  const toggleGameMode = useCallback(
+    async (on: boolean) => {
+      setGameMode(on);
+      if (!on || !inTauri || profiles.length < 2) return;
+      const measured = (await measurePing()) ?? lat;
+      const alive = profiles
+        .map((p) => ({ p, ms: measured[p.id] }))
+        .filter((x): x is { p: Profile; ms: number } => typeof x.ms === "number");
+      if (alive.length === 0) {
+        setToast({ title: t("gameTitle"), body: t("gameNoPing") });
+        return;
+      }
+      const best = alive.reduce((a, b) => (a.ms <= b.ms ? a : b));
+      const name = best.p.name || best.p.host;
+      if (best.p.id === selectedId) {
+        setToast({ title: t("gameTitle"), body: `${t("gameFastest")} ${name} · ${best.ms} мс` });
+        return;
+      }
+      setSelectedId(best.p.id);
+      setToast({ title: t("gameTitle"), body: `${t("gamePicked")} ${name} · ${best.ms} мс` });
+      if (conn === "connected") await reconnectTunnel();
+    },
+    [conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t],
   );
 
   /**
@@ -1302,7 +1339,7 @@ export default function App() {
               setDnsServer={setDnsServer}
               blockIpv6={blockIpv6}
               gameMode={gameMode}
-              setGameMode={setGameMode}
+              setGameMode={toggleGameMode}
               gamePorts={gamePorts}
               setGamePorts={setGamePorts}
               setBlockIpv6={setBlockIpv6}

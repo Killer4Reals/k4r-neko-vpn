@@ -508,6 +508,18 @@ const dict: Dict = {
     ru: "Игровой и голосовой трафик идёт напрямую, мимо VPN: меньше задержка, голос не рвётся при переключении сервера.",
     en: "Game and voice traffic goes direct, outside the VPN: lower ping and no voice drop on server switch.",
   },
+  gamePicked: {
+    ru: "выбрал самый быстрый узел:",
+    en: "picked the fastest node:",
+  },
+  gameFastest: {
+    ru: "уже на самом быстром узле:",
+    en: "already on the fastest node:",
+  },
+  gameNoPing: {
+    ru: "ни один узел не ответил на замер — оставил текущий",
+    en: "no node answered the check — keeping the current one",
+  },
   gamePorts: { ru: "Порты (через запятую, диапазон через -)", en: "Ports (comma separated, range with -)" },
   orchTitle: { ru: "Оркестратор: что реально работает", en: "Orchestrator: what actually works" },
   orchHint: {
