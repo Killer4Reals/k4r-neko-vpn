@@ -276,6 +276,7 @@ const dict: Dict = {
     en: "The tunnel is down, so nothing leaves your PC. Press Disconnect to get normal internet back",
   },
 
+  hwidNew: { ru: "новый HWID", en: "new HWID" },
   aliveOf: { ru: "из", en: "of" },
   aliveHint: { ru: "сколько узлов ответило на последний замер", en: "how many nodes answered the last check" },
   serverDead: { ru: "не отвечает", en: "no answer" },

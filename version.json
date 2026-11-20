@@ -1,5 +1,5 @@
 {
-  "version": "1.29.1",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.29.1/K4R.Neko.VPN_1.29.1_x64-setup.exe",
-  "notes": "Автобновление не предлагает откат на старую версию"
+  "version": "1.29.2",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.29.2/K4R.Neko.VPN_1.29.2_x64-setup.exe",
+  "notes": "Сброс HWID прямо из ошибки лимита устройств"
 }

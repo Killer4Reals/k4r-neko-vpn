@@ -85,6 +85,17 @@ export function ServersScreen(p: Props) {
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [hwidNote, setHwidNote] = useState("");
+  // Сброс HWID прямо из ошибки: не нужно искать карточку в настройках
+  const resetHwid = async () => {
+    setHwidNote("");
+    try {
+      const next = await api.installIdReset();
+      setHwidNote(`${t("hwidNew")}: ${next}`);
+    } catch (e) {
+      setHwidNote(String(e));
+    }
+  };
   const [speed, setSpeed] = useState<{ mbytes_per_second: number; bytes: number } | null>(null);
   const [speedBusy, setSpeedBusy] = useState(false);
   const [speedNote, setSpeedNote] = useState("");
@@ -182,6 +193,20 @@ export function ServersScreen(p: Props) {
             {warnings.map((w, i) => (
               <div key={i}>{w}</div>
             ))}
+            {/* Лимит устройств: панель считает слоты по HWID. Сброс даёт новый
+                слот на стороне панели — это первое, что стоит попробовать. */}
+            {warnings.some((w) => /лимит устройств|device limit/i.test(w)) && (
+              <>
+                <button
+                  className="ghost-btn"
+                  style={{ marginTop: 8 }}
+                  onClick={() => void resetHwid()}
+                >
+                  {t("hwidReset")}
+                </button>
+                {hwidNote && <div style={{ marginTop: 6 }}>{hwidNote}</div>}
+              </>
+            )}
           </div>
         )}
 
