@@ -276,6 +276,8 @@ const dict: Dict = {
     en: "The tunnel is down, so nothing leaves your PC. Press Disconnect to get normal internet back",
   },
 
+  hwidCopy: { ru: "нажмите, чтобы скопировать", en: "click to copy" },
+  hwidCopied: { ru: "скопировано", en: "copied" },
   hwidNew: { ru: "новый HWID", en: "new HWID" },
   hwidResetHint: {
     ru: "сброс займёт новый слот; если панель всё равно откажет — освободите старое устройство в кабинете провайдера",

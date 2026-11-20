@@ -96,6 +96,7 @@ export function SettingsScreen(p: Props) {
   const [globe, setGlobe] = useState<GlobeStyle>(() => globeStyle());
   const [hwid, setHwid] = useState("");
   const [hwidBusy, setHwidBusy] = useState(false);
+  const [hwidCopied, setHwidCopied] = useState(false);
   useEffect(() => {
     if (!inTauri) return;
     api.installId().then(setHwid).catch(() => {});
@@ -392,8 +393,24 @@ export function SettingsScreen(p: Props) {
           <div className="txt">
             <b>{t("hwidTitle")}</b>
             <span>{t("hwidHint")}</span>
-            <code style={{ fontSize: 12, color: "var(--txt-3)", fontFamily: "var(--mono, monospace)" }}>
-              {hwid || "—"}
+            <code
+              style={{
+                fontSize: 12,
+                color: "var(--txt-3)",
+                fontFamily: "var(--mono, monospace)",
+                cursor: hwid ? "pointer" : "default",
+              }}
+              title={t("hwidCopy")}
+              onClick={() => {
+                if (!hwid) return;
+                // Диктуют в кабинет провайдера: копируем, а не заставляем выделять.
+                void navigator.clipboard?.writeText(hwid).catch(() => {});
+                setHwidCopied(true);
+                window.setTimeout(() => setHwidCopied(false), 1600);
+                play("click");
+              }}
+            >
+              {hwidCopied ? t("hwidCopied") : hwid || "—"}
             </code>
           </div>
           <button
