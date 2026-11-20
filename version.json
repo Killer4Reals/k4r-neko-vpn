@@ -1,5 +1,5 @@
 {
-  "version": "1.23.1",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.23.1/K4R.Neko.VPN_1.23.1_x64-setup.exe",
-  "notes": "Страна из короткого имени сервера"
+  "version": "1.24.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.24.0/K4R.Neko.VPN_1.24.0_x64-setup.exe",
+  "notes": "Подписка догружается сама после подключения"
 }

@@ -44,3 +44,13 @@ group("describe", () => {
     expect(describeError("").text).toBe(hint("unknown"));
   });
 });
+
+group("hint", () => {
+  it("подсказывает включить сервер, когда домен не открывается", () => {
+    expect(hint("offline")).toMatch(/включи любой сервер/);
+  });
+
+  it("не обещает чудес при отказе провайдера", () => {
+    expect(hint("provider")).toMatch(/провайдер/i);
+  });
+});

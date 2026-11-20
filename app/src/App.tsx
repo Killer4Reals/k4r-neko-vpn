@@ -674,6 +674,17 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [loaded, loadSubscription]);
 
+  // Туннель поднялся, а серверов нет: подписку могли не пустить напрямую
+  // (домен режут по SNI), но через туннель она открывается. Одна повторная
+  // попытка — без циклов, чтобы не долбить панель.
+  const subRetried = useRef(false);
+  useEffect(() => {
+    if (conn !== "connected" || !subUrl || profiles.length > 0) return;
+    if (subRetried.current) return;
+    subRetried.current = true;
+    void loadSubscription();
+  }, [conn, subUrl, profiles.length, loadSubscription]);
+
   const importLinks = useCallback(async (text: string) => {
     if (!inTauri) {
       setWarnings(["Импорт работает в приложении, а не в браузере"]);
