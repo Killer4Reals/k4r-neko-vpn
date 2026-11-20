@@ -508,6 +508,9 @@ const dict: Dict = {
     ru: "Игровой и голосовой трафик идёт напрямую, мимо VPN: меньше задержка, голос не рвётся при переключении сервера.",
     en: "Game and voice traffic goes direct, outside the VPN: lower ping and no voice drop on server switch.",
   },
+  gameStart: { ru: "Игра запустилась", en: "Game started" },
+  nodeFresh: { ru: "отвечал только что", en: "answered just now" },
+  nodeStale: { ru: "давно не проверялся", en: "not checked for a while" },
   gamePicked: {
     ru: "выбрал самый быстрый узел:",
     en: "picked the fastest node:",

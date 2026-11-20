@@ -1595,6 +1595,27 @@ input {
   gap: 8px;
 }
 
+/* живой узел: точка гаснет, когда замер постарел, а не когда узел умер */
+.node-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--txt-4, #5a5566);
+  transition: background 200ms ease-out;
+}
+
+.node-dot[data-fresh="1"] {
+  background: var(--ok, #39ff14);
+  box-shadow: 0 0 6px rgba(57, 255, 20, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node-dot {
+    transition: none;
+  }
+}
+
 /* a server that really did not answer: no bars, no false comfort */
 .dead {
   color: var(--danger);

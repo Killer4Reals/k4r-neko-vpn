@@ -164,6 +164,7 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   probePing: (profiles: Profile[]) =>
     invoke<{ id: string; ms: number | null }[]>("probe_ping", { profiles }),
+  runningExes: () => invoke<string[]>("running_exes"),
   stateLoad: () => invoke<AppState>("state_load"),
   stateSave: (state: AppState) => invoke<void>("state_save", { state }),
   logsTail: (which: string, lines: number) => invoke<string>("logs_tail", { which, lines }),

@@ -167,6 +167,15 @@ export default function App() {
   const [error, setError] = useState(initial.get("error") ?? "");
   const [busy, setBusy] = useState(false);
   const [lat, setLat] = useState<Record<string, number | null>>({});
+  /// id -> когда последний раз мерили. Без этого «живой» узел не отличить от
+  /// того, что отвечал час назад.
+  const [latAt, setLatAt] = useState<Record<string, number>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("k4r.latAt") ?? "{}") as Record<string, number>;
+    } catch {
+      return {};
+    }
+  });
   const [loaded, setLoaded] = useState(!inTauri);
   const [admin, setAdmin] = useState(true);
   const [zapretDir, setZapretDir] = useState<string | null>(null);
@@ -710,7 +719,16 @@ export default function App() {
       const res = await api.probePing(profiles);
       const next: Record<string, number | null> = {};
       for (const r of res) next[r.id] = r.ms;
+      const stamp: Record<string, number> = {};
+      const now = Date.now();
+      for (const r of res) stamp[r.id] = now;
       setLat(next);
+      setLatAt(stamp);
+      try {
+        localStorage.setItem("k4r.latAt", JSON.stringify(stamp));
+      } catch {
+        /* метка не критична: без неё точки просто серые */
+      }
       return next;
     } catch (e) {
       setWarnings([String(e)]);
@@ -795,33 +813,88 @@ export default function App() {
   );
 
   /**
+   * Замер всех узлов → самый быстрый. Один и тот же путь для игрового режима
+   * и для автостарта игры: разные поводы, одно решение.
+   */
+  const pickFastestNode = useCallback(
+    async (title: string) => {
+      if (!inTauri || profiles.length < 2) return;
+      const measured = (await measurePing()) ?? lat;
+      const alive = profiles
+        .map((p) => ({ p, ms: measured[p.id] }))
+        .filter((x): x is { p: Profile; ms: number } => typeof x.ms === "number");
+      if (alive.length === 0) {
+        setToast({ title, body: t("gameNoPing") });
+        return;
+      }
+      const best = alive.reduce((a, b) => (a.ms <= b.ms ? a : b));
+      const name = best.p.name || best.p.host;
+      if (best.p.id === selectedId) {
+        setToast({ title, body: `${t("gameFastest")} ${name} · ${best.ms} мс` });
+        return;
+      }
+      setSelectedId(best.p.id);
+      setToast({ title, body: `${t("gamePicked")} ${name} · ${best.ms} мс` });
+      // Переподключаемся только если туннель уже стоит: рвать ручное
+      // подключение ради замера нельзя.
+      if (conn === "connected") await reconnectTunnel();
+    },
+    [conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t],
+  );
+
+  /**
    * Игровой режим включают перед игрой, и в этот момент честнее выбрать узел
    * по замеру, чем оставить тот, что был выбран для браузера.
    */
   const toggleGameMode = useCallback(
     async (on: boolean) => {
       setGameMode(on);
-      if (!on || !inTauri || profiles.length < 2) return;
-      const measured = (await measurePing()) ?? lat;
-      const alive = profiles
-        .map((p) => ({ p, ms: measured[p.id] }))
-        .filter((x): x is { p: Profile; ms: number } => typeof x.ms === "number");
-      if (alive.length === 0) {
-        setToast({ title: t("gameTitle"), body: t("gameNoPing") });
-        return;
-      }
-      const best = alive.reduce((a, b) => (a.ms <= b.ms ? a : b));
-      const name = best.p.name || best.p.host;
-      if (best.p.id === selectedId) {
-        setToast({ title: t("gameTitle"), body: `${t("gameFastest")} ${name} · ${best.ms} мс` });
-        return;
-      }
-      setSelectedId(best.p.id);
-      setToast({ title: t("gameTitle"), body: `${t("gamePicked")} ${name} · ${best.ms} мс` });
-      if (conn === "connected") await reconnectTunnel();
+      if (on) await pickFastestNode(t("gameTitle"));
     },
-    [conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t],
+    [pickFastestNode, t],
   );
+
+  /**
+   * Игра запустилась сама — узел под неё тоже стоит выбрать самому. Снимок
+   * процессов дешёвый, поэтому опрос раз в 15 секунд ничего не стоит.
+   */
+  const gameWatch = useRef<Set<string>>(new Set());
+  const pickFastestRef = useRef(pickFastestNode);
+  pickFastestRef.current = pickFastestNode;
+  useEffect(() => {
+    if (!inTauri || chosen.length === 0) return;
+    const wanted = chosen.map((c) => ({
+      key: c.exe.toLowerCase(),
+      base: c.exe.split(/[\/]/).pop()?.toLowerCase() ?? c.exe.toLowerCase(),
+      name: c.name,
+    }));
+    let alive = true;
+    const tick = async () => {
+      let running: Set<string>;
+      try {
+        running = new Set(await api.runningExes());
+      } catch {
+        return; // нет снимка — молчим, это не ошибка для человека
+      }
+      if (!alive) return;
+      for (const w of wanted) {
+        const on = running.has(w.base);
+        const was = gameWatch.current.has(w.key);
+        if (on && !was) {
+          gameWatch.current.add(w.key);
+          void pickFastestRef.current(`${t("gameStart")}: ${w.name}`);
+        } else if (!on && was) {
+          gameWatch.current.delete(w.key);
+        }
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 15_000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [chosen, t]);
 
   /**
    * Проба «туннель реально работает». Ловит самую частую беду: соединение
@@ -1132,6 +1205,8 @@ export default function App() {
     conn,
     /// id -> ms, null means the server did not answer at all
     lat,
+    /// id -> когда мерили (мс эпохи)
+    latAt,
     toggleConnection,
     selected,
     servers: viewServers,

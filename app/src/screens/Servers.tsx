@@ -7,6 +7,12 @@ import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
 import { ServerMap } from "../ServerMap";
 
+/** Замер считаем свежим 12 минут: опрос идёт раз в 10, но круг не идеален. */
+const FRESH_MS = 12 * 60 * 1000;
+function isFresh(at?: number): boolean {
+  return typeof at === "number" && Date.now() - at < FRESH_MS;
+}
+
 type Props = {
   t: (k: string) => string;
   servers: Server[];
@@ -14,6 +20,8 @@ type Props = {
   setSelectedId: (id: string) => void;
   /** id -> ms of the last health check, null = no answer */
   lat: Record<string, number | null>;
+  /** id -> когда мерили, чтобы отличать свежий замер от старого */
+  latAt?: Record<string, number>;
   subUrl: string;
   subUa: string;
   setSubUrl: (v: string) => void;
@@ -397,6 +405,11 @@ export function ServersScreen(p: Props) {
                   <span className="dead">{t("serverDead")}</span>
                 ) : (
                   <>
+                    <span
+                      className="node-dot"
+                      data-fresh={isFresh(p.latAt?.[s.id]) ? "1" : "0"}
+                      title={isFresh(p.latAt?.[s.id]) ? t("nodeFresh") : t("nodeStale")}
+                    />
                     <span className="bars" data-q={s.quality}>
                       <i />
                       <i />
