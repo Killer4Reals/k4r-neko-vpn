@@ -481,6 +481,11 @@ fn cc_from_emoji(text: &str) -> Option<String> {
 
 /// Страна из текста: сначала флаг, потом английское название страны.
 fn cc_from_text(text: &str) -> Option<String> {
+    // «#DE» в конце ссылки — самый частый вид имени у провайдеров.
+    let bare = text.trim();
+    if is_cc(bare) {
+        return Some(bare.to_ascii_lowercase());
+    }
     cc_from_emoji(text).or_else(|| {
         let low = text.to_ascii_lowercase();
         CC_WORDS
@@ -1217,6 +1222,69 @@ mod net_tests {
         let stripped = msg.strip_prefix(FATAL).unwrap();
         assert!(stripped.starts_with("провайдер:"));
         assert!(stripped.contains("лимит устройств"));
+    }
+
+    #[test]
+    fn sends_device_headers_and_reports_the_device_limit() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        // Локальный сервер вместо провайдера: проверяем, что мы вообще отправляем
+        // X-HWID (без него панели с учётом устройств отдают заглушку) и что
+        // заголовок лимита превращается в понятную фразу, а не в «нет серверов».
+        let listener = TcpListener::bind("127.0.0.1:0").expect("порт");
+        let addr = listener.local_addr().expect("адрес");
+        let handle = std::thread::spawn(move || {
+            let mut seen = String::new();
+            for round in 0..2 {
+                let (mut sock, _) = listener.accept().expect("соединение");
+                let mut buf = [0u8; 4096];
+                let n = sock.read(&mut buf).unwrap_or(0);
+                let text = String::from_utf8_lossy(&buf[..n]).to_string();
+                if round == 0 {
+                    seen = text;
+                    let body = "[]";
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         X-HWID-Max-Devices-Reached: true\r\nContent-Length: {}\r\n\
+                         Connection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes());
+                } else {
+                    let body = "vless://11111111-2222-3333-4444-555555555555@example.com:443?type=tcp&security=tls#DE";
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\
+                         Connection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = sock.write_all(resp.as_bytes());
+                }
+            }
+            seen
+        });
+
+        let headers = vec![SubHeader {
+            name: "X-HWID".into(),
+            value: "k4r-test-id".into(),
+        }];
+        let url = format!("http://{addr}/sub");
+
+        let err = fetch_as(&url, "v2rayNG/1.9.0", &headers).expect_err("лимит — это ошибка");
+        let msg = err.strip_prefix(FATAL).expect("отказ помечен как окончательный");
+        assert!(msg.contains("лимит устройств"), "сообщение: {msg}");
+
+        let ok = fetch_as(&url, "v2rayNG/1.9.0", &headers).expect("обычный ответ разбирается");
+        assert_eq!(ok.profiles.len(), 1);
+        assert_eq!(ok.profiles[0].cc, "de", "страна берётся из домена или флага");
+
+        let request = handle.join().expect("сервер закончил");
+        assert!(
+            request.to_lowercase().contains("x-hwid: k4r-test-id"),
+            "заголовок устройства не отправлен: {request}"
+        );
     }
 
 }
