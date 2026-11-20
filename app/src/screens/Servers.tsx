@@ -77,6 +77,11 @@ function subUsage(s: { info?: SubInfo | null } | null | undefined, t: (k: string
 export function ServersScreen(p: Props) {
   const { t, servers, selectedId, setSelectedId, warnings, busy, realCount } = p;
   const [link, setLink] = useState("");
+  // «4 из 6 отвечают»: считаем по последнему замеру
+  const alive = {
+    alive: servers.filter((s) => typeof p.lat[s.id] === "number").length,
+    total: servers.filter((s) => s.id in p.lat).length,
+  };
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -243,6 +248,12 @@ export function ServersScreen(p: Props) {
           <span className="muted">
             {realCount > 0 ? `${realCount} ${t("serversCount")}` : t("serversDemo")}
           </span>
+          {/* Сколько узлов реально отвечает: видно до открытия списка */}
+          {alive.total > 0 && (
+            <span className="muted" title={t("aliveHint")}>
+              {alive.alive} {t("aliveOf")} {alive.total}
+            </span>
+          )}
         </div>
 
         {showImport && (

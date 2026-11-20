@@ -3,6 +3,7 @@ import { landDots, project, rotationFor, shortestDelta, type LatLon } from "./gl
 import { HOME } from "./map";
 import { globeStyle, onGlobeStyle, type GlobeStyle } from "./globeStyle";
 import { GlobePlanet, type GlobeNode } from "./GlobePlanet";
+import { TONE_COLOR, nodeTone } from "./health";
 
 type Props = {
   /** Куда повернуть шар: страна выбранного сервера. */
@@ -65,7 +66,7 @@ function biome(lat: number): number {
  * Шар вращается сам, при смене сервера доворачивается к стране и держит её
  * перед зрителем. Крутится и мышью: потянул — завертелся.
  */
-function GlobeDots({ target, connected = false, label, size = 300 }: Omit<Props, "style">) {
+function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit<Props, "style">) {
   const ref = useRef<HTMLCanvasElement | null>(null);
 
   const geom = useMemo(() => {
@@ -341,6 +342,21 @@ function GlobeDots({ target, connected = false, label, size = 300 }: Omit<Props,
         }
       }
 
+      // узлы: цвет точки = последний замер, как на планете
+      for (const n of nodes ?? []) {
+        const p = project(n, s.angle, s.tilt);
+        if (p.z <= 0.02) continue;
+        const x = cx + p.x * R;
+        const y = cy - p.y * R;
+        const tone = nodeTone(n.ms, !!n.stale && n.ms !== null);
+        ctx.globalAlpha = (tone === "dead" ? 0.6 : tone === "stale" ? 0.45 : 0.85) * Math.min(1, p.z * 1.6);
+        ctx.fillStyle = TONE_COLOR[tone];
+        ctx.beginPath();
+        ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
       // выбранная страна
       if (target) {
         const p = project(target, s.angle, s.tilt);
@@ -491,5 +507,5 @@ export function Globe({ target, connected = false, label, size = 300, style, nod
   if (kind === "planet") {
     return <GlobePlanet target={target} connected={connected} label={label} size={size} nodes={nodes} />;
   }
-  return <GlobeDots target={target} connected={connected} label={label} size={size} />;
+  return <GlobeDots target={target} connected={connected} label={label} size={size} nodes={nodes} />;
 }
