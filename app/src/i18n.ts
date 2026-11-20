@@ -405,6 +405,12 @@ const dict: Dict = {
     en: "Every interval I measure all servers and switch only if another one is 25% faster than the current. Off by default.",
   },
   autoSelectOff: { ru: "выкл", en: "off" },
+  autoSwitchSlow: { ru: "уходить с просевшего узла", en: "leave a lagging node" },
+  autoSwitchSlowHint: {
+    ru: "Раз в 10 минут меряю узлы. Если текущий хуже лучшего больше чем на 40 мс — переключаю сам и говорю об этом. Тумблер выключен — не трогаю ничего.",
+    en: "Every 10 minutes I measure the nodes. If the current one is more than 40 ms worse than the best, I switch and say so. Off — I touch nothing.",
+  },
+  slowSwitched: { ru: "узел просел, перешёл на", en: "node got slow, moved to" },
   autoSelectLoss: { ru: "при потере соединения", en: "on connection loss" },
   autoSelectLossHint: {
     ru: "Перемерять сразу, как только туннель упал, не дожидаясь таймера",

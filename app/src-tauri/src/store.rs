@@ -73,6 +73,10 @@ pub struct AppState {
     /// Перемерять и переключаться при потере соединения, не дожидаясь таймера
     #[serde(default)]
     pub auto_select_on_loss: bool,
+    /// Уходить на другой узел, когда текущий заметно просел по замеру.
+    /// По умолчанию выключено: переключать человека за спиной нельзя.
+    #[serde(default)]
+    pub auto_switch_slow: bool,
     /// Правила маршрутизации, в порядке применения
     #[serde(default)]
     pub rules: Vec<RouteRule>,

@@ -2,16 +2,35 @@ import { useEffect, useRef } from "react";
 import { project, rotationFor, shortestDelta, type LatLon } from "./globe";
 import { HOME } from "./map";
 
+/** Узел на планете: где он и как его последний замер. */
+export type GlobeNode = {
+  lat: number;
+  lon: number;
+  /** миллисекунды или null, если узел не ответил */
+  ms: number | null;
+  /** замер постарел — узел не мёртв, его просто давно не спрашивали */
+  stale?: boolean;
+};
+
 type Props = {
   target: LatLon | null;
   connected?: boolean;
   label?: string;
   size: number;
+  nodes?: GlobeNode[];
 };
 
 const TILT = -14;
 const HOLD_SECS = 7;
 const DRIFT = 0.05;
+
+/** Мягкий перелёт с еле заметным перелётом по инерции: без него поворот
+ *  выглядит механическим, а с ним — «живым». */
+function easeOutBack(p: number): number {
+  const c = 0.14;
+  const t = Math.min(1, Math.max(0, p)) - 1;
+  return 1 + (c + 1) * t * t * t + c * t * t;
+}
 
 const VERT = `
 attribute vec3 aPos;
@@ -210,9 +229,12 @@ function loadTex(gl: WebGLRenderingContext, url: string, wrapS: number): WebGLTe
  * Настоящая планета: сфера с текстурой Земли, солнце, ночные огни городов,
  * облака и атмосфера. WebGL, без сторонних библиотек.
  */
-export function GlobePlanet({ target, connected = false, label, size }: Props) {
+export function GlobePlanet({ target, connected = false, label, size, nodes }: Props) {
   const glRef = useRef<HTMLCanvasElement | null>(null);
   const overRef = useRef<HTMLCanvasElement | null>(null);
+  // замеры обновляются каждые 10 минут; пересоздавать ради них WebGL незачем
+  const nodesRef = useRef<GlobeNode[]>([]);
+  nodesRef.current = nodes ?? [];
 
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
@@ -221,14 +243,30 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
     goalTilt: target ? Math.max(-68, Math.min(68, target.lat)) : TILT,
     hold: target ? HOLD_SECS : 0,
     cloud: 0,
+    /// текущий переход: откуда, куда и когда начался
+    move: null as null | { from: number; to: number; fromTilt: number; toTilt: number; t0: number; dur: number },
+    /// когда прилетели — для вспышки в точке прибытия
+    arrived: -1,
+    zoom: 1,
   });
 
   useEffect(() => {
     if (!target) return;
     const s = state.current;
-    const goal = rotationFor(target);
-    s.goal = s.angle + shortestDelta(s.angle, goal);
-    s.goalTilt = Math.max(-68, Math.min(68, target.lat));
+    const to = s.angle + shortestDelta(s.angle, rotationFor(target));
+    const toTilt = Math.max(-68, Math.min(68, target.lat));
+    // Дальний перелёт длится дольше ближнего: глаз ждёт соразмерности пути.
+    const span = Math.abs(to - s.angle) / 180;
+    s.move = {
+      from: s.angle,
+      to,
+      fromTilt: s.tilt,
+      toTilt,
+      t0: performance.now(),
+      dur: 0.85 + Math.min(0.75, span * 0.8),
+    };
+    s.goal = to;
+    s.goalTilt = toTilt;
     s.hold = HOLD_SECS;
   }, [target]);
 
@@ -319,21 +357,36 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
       if (reduce) {
         s.angle = s.goal;
         s.tilt = s.goalTilt;
+        s.zoom = 1;
+        s.move = null;
+      } else if (s.move) {
+        const m = s.move;
+        const p = Math.min(1, (now - m.t0) / (m.dur * 1000));
+        // easeInOutQuint: разгон, длинный «полёт», мягкая остановка
+        const e = p < 0.5 ? 16 * p ** 5 : 1 - Math.pow(-2 * p + 2, 5) / 2;
+        s.angle = m.from + (m.to - m.from) * e;
+        s.tilt = m.fromTilt + (m.toTilt - m.fromTilt) * easeOutBack(p);
+        // планета чуть отъезжает и возвращается — как будто её повернули рукой
+        s.zoom = 1 - 0.07 * Math.sin(Math.PI * p);
+        if (p >= 1) {
+          s.move = null;
+          s.zoom = 1;
+          s.arrived = now;
+        }
       } else if (s.hold > 0) {
         s.hold -= dt;
-        s.angle += (s.goal - s.angle) * Math.min(1, dt * 3.4);
       } else {
         s.angle += dt * DRIFT * 4.2;
         s.goal = s.angle;
         s.goalTilt = TILT;
+        s.tilt += (s.goalTilt - s.tilt) * Math.min(1, dt * 1.6);
       }
-      if (!reduce) s.tilt += (s.goalTilt - s.tilt) * Math.min(1, dt * 2.4);
       if (!reduce) s.cloud += dt * 0.0016;
 
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.uniform1f(u.spin, s.angle);
       gl.uniform1f(u.tilt, s.tilt);
-      gl.uniform1f(u.scale, 1 - 24 / size);
+      gl.uniform1f(u.scale, (1 - 24 / size) * s.zoom);
       gl.uniform1f(u.cloud, s.cloud);
 
       gl.activeTexture(gl.TEXTURE0);
@@ -363,12 +416,12 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
         over.width = canvas.width;
         over.height = canvas.height;
       }
-      const R = size / 2 - 12;
+      const s = state.current;
+      const R = (size / 2 - 12) * s.zoom;
       const cx = size / 2;
       const cy = size / 2;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
-      const s = state.current;
       const accent = connected ? "#5dff6a" : "#39FF14";
 
       // Атмосферное свечение вокруг диска: тонкая голубая дымка за краем шара.
@@ -412,6 +465,57 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
           }
         }
         ctx.globalAlpha = 1;
+      }
+
+      // --- узлы на планете: цвет точки = результат последнего замера.
+      // Человеку не нужно открывать список, чтобы увидеть, кто жив.
+      const nodeList = nodesRef.current;
+      if (nodeList.length > 0) {
+        for (const n of nodeList) {
+          const p = project(n, s.angle, s.tilt);
+          if (p.z <= 0.02) continue;
+          const x = cx + p.x * R;
+          const y = cy - p.y * R;
+          const color =
+            n.ms === null ? "#ff5d6c" : n.stale ? "#8e8a9c" : n.ms < 90 ? "#39FF14" : n.ms < 180 ? "#ffd166" : "#ff9a4d";
+          const a = (n.ms === null ? 0.6 : n.stale ? 0.45 : 0.85) * Math.min(1, p.z * 1.6);
+          // тёмная подложка: точка читается и на белом облаке, и на синем океане
+          ctx.globalAlpha = a * 0.55;
+          ctx.fillStyle = "#07040d";
+          ctx.beginPath();
+          ctx.arc(x, y, 4.6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = a;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+          if (n.ms !== null && !n.stale) {
+            ctx.globalAlpha = a * 0.3;
+            ctx.beginPath();
+            ctx.arc(x, y, 6.4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // --- вспышка в точке прибытия: «приехали»
+      if (s.arrived > 0 && !reduce) {
+        const age = (performance.now() - s.arrived) / 1000;
+        if (age < 0.9) {
+          const p = project(target ?? HOME, s.angle, s.tilt);
+          if (p.z > 0.02) {
+            const k = age / 0.9;
+            ctx.globalAlpha = 0.55 * (1 - k);
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cx + p.x * R, cy - p.y * R, 8 + 30 * k, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+        }
       }
 
       {

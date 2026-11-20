@@ -28,6 +28,8 @@ type Props = {
   serverNames: Record<string, string>;
   onOrchReset: () => void;
   autoSelectLoss: boolean;
+  autoSwitchSlow: boolean;
+  setAutoSwitchSlow: (v: boolean) => void;
   setAutoSelectLoss: (v: boolean) => void;
   autostart: boolean;
   setAutostart: (v: boolean) => void;
@@ -533,6 +535,17 @@ export function SettingsScreen(p: Props) {
             className="switch"
             aria-checked={p.autoSelectLoss}
             onClick={() => p.setAutoSelectLoss(!p.autoSelectLoss)}
+          />
+        </div>
+        <div className="row">
+          <div className="txt">
+            <b>{t("autoSwitchSlow")}</b>
+            <span>{t("autoSwitchSlowHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={p.autoSwitchSlow}
+            onClick={() => p.setAutoSwitchSlow(!p.autoSwitchSlow)}
           />
         </div>
         <div className="row">

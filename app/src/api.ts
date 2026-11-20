@@ -243,6 +243,8 @@ export type AppState = {
   connect_on_start?: boolean;
   auto_select?: number;
   auto_select_on_loss?: boolean;
+  /** уходить с просевшего узла */
+  auto_switch_slow?: boolean;
   rules?: RouteRule[];
   route_ru_direct?: boolean;
   route_block_ads?: boolean;

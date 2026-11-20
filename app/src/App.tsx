@@ -187,6 +187,8 @@ export default function App() {
   // поведение тем, кто уже настроил сервер руками.
   const [autoSelect, setAutoSelect] = useState(0);
   const [autoSelectLoss, setAutoSelectLoss] = useState(false);
+  /// Уходить с просевшего узла: по умолчанию выключено.
+  const [autoSwitchSlow, setAutoSwitchSlow] = useState(false);
   const [autoHistory, setAutoHistory] = useState<string[]>([]);
   // Оркестратор: счётчики «сервер + транспорт» и состояние проб.
   const [orch, setOrch] = useState<OrchRow[]>([]);
@@ -323,6 +325,7 @@ export default function App() {
         if (typeof st.connect_on_start === "boolean") setConnectOnStart(st.connect_on_start);
         if (typeof st.auto_select === "number") setAutoSelect(st.auto_select);
         if (typeof st.auto_select_on_loss === "boolean") setAutoSelectLoss(st.auto_select_on_loss);
+        if (typeof st.auto_switch_slow === "boolean") setAutoSwitchSlow(st.auto_switch_slow);
         if (Array.isArray(st.rules)) setRules(st.rules);
         if (typeof st.route_ru_direct === "boolean") setRouteRu(st.route_ru_direct);
         if (typeof st.route_block_ads === "boolean") setRouteAds(st.route_block_ads);
@@ -377,6 +380,7 @@ export default function App() {
           connect_on_start: connectOnStart,
           auto_select: autoSelect,
           auto_select_on_loss: autoSelectLoss,
+          auto_switch_slow: autoSwitchSlow,
           rules,
           route_ru_direct: routeRu,
           route_block_ads: routeAds,
@@ -746,11 +750,33 @@ export default function App() {
 
   // Серверы отваливаются и возвращаются сами. Без повторного замера «не
   // отвечает» залипает навсегда, хотя узел уже жив — и человек выбирает наугад.
+  // Тот же проход, если включён тумблер, уводит с просевшего узла.
   useEffect(() => {
     if (!inTauri || profiles.length === 0) return;
-    const timer = window.setInterval(() => void measurePing(), 10 * 60 * 1000);
+    const tick = async () => {
+      const measured = (await measurePing()) ?? lat;
+      if (!autoSwitchSlow || conn !== "connected" || switching.current) return;
+      const cur = measured[selectedId];
+      if (typeof cur !== "number") return;
+      const alive = profiles
+        .map((p) => ({ p, ms: measured[p.id] }))
+        .filter((x): x is { p: Profile; ms: number } => typeof x.ms === "number");
+      if (alive.length < 2) return;
+      const best = alive.reduce((a, b) => (a.ms <= b.ms ? a : b));
+      if (best.p.id === selectedId) return;
+      // 40 мс — порог, ниже которого человек разницы не чувствует, а
+      // дёргать туннель ради неё нельзя.
+      if (cur - best.ms < 40) return;
+      const name = best.p.name || best.p.host;
+      setSelectedId(best.p.id);
+      setToast({ title: t("autoSwitchSlow"), body: `${t("slowSwitched")} ${name} · ${best.ms} мс` });
+      await reconnectTunnel();
+    };
+    const timer = window.setInterval(() => void tick(), 10 * 60 * 1000);
     return () => window.clearInterval(timer);
-  }, [profiles.length, measurePing, profiles]);
+  }, [
+    autoSwitchSlow, conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t,
+  ]);
 
   /**
    * Один проход автовыбора: замер всех серверов → решение → переподключение.
@@ -1401,6 +1427,8 @@ export default function App() {
               )}
               onOrchReset={() => api.orchestratorReset().then(setOrch).catch(() => undefined)}
               autoSelectLoss={autoSelectLoss}
+              autoSwitchSlow={autoSwitchSlow}
+              setAutoSwitchSlow={setAutoSwitchSlow}
               setAutoSelectLoss={setAutoSelectLoss}
               autostart={autostart}
               connectOnStart={connectOnStart}

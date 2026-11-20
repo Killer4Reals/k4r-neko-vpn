@@ -2026,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "k4r-neko-vpn"
-version = "1.25.0"
+version = "1.26.0"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.2.17",

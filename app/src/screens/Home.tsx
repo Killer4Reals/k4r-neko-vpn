@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Globe } from "../GlobeView";
+import type { GlobeNode } from "../GlobePlanet";
 import { countryOf } from "../globe";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
@@ -19,6 +20,8 @@ type Props = {
   killSwitch: boolean;
   /** id -> ms of the last health check, null = no answer */
   lat: Record<string, number | null>;
+  /** id -> когда мерили, чтобы отличить живой замер от старого */
+  latAt?: Record<string, number>;
   /** bytes per second measured by the engine */
   down: number;
   up: number;
@@ -65,6 +68,19 @@ const fmt = (bytesPerSec: number) => {
 
 export function HomeScreen(p: Props) {
   const { t, conn, toggleConnection, selected, servers, selectedId, setSelectedId } = p;
+
+  // Узлы на планете: без открытия списка видно, кто ответил, кто тормозит, а
+  // кто молчит. Замер старше 12 минут считаем старым — он не врёт, но устарел.
+  const globeNodes: GlobeNode[] = [];
+  for (const s of servers) {
+    if (!(s.id in p.lat)) continue; // ещё не мерили — точку не рисуем
+    const at = countryOf(s.flag || s.cc);
+    if (!at) continue;
+    const ms = p.lat[s.id];
+    const stamp = p.latAt?.[s.id];
+    const stale = typeof stamp !== "number" || Date.now() - stamp > 12 * 60 * 1000;
+    globeNodes.push({ lat: at.lat, lon: at.lon, ms, stale: ms !== null && stale });
+  }
   const [uptime, setUptime] = useState(0);
 
   useEffect(() => {
@@ -192,6 +208,7 @@ export function HomeScreen(p: Props) {
               size={globeSize}
               target={countryOf(selected.flag || selected.cc)}
               connected={conn === "connected"}
+              nodes={globeNodes}
             />
           </button>
 
