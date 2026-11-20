@@ -73,12 +73,15 @@ void main() {
   // У полюсов строки текстуры сходятся в точку: любой рисунок там растягивается
   // в радиальные лучи. Гасим облака и тень у полюсов — так чище и физично.
   float polar = polarSame;
-  float cloud = texture2D(uClouds, vec2(vUv.x + uCloudShift, vUv.y)).r * (1.0 - polar);
+  // Плотность облаков в текстуре низкая: без кривой весь шар выглядит молочным.
+  float cloud = pow(texture2D(uClouds, vec2(vUv.x + uCloudShift, vUv.y)).r, 1.35) * (1.0 - polar);
   float shadowUvX = vUv.x + uCloudShift + 0.012 * dot(sun, east);
   float shadowUvY = vUv.y - 0.012 * dot(sun, north);
   float cloudShadow = texture2D(uClouds, vec2(shadowUvX, shadowUvY)).r * (1.0 - polar);
 
   vec3 base = texture2D(uDay, vUv).rgb;
+  // Вода чуть глубже суши: снимок NASA на шаре выглядит слишком светлым.
+  base *= mix(1.0, 0.93, water);
   base *= mix(1.0, 0.80, cloudShadow * 0.9);
 
   // Свет: тёплое солнце + холодная подсветка с ночной стороны.
@@ -100,7 +103,7 @@ void main() {
 
   // Облака: сверху свой свет, в тени почти не видно.
   float lit = 0.14 + 1.02 * max(ndl, 0.0);
-  col = mix(col, vec3(0.92, 0.95, 1.0) * lit, cloud * 0.36);
+  col = mix(col, vec3(0.94, 0.96, 1.0) * lit, cloud * 0.42);
 
   // Атмосфера: плотная голубая дымка у края диска, ярче со стороны солнца.
   float rim = 1.0 - clamp(dot(n, eye), 0.0, 1.0);
@@ -274,7 +277,7 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geo.idx, gl.STATIC_DRAW);
 
     const day = loadTex(gl, "/earth/day.webp", gl.REPEAT);
-    const normal = loadTex(gl, "/earth/normal.png", gl.REPEAT);
+    const normal = loadTex(gl, "/earth/normal.webp", gl.REPEAT);
     const water = loadTex(gl, "/earth/water.png", gl.REPEAT);
     const lights = loadTex(gl, "/earth/lights.webp", gl.REPEAT);
     const clouds = loadTex(gl, "/earth/clouds.webp", gl.REPEAT);
@@ -367,6 +370,17 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
       ctx.clearRect(0, 0, size, size);
       const s = state.current;
       const accent = connected ? "#5dff6a" : "#39FF14";
+
+      // Атмосферное свечение вокруг диска: тонкая голубая дымка за краем шара.
+      // Именно она даёт ощущение «настоящей планеты в космосе», а не кружка.
+      const glow = ctx.createRadialGradient(cx, cy, R * 0.97, cx, cy, R * 1.16);
+      glow.addColorStop(0, "rgba(122,190,255,0.26)");
+      glow.addColorStop(0.4, "rgba(86,146,255,0.12)");
+      glow.addColorStop(1, "rgba(46,96,206,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 1.16, 0, Math.PI * 2);
+      ctx.fill();
 
       if (target) {
         const steps = 72;
