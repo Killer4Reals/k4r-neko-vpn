@@ -66,3 +66,21 @@ export function slowSwitchTarget(
   if (cur - bestMs <= SLOW_MARGIN_MS) return null;
   return bestId;
 }
+
+/**
+ * Сколько узлов ответило: «4 из 6». Считаем только те, кого уже мерили —
+ * неизмеренный узел не должен выглядеть мёртвым.
+ */
+export function aliveCount(
+  ids: string[],
+  measured: Record<string, number | null>,
+): { alive: number; total: number } {
+  let alive = 0;
+  let total = 0;
+  for (const id of ids) {
+    if (!(id in measured)) continue;
+    total += 1;
+    if (typeof measured[id] === "number") alive += 1;
+  }
+  return { alive, total };
+}

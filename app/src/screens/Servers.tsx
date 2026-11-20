@@ -3,7 +3,7 @@ import type { Server } from "../data";
 import type { SubInfo, SubSource } from "../api";
 import { QrSheet } from "../Qr";
 import { api } from "../api";
-import { isFresh } from "../health";
+import { aliveCount, isFresh } from "../health";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
 import { ServerMap } from "../ServerMap";
@@ -78,10 +78,7 @@ export function ServersScreen(p: Props) {
   const { t, servers, selectedId, setSelectedId, warnings, busy, realCount } = p;
   const [link, setLink] = useState("");
   // «4 из 6 отвечают»: считаем по последнему замеру
-  const alive = {
-    alive: servers.filter((s) => typeof p.lat[s.id] === "number").length,
-    total: servers.filter((s) => s.id in p.lat).length,
-  };
+  const alive = aliveCount(servers.map((s) => s.id), p.lat);
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [showQr, setShowQr] = useState(false);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRESH_MS, SLOW_MARGIN_MS, isFresh, nodeTone, slowSwitchTarget } from "./health";
+import { FRESH_MS, SLOW_MARGIN_MS, aliveCount, isFresh, nodeTone, slowSwitchTarget } from "./health";
 
 describe("свежесть замера", () => {
   it("свежий — пока не прошло 12 минут", () => {
@@ -58,5 +58,17 @@ describe("уход с просевшего узла", () => {
 
   it("один живой сервер — переключаться некуда", () => {
     expect(slowSwitchTarget("a", { a: 900, b: null })).toBeNull();
+  });
+});
+
+describe("счётчик живых", () => {
+  it("считает только измерённые узлы", () => {
+    const r = aliveCount(["a", "b", "c", "d"], { a: 40, b: null, c: 120 });
+    expect(r.alive).toBe(2);
+    expect(r.total).toBe(3);
+  });
+
+  it("неизмеренные не выглядят мёртвыми", () => {
+    expect(aliveCount(["x"], {})).toEqual({ alive: 0, total: 0 });
   });
 });

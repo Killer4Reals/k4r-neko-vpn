@@ -1,5 +1,5 @@
 {
-  "version": "1.29.3",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.29.3/K4R.Neko.VPN_1.29.3_x64-setup.exe",
-  "notes": "После сброса HWID подписка грузится сама"
+  "version": "1.29.4",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.29.4/K4R.Neko.VPN_1.29.4_x64-setup.exe",
+  "notes": "Счётчик живых узлов в общем модуле с тестами"
 }
