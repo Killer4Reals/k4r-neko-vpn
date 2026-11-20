@@ -92,6 +92,9 @@ export function ServersScreen(p: Props) {
     try {
       const next = await api.installIdReset();
       setHwidNote(`${t("hwidNew")}: ${next}`);
+      // Новый слот у провайдера — сразу пробуем загрузить список, иначе
+      // человеку придётся самому догадаться нажать «Обновить».
+      void p.onLoad();
     } catch (e) {
       setHwidNote(String(e));
     }
