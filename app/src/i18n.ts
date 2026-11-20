@@ -447,6 +447,12 @@ const dict: Dict = {
     ru: "Настройки: защита, звук, обновления. Кнопка «Проверить kill-switch» покажет, реально ли работает блокировка.",
     en: "Settings: protection, sound, updates. The kill-switch check button shows whether blocking really works.",
   },
+  hwidTitle: { ru: "ID устройства", en: "Device ID" },
+  hwidHint: {
+    ru: "Провайдер считает устройства по этому номеру. Кончились слоты — нажми «Новый ID» и отключи старое устройство в кабинете.",
+    en: "The provider counts devices by this ID. Out of slots? Press “New ID” and remove the old device in the provider panel.",
+  },
+  hwidReset: { ru: "Новый ID", en: "New ID" },
   globeStyleTitle: { ru: "Вид глобуса", en: "Globe look" },
   globeStyleHint: {
     ru: "«Неон» — шар из точек в цвет темы. «Планета» — океан, материки и атмосфера.",

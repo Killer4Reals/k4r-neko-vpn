@@ -48,6 +48,10 @@ pub struct Profile {
     /// Резервный сервер: включается, только когда основные не работают.
     #[serde(default)]
     pub reserve: bool,
+    /// Страна сервера двумя буквами (de, nl, us…). Пусто, если не разобрали.
+    /// Без неё глобус не знает, куда ставить метку, а список — какой рисовать флаг.
+    #[serde(default)]
+    pub cc: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -141,10 +145,15 @@ fn more_useful(current: &str, candidate: &str) -> bool {
 /// Клиенты, которых панели узнают. Порядок не случайный: `v2rayNG` почти
 /// всегда получает обычный список ссылок, который мы умеем читать; остальные —
 /// на случай, если панель знает только их.
-pub const UA_KNOWN: [&str; 3] = [
+pub const UA_KNOWN: [&str; 5] = [
     "v2rayNG/1.9.0",
     "Streisand/1.6.0",
     "ClashMetaForAndroid/2.11.1",
+    // Панели с учётом устройств (Remnawave и его форки) отвечают настоящими
+    // конфигами только тем клиентам, которых знают по имени. v2rayNG у них
+    // в белом списке почти всегда, Happ и v2raytun — тоже.
+    "Happ/1.22.0",
+    "v2raytun/3.0.1",
 ];
 
 /// Порядок попыток: сперва то, что стоит у человека в настройках (там может
@@ -191,6 +200,10 @@ pub fn fetch(
                 return Ok(result);
             }
             Err(e) => {
+                // Лимит устройств и подобные отказы не лечатся сменой клиента.
+                if let Some(msg) = e.strip_prefix(FATAL) {
+                    return Err(msg.to_string());
+                }
                 if more_useful(&best_error, &e) || best_error.is_empty() {
                     best_error = e;
                 }
@@ -199,6 +212,9 @@ pub fn fetch(
     }
     Err(best_error)
 }
+
+/// Отказ, который не стоит повторять другим User-Agent: лечится у провайдера.
+const FATAL: char = '\u{1}';
 
 /// Один запрос конкретным клиентом.
 fn fetch_as(url: &str, user_agent: &str, headers: &[SubHeader]) -> Result<SubResult, String> {
@@ -221,6 +237,23 @@ fn fetch_as(url: &str, user_agent: &str, headers: &[SubHeader]) -> Result<SubRes
         .get("subscription-userinfo")
         .and_then(|v| v.to_str().ok())
         .map(parse_userinfo);
+    // Панели с учётом устройств закрывают доступ, когда лимит исчерпан, но
+    // отвечают при этом 200 и списком-заглушкой. Без разбора этого заголовка
+    // человек видел бы «нет серверов» и не понимал, что делать.
+    let limited = ["x-hwid-max-devices-reached", "x-hwid-limit"]
+        .iter()
+        .any(|h| {
+            resp.headers()
+                .get(*h)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v.trim().eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
+        });
+    if limited {
+        return Err(format!(
+            "{FATAL}провайдер: лимит устройств исчерпан — отключи лишнее устройство в кабинете провайдера и повтори"
+        ));
+    }
     let title = resp
         .headers()
         .get("profile-title")
@@ -367,6 +400,177 @@ fn is_placeholder(p: &Profile) -> bool {
     p.host.starts_with("0.0.0.0") || p.uuid.starts_with("00000000-0000")
 }
 
+/// Коды стран, которые встречаются в подписках: двухбуквенный ярлык в домене
+/// (`de.savethis.cloud`) — самый надёжный признак страны сервера.
+const KNOWN_CC: [&str; 46] = [
+    "ad", "ae", "al", "am", "ar", "at", "au", "az", "ba", "bg", "br", "by", "ca", "ch", "cn",
+    "cy", "cz", "de", "dk", "ee", "es", "fi", "fr", "gb", "ge", "gr", "hk", "hr", "hu", "id",
+    "ie", "il", "in", "ir", "is", "it", "jp", "ke", "kg", "kr", "kz", "lt", "lu", "lv", "md",
+    "mk",
+];
+
+/// Хвост списка: страны, которые провайдеры отдают чаще всего.
+const KNOWN_CC_TAIL: [&str; 26] = [
+    "mt", "mx", "my", "ng", "nl", "no", "nz", "pe", "ph", "pl", "pt", "ro", "rs", "ru", "se",
+    "sg", "si", "sk", "th", "tr", "tw", "ua", "us", "uz", "vn", "za",
+];
+
+fn is_cc(s: &str) -> bool {
+    let s = s.trim().to_ascii_lowercase();
+    s.len() == 2 && (KNOWN_CC.contains(&s.as_str()) || KNOWN_CC_TAIL.contains(&s.as_str()))
+}
+
+/// `de.savethis.cloud` → "de". Смотрим только первые два ярлыка: дальше идут
+/// общие слова (`cloud`, `net`), которые совпадут с чьим-нибудь кодом случайно.
+fn cc_from_host(host: &str) -> Option<String> {
+    let host = host.trim().to_ascii_lowercase();
+    let mut labels = host.split('.');
+    for _ in 0..2 {
+        let Some(label) = labels.next() else { break };
+        if is_cc(label) {
+            return Some(label.to_string());
+        }
+    }
+    None
+}
+
+/// Названия стран латиницей, которые провайдеры пишут прямо в имени сервера.
+const CC_WORDS: [(&str, &str); 22] = [
+    ("germany", "de"),
+    ("netherlands", "nl"),
+    ("holland", "nl"),
+    ("norway", "no"),
+    ("estonia", "ee"),
+    ("sweden", "se"),
+    ("finland", "fi"),
+    ("turkey", "tr"),
+    ("kazakh", "kz"),
+    ("japan", "jp"),
+    ("usa", "us"),
+    ("united states", "us"),
+    ("america", "us"),
+    ("russia", "ru"),
+    ("france", "fr"),
+    ("poland", "pl"),
+    ("latvia", "lv"),
+    ("lithuania", "lt"),
+    ("singapore", "sg"),
+    ("canada", "ca"),
+    ("switzerland", "ch"),
+    ("united kingdom", "gb"),
+];
+
+/// Страна из флага-эмодзи: два региональных символа (`🇩🇪`) — это код ISO.
+fn cc_from_emoji(text: &str) -> Option<String> {
+    let cps: Vec<u32> = text.chars().map(|c| c as u32).collect();
+    for w in cps.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        if (0x1F1E6..=0x1F1FF).contains(&a) && (0x1F1E6..=0x1F1FF).contains(&b) {
+            let cc = format!(
+                "{}{}",
+                char::from_u32('a' as u32 + (a - 0x1F1E6)).unwrap_or('?'),
+                char::from_u32('a' as u32 + (b - 0x1F1E6)).unwrap_or('?')
+            );
+            if is_cc(&cc) {
+                return Some(cc);
+            }
+        }
+    }
+    None
+}
+
+/// Страна из текста: сначала флаг, потом английское название страны.
+fn cc_from_text(text: &str) -> Option<String> {
+    cc_from_emoji(text).or_else(|| {
+        let low = text.to_ascii_lowercase();
+        CC_WORDS
+            .iter()
+            .find(|(word, _)| low.contains(word))
+            .map(|(_, cc)| (*cc).to_string())
+    })
+}
+
+/// Как подписать сервер в списке: флаг и название страны по-русски.
+fn country_label(cc: &str) -> Option<String> {
+    let name = match cc {
+        "de" => "Германия",
+        "nl" => "Нидерланды",
+        "no" => "Норвегия",
+        "ee" => "Эстония",
+        "se" => "Швеция",
+        "fi" => "Финляндия",
+        "tr" => "Турция",
+        "kz" => "Казахстан",
+        "jp" => "Япония",
+        "us" => "США",
+        "ru" => "Россия",
+        "fr" => "Франция",
+        "pl" => "Польша",
+        "lv" => "Латвия",
+        "lt" => "Литва",
+        "sg" => "Сингапур",
+        "ca" => "Канада",
+        "ch" => "Швейцария",
+        "gb" => "Великобритания",
+        "at" => "Австрия",
+        "it" => "Италия",
+        "es" => "Испания",
+        "cz" => "Чехия",
+        "ro" => "Румыния",
+        "bg" => "Болгария",
+        "rs" => "Сербия",
+        "ua" => "Украина",
+        "am" => "Армения",
+        "ge" => "Грузия",
+        "dk" => "Дания",
+        "ie" => "Ирландия",
+        "pt" => "Португалия",
+        "gr" => "Греция",
+        "hu" => "Венгрия",
+        "md" => "Молдавия",
+        "hk" => "Гонконг",
+        "kr" => "Корея",
+        "in" => "Индия",
+        "br" => "Бразилия",
+        "au" => "Австралия",
+        "za" => "ЮАР",
+        "ar" => "Аргентина",
+        "mx" => "Мексика",
+        "cn" => "Китай",
+        "id" => "Индонезия",
+        "my" => "Малайзия",
+        "th" => "Таиланд",
+        "vn" => "Вьетнам",
+        "ph" => "Филиппины",
+        "nz" => "Новая Зеландия",
+        "il" => "Израиль",
+        "ae" => "ОАЭ",
+        "is" => "Исландия",
+        "lu" => "Люксембург",
+        "be" => "Бельгия",
+        "by" => "Беларусь",
+        "uz" => "Узбекистан",
+        "kg" => "Киргизия",
+        _ => "",
+    };
+    if name.is_empty() {
+        return None;
+    }
+    Some(format!("{} {name}", crate::subscription::emoji_for(cc)))
+}
+
+/// `de` → 🇩🇪. Строим сами: провайдер может прислать имя без флага.
+fn emoji_for(cc: &str) -> String {
+    let mut out = String::new();
+    for ch in cc.chars().take(2) {
+        let up = ch.to_ascii_uppercase();
+        if let Some(c) = char::from_u32(0x1F1E6 + (up as u32 - 'A' as u32)) {
+            out.push(c);
+        }
+    }
+    out
+}
+
 fn parse_json(text: &str) -> Result<SubResult, String> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("некорректный JSON: {e}"))?;
@@ -377,7 +581,7 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
         _ => return Err("неизвестный формат подписки".into()),
     };
 
-    let mut profiles = Vec::new();
+    let mut profiles: Vec<Profile> = Vec::new();
     for cfg in configs {
         let remarks = cfg
             .get("remarks")
@@ -391,17 +595,34 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
         for ob in outbounds {
             // Два разных JSON: sing-box (`type`) и Xray (`protocol`).
             // Провайдеры отдают и тот, и другой — понимаем оба.
-            if let Some(p) = profile_from_singbox(ob).or_else(|| {
+            if let Some(mut p) = profile_from_singbox(ob).or_else(|| {
                 if ob.get("protocol").and_then(|v| v.as_str()) == Some("vless") {
                     profile_from_xray(ob, &remarks)
                 } else {
                     None
                 }
             }) {
+                // Страна: домен (`de.savethis.cloud`) → ярлык узла → название
+                // в примечании → флаг. Без страны глобус не знает, куда ставить
+                // метку, а список показывает одинаковые строки без флагов.
+                let cc = cc_from_host(&p.host)
+                    .or_else(|| cc_from_text(&p.name))
+                    .or_else(|| cc_from_text(&remarks));
+                if let Some(cc) = cc {
+                    p.name = country_label(&cc).unwrap_or(p.name);
+                    p.cc = cc;
+                } else if !remarks.is_empty() {
+                    p.name = remarks.clone();
+                }
                 profiles.push(p);
             }
         }
     }
+
+    // Один и тот же узел обычно приходит несколько раз: в группе «Fastest»,
+    // в своей стране и в цепочках. Дубликаты в списке выглядят как баг.
+    let mut seen = std::collections::HashSet::new();
+    profiles.retain(|p| seen.insert(p.id.clone()));
 
     if profiles.is_empty() {
         return Err("в конфиге подписки не нашлось VLESS-серверов".into());
@@ -524,6 +745,7 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
             wg_mtu: 0,
             wg_reserved: Vec::new(),
             reserve: false,
+        cc: String::new(),
         })
 }
 
@@ -620,6 +842,7 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
             wg_mtu: 0,
             wg_reserved: Vec::new(),
             reserve: false,
+        cc: String::new(),
         })
 }
 
@@ -658,6 +881,11 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         fragment
     };
 
+    // Страну считаем до переноса строк в структуру.
+    let cc = cc_from_host(&host)
+        .or_else(|| cc_from_text(&name))
+        .unwrap_or_default();
+
     Ok(Profile {
         id: format!("{host}:{port}:{uuid}"),
         name,
@@ -677,16 +905,16 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         },
         service_name: get("serviceName"),
         path: get("path"),
-    
-            kind: String::new(),
-            wg_private_key: String::new(),
-            wg_peer_public_key: String::new(),
-            wg_preshared_key: String::new(),
-            wg_addresses: Vec::new(),
-            wg_mtu: 0,
-            wg_reserved: Vec::new(),
-            reserve: false,
-        })
+        kind: String::new(),
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
+        cc,
+    })
 }
 
 #[cfg(test)]
@@ -926,4 +1154,69 @@ mod net_tests {
     fn empty_error_is_always_replaced() {
         assert!(more_useful("", "некорректный JSON"));
     }
+    #[test]
+    fn parses_live_sample_when_provided() {
+        let Ok(path) = std::env::var("K4R_SAMPLE") else { return };
+        let text = std::fs::read_to_string(&path).expect("sample readable");
+        let r = parse(&text).expect("sample parses");
+        println!("profiles={}", r.profiles.len());
+        for p in r.profiles.iter().take(20) {
+            println!(
+                "  {} | {} {}:{} {} {} {}",
+                p.name, p.kind, p.host, p.port, p.security, p.network, p.uuid
+            );
+        }
+        assert!(r.profiles.len() >= 10, "ожидали хотя бы 10 серверов");
+    }
+
+    #[test]
+    fn country_comes_from_the_domain_first() {
+        assert_eq!(cc_from_host("de.savethis.cloud").as_deref(), Some("de"));
+        assert_eq!(cc_from_host("ru.savethis.cloud").as_deref(), Some("ru"));
+        assert_eq!(cc_from_host("node1.us.example.net").as_deref(), Some("us"));
+        // общие слова не должны становиться странами
+        assert_eq!(cc_from_host("vpn.example.com"), None);
+        assert_eq!(cc_from_host("proxy.k4r.ink"), None);
+    }
+
+    #[test]
+    fn country_comes_from_a_flag_or_a_name() {
+        assert_eq!(cc_from_emoji("🇳🇴 Norway").as_deref(), Some("no"));
+        assert_eq!(cc_from_emoji("🇪🇺 Fastest").as_deref(), None);
+        assert_eq!(cc_from_text("🇩🇪 Germany").as_deref(), Some("de"));
+        assert_eq!(cc_from_text("Frankfurt").as_deref(), None);
+    }
+
+    #[test]
+    fn servers_are_named_after_their_own_country() {
+        // «Fastest» — сборная солянка: у каждого узла своя страна из домена.
+        let body = r#"[
+          {"remarks":"🇪🇺 Fastest","outbounds":[
+            {"protocol":"vless","tag":"germanyvless1","settings":{"vnext":[{"address":"de.savethis.cloud","port":443,"users":[{"id":"ad2d5897-ee02-4b85-b86f-9a994cc84b01"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"de.savethis.cloud","publicKey":"k","fingerprint":"firefox"}}},
+            {"protocol":"vless","tag":"japanvless1","settings":{"vnext":[{"address":"jp.savethis.cloud","port":443,"users":[{"id":"ad2d5897-ee02-4b85-b86f-9a994cc84b01"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"jp.savethis.cloud","publicKey":"k","fingerprint":"firefox"}}}
+          ]},
+          {"remarks":"🇩🇪 Germany","outbounds":[
+            {"protocol":"vless","tag":"germanyvless1","settings":{"vnext":[{"address":"de.savethis.cloud","port":443,"users":[{"id":"ad2d5897-ee02-4b85-b86f-9a994cc84b01"}]}]},"streamSettings":{"network":"tcp","security":"reality","realitySettings":{"serverName":"de.savethis.cloud","publicKey":"k","fingerprint":"firefox"}}}
+          ]}
+        ]"#;
+        let r = parse(body).expect("разбирается");
+        // один и тот же узел в двух конфигах — не два сервера
+        assert_eq!(r.profiles.len(), 2, "дубликаты склеены");
+        assert_eq!(r.profiles[0].cc, "de");
+        assert_eq!(r.profiles[0].name, "🇩🇪 Германия");
+        assert_eq!(r.profiles[1].cc, "jp");
+        assert_eq!(r.profiles[1].name, "🇯🇵 Япония");
+        assert!(r.profiles.iter().all(|p| p.host.contains(".savethis.cloud")));
+    }
+
+    #[test]
+    fn device_limit_is_reported_as_the_providers_own_words() {
+        // Панель отвечает 200 и заглушкой, но помечает лимит заголовком.
+        // Такое сообщение важнее любого «сервер ответил 200».
+        let msg = "\u{1}провайдер: лимит устройств исчерпан — отключи лишнее устройство в кабинете провайдера и повтори";
+        let stripped = msg.strip_prefix(FATAL).unwrap();
+        assert!(stripped.starts_with("провайдер:"));
+        assert!(stripped.contains("лимит устройств"));
+    }
+
 }

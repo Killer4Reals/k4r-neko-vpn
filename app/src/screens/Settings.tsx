@@ -92,6 +92,12 @@ export function SettingsScreen(p: Props) {
   const [leakError, setLeakError] = useState("");
   const [sound, setSound] = useState(() => soundOn());
   const [globe, setGlobe] = useState<GlobeStyle>(() => globeStyle());
+  const [hwid, setHwid] = useState("");
+  const [hwidBusy, setHwidBusy] = useState(false);
+  useEffect(() => {
+    if (!inTauri) return;
+    api.installId().then(setHwid).catch(() => {});
+  }, []);
   const [vol, setVol] = useState(() => Math.round(volume() * 100));
   const [stats, setStats] = useState<{ day: string; down: number; up: number }[]>([]);
 
@@ -380,6 +386,33 @@ export function SettingsScreen(p: Props) {
             </div>
           </div>
         )}
+        <div className="row">
+          <div className="txt">
+            <b>{t("hwidTitle")}</b>
+            <span>{t("hwidHint")}</span>
+            <code style={{ fontSize: 12, color: "var(--txt-3)", fontFamily: "var(--mono, monospace)" }}>
+              {hwid || "—"}
+            </code>
+          </div>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            disabled={!hwid || hwidBusy}
+            onClick={async () => {
+              if (!inTauri) return;
+              setHwidBusy(true);
+              try {
+                const next = await api.installIdReset();
+                setHwid(next);
+                play("click");
+              } finally {
+                setHwidBusy(false);
+              }
+            }}
+          >
+            {t("hwidReset")}
+          </button>
+        </div>
         <div className="row">
           <div className="txt">
             <b>{t("globeStyleTitle")}</b>

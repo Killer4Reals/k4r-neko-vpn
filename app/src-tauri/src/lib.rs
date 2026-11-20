@@ -581,16 +581,62 @@ async fn sub_fetch(
     let hwid = store::install_id(&data_dir(&app)?);
     tauri::async_runtime::spawn_blocking(move || {
         let mut all = headers;
-        if !all.iter().any(|h| h.name.eq_ignore_ascii_case("x-hwid")) {
-            all.push(SubHeader {
-                name: "X-HWID".into(),
-                value: hwid,
-            });
+        // Панели с учётом устройств (Happ, Remnawave) узнают клиента набора
+        // заголовков: без `x-device-os`/`x-ver-os` часть из них считает запрос
+        // подозрительным и отдаёт заглушку вместо серверов.
+        let device = [
+            ("X-HWID", hwid),
+            ("X-Device-OS", "Windows".to_string()),
+            ("X-Device-Model", device_model()),
+            ("X-Ver-OS", os_version()),
+        ];
+        for (name, value) in device {
+            if !all.iter().any(|h| h.name.eq_ignore_ascii_case(name)) {
+                all.push(SubHeader {
+                    name: name.into(),
+                    value,
+                });
+            }
         }
         subscription::fetch(&url, &user_agent, &all)
     })
     .await
     .map_err(|e| format!("задача упала: {e}"))?
+}
+
+/// Имя компьютера для `x-device-model`: провайдер видит его в списке устройств.
+fn device_model() -> String {
+    std::env::var("COMPUTERNAME")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "Windows PC".to_string())
+}
+
+/// Версия Windows для `x-ver-os`.
+fn os_version() -> String {
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.args(["/C", "ver"]);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let out = cmd.output().ok();
+    let text = out
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    // «Microsoft Windows [Version 10.0.19045.4046]» → «10.0.19045.4046»
+    if let Some(start) = text.find("Version ") {
+        let rest = &text[start + 8..];
+        let ver: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        if !ver.is_empty() {
+            return ver;
+        }
+    }
+    "10.0".to_string()
 }
 
 /// Копия настроек одним файлом: переезд на другой компьютер без потери списков.
@@ -721,6 +767,12 @@ fn update_install(app: tauri::AppHandle, path: String) -> Result<(), String> {
 #[tauri::command]
 fn install_id(app: tauri::AppHandle) -> Result<String, String> {
     Ok(store::install_id(&data_dir(&app)?))
+}
+
+/// Новый id устройства: старый слот освобождается в кабинете провайдера.
+#[tauri::command]
+fn install_id_reset(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(store::reset_install_id(&data_dir(&app)?))
 }
 
 /// Что нужно kill-switch: фактические пути движка и IP-резолверы.
@@ -2035,6 +2087,7 @@ pub fn run() {
             set_start_with_windows,
             sub_fetch,
             install_id,
+            install_id_reset,
             profiles_import,
             probe_ping,
             update_check,

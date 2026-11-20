@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ccFromName, nameOf, stripCc } from "./flags";
+import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 
 // Имена серверов приходят от провайдера как есть: «🇫🇮 Финляндия»,
 // «FI Финляндия», «Netherlands Amsterdam». Проверяем то, что реально видит
@@ -75,5 +75,14 @@ describe("nameOf", () => {
 
   it("возвращает null для незнакомого кода", () => {
     expect(nameOf("zz")).toBeNull();
+  });
+});
+
+describe("knownCc", () => {
+  it("принимает только коды, которые мы умеем рисовать", () => {
+    expect(knownCc("DE")).toBe(true);
+    expect(knownCc("kz")).toBe(true);
+    expect(knownCc("zz")).toBe(false);
+    expect(knownCc("")).toBe(false);
   });
 });

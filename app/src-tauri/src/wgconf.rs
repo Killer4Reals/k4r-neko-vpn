@@ -158,6 +158,7 @@ pub fn parse(text: &str, id: &str) -> Result<Profile, String> {
         wg_mtu: mtu,
         wg_reserved: reserved,
         reserve: false,
+        cc: String::new(),
     })
 }
 

@@ -3,7 +3,7 @@ import "./styles.css";
 import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
-import { ccFromName, nameOf, stripCc } from "./flags";
+import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
 import { isBusy, pickServer, splitReserve } from "./autoSelect";
 import { pairKey, quarantinedIds } from "./orchestrator";
@@ -216,7 +216,8 @@ export default function App() {
   const viewServers = useMemo<Server[]>(() => {
     if (profiles.length === 0) return demoCatalog;
     return profiles.map((p) => {
-      const cc = ccFromName(p.name);
+      // Страна из разбора подписки точнее, чем попытка угадать её по имени.
+      const cc = p.cc && knownCc(p.cc) ? p.cc : ccFromName(p.name);
       const country = nameOf(cc ?? "");
       const title = stripCc(p.name) || p.host;
       // вторая строка: страна, если она не повторяет название; иначе адрес сервера

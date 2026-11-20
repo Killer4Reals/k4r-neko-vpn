@@ -23,6 +23,8 @@ export type Profile = {
   wg_reserved?: number[];
   /** Резервный сервер: берётся, только когда основные не работают. */
   reserve?: boolean;
+  /** Страна сервера двумя буквами, если провайдер её сообщил. */
+  cc?: string;
 };
 
 /** Результат проверки утечек. */
@@ -166,6 +168,7 @@ export const api = {
   stateSave: (state: AppState) => invoke<void>("state_save", { state }),
   logsTail: (which: string, lines: number) => invoke<string>("logs_tail", { which, lines }),
   installId: () => invoke<string>("install_id"),
+  installIdReset: () => invoke<string>("install_id_reset"),
   appsScan: () => invoke<InstalledApp[]>("apps_scan"),
   exportLog: () => invoke<string>("export_log"),
 };

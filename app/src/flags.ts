@@ -88,6 +88,11 @@ function looksLikeCode(rest: string): boolean {
   return rest.length > 0 && !/^[a-z]/.test(rest);
 }
 
+/** Знаком ли нам код страны: нужен, когда страна пришла из разбора подписки. */
+export function knownCc(cc: string): boolean {
+  return known.has((cc ?? "").trim().toLowerCase());
+}
+
 /** Код страны из имени сервера или null, если не разобрали. */
 export function ccFromName(name: string): string | null {
   const raw = (name ?? "").trim();

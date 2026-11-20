@@ -42,41 +42,78 @@ uniform sampler2D uDay;
 uniform sampler2D uWater;
 uniform sampler2D uLights;
 uniform sampler2D uClouds;
+uniform sampler2D uNormal;
 uniform float uCloudShift;
 uniform float uConnected;
+uniform float uRelief;
 
 void main() {
   vec3 n = normalize(vNormal);
   vec3 sun = normalize(vec3(-0.26, 0.34, 0.90));
   vec3 eye = vec3(0.0, 0.0, 1.0);
-  float ndl = dot(n, sun);
-  float day = smoothstep(-0.30, 0.45, ndl);
+
+  float water = texture2D(uWater, vUv).r;
+
+  // Рельеф: нормаль из карты высот. Горы ловят свет с одной стороны и уходят
+  // в тень с другой — именно это отличает объёмную планету от наклейки.
+  // У океана рельеф почти плоский, иначе вода выглядит гофрированной.
+  vec3 nTex = texture2D(uNormal, vUv).xyz * 2.0 - 1.0;
+  vec3 east = normalize(cross(vec3(0.0, 1.0, 0.0), n) + vec3(1e-5, 0.0, 0.0));
+  vec3 north = cross(n, east);
+  float bump = uRelief * mix(1.0, 0.18, water);
+  vec3 nb = normalize(n + (east * nTex.x + north * nTex.y) * bump);
+
+  float ndlGeo = dot(n, sun);
+  float ndl = dot(nb, sun);
+  float day = smoothstep(-0.30, 0.45, ndlGeo);
+
+  // Облака плывут быстрее планеты; их тень падает на землю со сдвигом к солнцу.
+  // У полюсов строки текстуры сходятся в точку: любой рисунок там растягивается
+  // в радиальные лучи. Гасим облака и тень у полюсов — так чище и физично.
+  float polar = smoothstep(0.80, 0.94, abs(n.y));
+  float cloud = texture2D(uClouds, vec2(vUv.x + uCloudShift, vUv.y)).r * (1.0 - polar);
+  float shadowUvX = vUv.x + uCloudShift + 0.012 * dot(sun, east);
+  float shadowUvY = vUv.y - 0.012 * dot(sun, north);
+  float cloudShadow = texture2D(uClouds, vec2(shadowUvX, shadowUvY)).r * (1.0 - polar);
 
   vec3 base = texture2D(uDay, vUv).rgb;
-  vec3 col = base * (0.36 + 1.02 * max(ndl, 0.0)) + vec3(0.02, 0.04, 0.09);
+  base *= mix(1.0, 0.80, cloudShadow * 0.9);
+
+  // Свет: тёплое солнце + холодная подсветка с ночной стороны.
+  vec3 warm = vec3(1.04, 0.99, 0.93);
+  vec3 cool = vec3(0.10, 0.16, 0.30);
+  float diffuse = max(ndl, 0.0);
+  vec3 col = base * (warm * (0.24 + 1.05 * diffuse) + cool * (1.0 - day) * 0.55);
+  col += vec3(0.015, 0.03, 0.075) * (1.0 - day);
 
   // ночные огни городов
   vec3 lights = texture2D(uLights, vUv).rgb;
-  col += lights * (1.0 - day) * 0.55;
+  col += lights * (1.0 - day) * 0.62;
 
-  // блик солнца на воде
-  float water = texture2D(uWater, vUv).r;
+  // Вода: узкий блик солнца и широкая «стеклянная» полоса.
   vec3 h = normalize(sun + eye);
-  float spec = pow(max(dot(n, h), 0.0), 110.0) * water * day;
-  col += vec3(1.0, 0.96, 0.86) * spec * 0.2;
+  float nh = max(dot(nb, h), 0.0);
+  float spec = pow(nh, 220.0) * 0.24 + pow(nh, 40.0) * 0.02;
+  col += vec3(1.0, 0.97, 0.90) * spec * water * day;
 
-  // облака чуть быстрее планеты
-  float cloud = texture2D(uClouds, vec2(vUv.x + uCloudShift, vUv.y)).r;
-  float lit = 0.18 + 1.05 * max(ndl, 0.0);
-  col = mix(col, vec3(1.0) * lit, cloud * 0.34);
+  // Облака: сверху свой свет, в тени почти не видно.
+  float lit = 0.14 + 1.02 * max(ndl, 0.0);
+  col = mix(col, vec3(0.92, 0.95, 1.0) * lit, cloud * 0.36);
 
-  // голубая кайма атмосферы по краю диска
-  float fres = pow(1.0 - clamp(dot(n, eye), 0.0, 1.0), 3.2);
-  col += vec3(0.32, 0.6, 1.0) * fres * (0.35 + 0.55 * day);
+  // Атмосфера: плотная голубая дымка у края диска, ярче со стороны солнца.
+  float rim = 1.0 - clamp(dot(n, eye), 0.0, 1.0);
+  float haze = pow(rim, 2.4);
+  float halo = pow(rim, 6.0);
+  float sunSide = 0.35 + 0.65 * smoothstep(-0.45, 0.55, ndlGeo);
+  col += vec3(0.26, 0.52, 0.92) * haze * 0.55 * sunSide;
+  col += vec3(0.55, 0.72, 1.0) * halo * 0.55 * sunSide;
 
-  // тёплый терминатор
-  float edge = smoothstep(0.25, 0.0, abs(ndl));
-  col += vec3(0.9, 0.45, 0.2) * edge * 0.06;
+  // Тёплый терминатор: там, где день переходит в ночь.
+  float edge = smoothstep(0.30, 0.0, abs(ndlGeo));
+  col += vec3(1.0, 0.55, 0.28) * edge * 0.09;
+
+  // Лёгкое затемнение к краю — шар перестаёт быть плоским кругом.
+  col *= mix(0.80, 1.0, pow(clamp(dot(n, eye), 0.0, 1.0), 0.55));
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -235,6 +272,7 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geo.idx, gl.STATIC_DRAW);
 
     const day = loadTex(gl, "/earth/day.webp", gl.REPEAT);
+    const normal = loadTex(gl, "/earth/normal.png", gl.REPEAT);
     const water = loadTex(gl, "/earth/water.png", gl.REPEAT);
     const lights = loadTex(gl, "/earth/lights.webp", gl.REPEAT);
     const clouds = loadTex(gl, "/earth/clouds.webp", gl.REPEAT);
@@ -248,11 +286,15 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
       water: gl.getUniformLocation(prog, "uWater"),
       lights: gl.getUniformLocation(prog, "uLights"),
       clouds: gl.getUniformLocation(prog, "uClouds"),
+      normal: gl.getUniformLocation(prog, "uNormal"),
+      relief: gl.getUniformLocation(prog, "uRelief"),
     };
     gl.uniform1i(u.day, 0);
     gl.uniform1i(u.water, 1);
     gl.uniform1i(u.lights, 2);
     gl.uniform1i(u.clouds, 3);
+    gl.uniform1i(u.normal, 4);
+    gl.uniform1f(u.relief, 1.0);
 
     gl.enable(gl.DEPTH_TEST);
     gl.clearColor(0, 0, 0, 0);
@@ -297,6 +339,8 @@ export function GlobePlanet({ target, connected = false, label, size }: Props) {
       gl.bindTexture(gl.TEXTURE_2D, lights);
       gl.activeTexture(gl.TEXTURE3);
       gl.bindTexture(gl.TEXTURE_2D, clouds);
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, normal);
 
       gl.drawElements(gl.TRIANGLES, geo.idx.length, gl.UNSIGNED_SHORT, 0);
       drawOverlay();

@@ -267,6 +267,17 @@ fn random_hex() -> String {
     out
 }
 
+/// Новый id устройства: провайдер увидит его как другое устройство, старое
+/// освобождается в его кабинете. Нужно, когда слоты кончились или человек
+/// сменил компьютер.
+pub fn reset_install_id(data_dir: &Path) -> String {
+    let id = random_hex();
+    let mut st = load(data_dir);
+    st.hwid = id.clone();
+    let _ = save(data_dir, &st);
+    id
+}
+
 pub fn state_path(data_dir: &Path) -> PathBuf {
     data_dir.join("state.json")
 }
@@ -517,6 +528,7 @@ mod tests {
             wg_mtu: 0,
             wg_reserved: Vec::new(),
             reserve: false,
+        cc: String::new(),
         }
     }
 
