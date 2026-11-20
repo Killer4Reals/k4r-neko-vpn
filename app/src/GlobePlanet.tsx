@@ -60,7 +60,9 @@ void main() {
   vec3 nTex = texture2D(uNormal, vUv).xyz * 2.0 - 1.0;
   vec3 east = normalize(cross(vec3(0.0, 1.0, 0.0), n) + vec3(1e-5, 0.0, 0.0));
   vec3 north = cross(n, east);
-  float bump = uRelief * mix(1.0, 0.18, water);
+  // У полюсов рельеф даёт радиальные лучи: там строки текстуры сходятся в точку.
+  float polarSame = smoothstep(0.80, 0.94, abs(n.y));
+  float bump = uRelief * mix(1.0, 0.18, water) * (1.0 - polarSame);
   vec3 nb = normalize(n + (east * nTex.x + north * nTex.y) * bump);
 
   float ndlGeo = dot(n, sun);
@@ -70,7 +72,7 @@ void main() {
   // Облака плывут быстрее планеты; их тень падает на землю со сдвигом к солнцу.
   // У полюсов строки текстуры сходятся в точку: любой рисунок там растягивается
   // в радиальные лучи. Гасим облака и тень у полюсов — так чище и физично.
-  float polar = smoothstep(0.80, 0.94, abs(n.y));
+  float polar = polarSame;
   float cloud = texture2D(uClouds, vec2(vUv.x + uCloudShift, vUv.y)).r * (1.0 - polar);
   float shadowUvX = vUv.x + uCloudShift + 0.012 * dot(sun, east);
   float shadowUvY = vUv.y - 0.012 * dot(sun, north);
