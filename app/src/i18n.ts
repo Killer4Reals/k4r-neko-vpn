@@ -277,6 +277,10 @@ const dict: Dict = {
   },
 
   hwidNew: { ru: "новый HWID", en: "new HWID" },
+  hwidResetHint: {
+    ru: "сброс займёт новый слот; если панель всё равно откажет — освободите старое устройство в кабинете провайдера",
+    en: "resetting takes a new slot; if the panel still refuses, free the old device in the provider panel",
+  },
   aliveOf: { ru: "из", en: "of" },
   aliveHint: { ru: "сколько узлов ответило на последний замер", en: "how many nodes answered the last check" },
   serverDead: { ru: "не отвечает", en: "no answer" },

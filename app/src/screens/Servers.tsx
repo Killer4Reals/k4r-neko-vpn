@@ -204,6 +204,9 @@ export function ServersScreen(p: Props) {
                 >
                   {t("hwidReset")}
                 </button>
+                <div style={{ marginTop: 6, opacity: 0.75 }}>
+                  {t("hwidResetHint")}
+                </div>
                 {hwidNote && <div style={{ marginTop: 6 }}>{hwidNote}</div>}
               </>
             )}
