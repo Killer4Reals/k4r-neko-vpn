@@ -11,6 +11,7 @@ pub mod store;
 pub mod warp;
 pub mod wgconf;
 pub mod subscription;
+pub mod version;
 #[cfg(windows)]
 pub mod orchestrator;
 pub mod wfp;
@@ -1357,7 +1358,9 @@ fn update_check(manifest_url: String, current: String) -> Result<Option<UpdateIn
     if version.is_empty() {
         return Err("в описании версии нет поля version".into());
     }
-    if version == current.trim() {
+    // Только строго новее: манифест может отстать от установленной сборки, и
+    // предлагать откат на старую версию — это не обновление, а поломка.
+    if !version::is_newer(&version, current.trim()) {
         return Ok(None);
     }
     Ok(Some(UpdateInfo {
