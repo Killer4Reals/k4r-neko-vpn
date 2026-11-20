@@ -79,7 +79,13 @@ export function HomeScreen(p: Props) {
     const ms = p.lat[s.id];
     const stamp = p.latAt?.[s.id];
     const stale = typeof stamp !== "number" || Date.now() - stamp > 12 * 60 * 1000;
-    globeNodes.push({ lat: at.lat, lon: at.lon, ms, stale: ms !== null && stale });
+    globeNodes.push({
+      lat: at.lat,
+      lon: at.lon,
+      ms,
+      stale: ms !== null && stale,
+      label: s.city || s.country,
+    });
   }
   const [uptime, setUptime] = useState(0);
 

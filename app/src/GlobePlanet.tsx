@@ -10,6 +10,8 @@ export type GlobeNode = {
   ms: number | null;
   /** замер постарел — узел не мёртв, его просто давно не спрашивали */
   stale?: boolean;
+  /** «Франкфурт» — для подсказки при наведении */
+  label?: string;
 };
 
 type Props = {
@@ -235,6 +237,8 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
   // замеры обновляются каждые 10 минут; пересоздавать ради них WebGL незачем
   const nodesRef = useRef<GlobeNode[]>([]);
   nodesRef.current = nodes ?? [];
+  // Курсор над планетой: по нему ищем ближайший узел для подсказки.
+  const pointer = useRef<{ x: number; y: number; inside: boolean }>({ x: 0, y: 0, inside: false });
 
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
@@ -500,6 +504,54 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
         ctx.globalAlpha = 1;
       }
 
+      // --- подсказка при наведении: ближайший узел и его замер.
+      // Человеку не нужно уходить в список, чтобы понять «кто это».
+      const ptr = pointer.current;
+      if (ptr.inside && nodeList.length > 0) {
+        let near: { n: GlobeNode; x: number; y: number; d: number } | null = null;
+        for (const n of nodeList) {
+          const p = project(n, s.angle, s.tilt);
+          if (p.z <= 0.02) continue;
+          const x = cx + p.x * R;
+          const y = cy - p.y * R;
+          const d = Math.hypot(x - ptr.x, y - ptr.y);
+          if (!near || d < near.d) near = { n, x, y, d };
+        }
+        // 12 px — «почти попал»: прицеливаться в точку 3 px мышью невозможно
+        if (near && near.d <= 12 && near.n.label) {
+          const text = near.n.ms === null
+            ? `${near.n.label} · нет ответа`
+            : near.n.stale
+              ? `${near.n.label} · ${near.n.ms} мс (давно)`
+              : `${near.n.label} · ${near.n.ms} мс`;
+          ctx.font = "600 11px system-ui, sans-serif";
+          const w = ctx.measureText(text).width + 14;
+          const h = 20;
+          let bx = near.x - w / 2;
+          let by = near.y - 26;
+          if (bx < 6) bx = 6;
+          if (bx + w > size - 6) bx = size - 6 - w;
+          if (by < 6) by = near.y + 14;
+          ctx.fillStyle = "rgba(10,7,16,.92)";
+          ctx.strokeStyle = "rgba(57,255,20,.35)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          // скруглённый прямоугольник без ручной геометрии радиуса
+          const r = 7;
+          ctx.moveTo(bx + r, by);
+          ctx.arcTo(bx + w, by, bx + w, by + h, r);
+          ctx.arcTo(bx + w, by + h, bx, by + h, r);
+          ctx.arcTo(bx, by + h, bx, by, r);
+          ctx.arcTo(bx, by, bx + w, by, r);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#e9eef7";
+          ctx.textBaseline = "middle";
+          ctx.fillText(text, bx + 7, by + h / 2 + 0.5);
+        }
+      }
+
       // --- вспышка в точке прибытия: «приехали»
       if (s.arrived > 0 && !reduce) {
         const age = (performance.now() - s.arrived) / 1000;
@@ -622,12 +674,22 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
       state.current.hold = 0;
     };
     const move = (e: PointerEvent) => {
+      // где курсор: нужно для подсказки над узлом
+      const box = canvas.getBoundingClientRect();
+      pointer.current = {
+        x: ((e.clientX - box.left) / box.width) * size,
+        y: ((e.clientY - box.top) / box.height) * size,
+        inside: true,
+      };
       if (!dragging) return;
       const dx = e.clientX - lastX;
       lastX = e.clientX;
       moved += Math.abs(dx);
       state.current.angle -= dx * 0.35;
       state.current.goal = state.current.angle;
+    };
+    const leave = () => {
+      pointer.current.inside = false;
     };
     const up = () => {
       // потянул шар — это не нажатие «включить»
@@ -638,13 +700,15 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", up);
+    canvas.addEventListener("pointerleave", leave);
     return () => {
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
       canvas.removeEventListener("pointercancel", up);
+      canvas.removeEventListener("pointerleave", leave);
     };
-  }, []);
+  }, [size]);
 
   return (
     <div className="globe globe-3d" style={{ width: size, height: size }}>

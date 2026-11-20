@@ -6,6 +6,7 @@ import { servers as demoCatalog, type AppEntry, type ConnState, type Server } fr
 import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
 import { isBusy, pickServer, splitReserve } from "./autoSelect";
+import { slowSwitchTarget } from "./health";
 import { pairKey, quarantinedIds } from "./orchestrator";
 import { probeOnce } from "./probe";
 import { describe as describeSubError } from "./subError";
@@ -756,20 +757,17 @@ export default function App() {
     const tick = async () => {
       const measured = (await measurePing()) ?? lat;
       if (!autoSwitchSlow || conn !== "connected" || switching.current) return;
-      const cur = measured[selectedId];
-      if (typeof cur !== "number") return;
-      const alive = profiles
-        .map((p) => ({ p, ms: measured[p.id] }))
-        .filter((x): x is { p: Profile; ms: number } => typeof x.ms === "number");
-      if (alive.length < 2) return;
-      const best = alive.reduce((a, b) => (a.ms <= b.ms ? a : b));
-      if (best.p.id === selectedId) return;
-      // 40 мс — порог, ниже которого человек разницы не чувствует, а
-      // дёргать туннель ради неё нельзя.
-      if (cur - best.ms < 40) return;
-      const name = best.p.name || best.p.host;
-      setSelectedId(best.p.id);
-      setToast({ title: t("autoSwitchSlow"), body: `${t("slowSwitched")} ${name} · ${best.ms} мс` });
+      // Порог 40 мс и правило выбора живут в health.ts: там же их тесты.
+      const targetId = slowSwitchTarget(selectedId, measured);
+      if (!targetId) return;
+      const best = profiles.find((p) => p.id === targetId);
+      if (!best) return;
+      const name = best.name || best.host;
+      setSelectedId(targetId);
+      setToast({
+        title: t("autoSwitchSlow"),
+        body: `${t("slowSwitched")} ${name} · ${measured[targetId]} мс`,
+      });
       await reconnectTunnel();
     };
     const timer = window.setInterval(() => void tick(), 10 * 60 * 1000);

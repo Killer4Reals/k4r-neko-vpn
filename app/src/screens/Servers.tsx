@@ -3,15 +3,12 @@ import type { Server } from "../data";
 import type { SubInfo, SubSource } from "../api";
 import { QrSheet } from "../Qr";
 import { api } from "../api";
+import { isFresh } from "../health";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
 import { ServerMap } from "../ServerMap";
 
-/** Замер считаем свежим 12 минут: опрос идёт раз в 10, но круг не идеален. */
-const FRESH_MS = 12 * 60 * 1000;
-function isFresh(at?: number): boolean {
-  return typeof at === "number" && Date.now() - at < FRESH_MS;
-}
+
 
 type Props = {
   t: (k: string) => string;
