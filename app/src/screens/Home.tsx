@@ -245,6 +245,22 @@ export function HomeScreen(p: Props) {
 
         {p.error && <div className="hero-error">{p.error}</div>}
 
+        {/* Сценарии: один клик вместо пяти переключателей в настройках */}
+        <div className="quick scenarios">
+          <span className="quick-label">{t("scLabel")}</span>
+          {SCENARIOS.map((sc) => (
+            <button
+              key={sc.id}
+              className="chip"
+              data-on={p.scenario === sc.id}
+              title={t(sc.hintKey)}
+              onClick={() => p.onScenario(sc.id)}
+            >
+              {t(sc.titleKey)}
+            </button>
+          ))}
+        </div>
+
         <div className="stats">
           <div className="stat">
             <div className="k">{t("down")}</div>
@@ -275,22 +291,6 @@ export function HomeScreen(p: Props) {
         </div>
 
         <SubLine expire={p.subExpire} total={p.subTotal} used={p.subUsed} t={t} />
-
-        {/* Сценарии: один клик вместо пяти переключателей в настройках */}
-        <div className="quick scenarios">
-          <span className="quick-label">{t("scLabel")}</span>
-          {SCENARIOS.map((sc) => (
-            <button
-              key={sc.id}
-              className="chip"
-              data-on={p.scenario === sc.id}
-              title={t(sc.hintKey)}
-              onClick={() => p.onScenario(sc.id)}
-            >
-              {t(sc.titleKey)}
-            </button>
-          ))}
-        </div>
 
         <div className="quick">
           <button
