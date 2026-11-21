@@ -11,6 +11,8 @@ sub('app/src-tauri/Cargo.toml', f'version = "{old}"', f'version = "{new}"')
 v=json.load(io.open('version.json',encoding='utf-8'))
 v['version']=new
 v['url']=f"https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v{new}/K4R.Neko.VPN_{new}_x64-setup.exe"
-v['notes']="Windows %s: история событий и доступность узлов" % new
+# описание в манифесте правим руками: автотекст врёт при каждой второй версии
+if not v.get('notes'):
+    v['notes'] = "Windows %s" % new
 io.open('version.json','w',encoding='utf-8',newline='\n').write(json.dumps(v,ensure_ascii=False,indent=2)+'\n')
 print('bumped', old, '->', new)
