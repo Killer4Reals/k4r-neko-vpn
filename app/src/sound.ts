@@ -87,6 +87,36 @@ function noise(dur: number, gain: number, filterHz: number) {
 
 export type Sfx = "click" | "whoosh" | "impact" | "papers" | "connect" | "disconnect" | "error";
 
+/**
+ * Мягкий «вдох» в момент подключения: шум, пропущенный через низкие частоты, с
+ * плавным подъёмом и спадом. Это не петля и не фон — один короткий выдох,
+ * который делает момент «подключился» дороже, и не может залипнуть.
+ */
+function swell(v: number) {
+  const ac = context();
+  if (!ac) return;
+  const dur = 1.15;
+  const frames = Math.floor(ac.sampleRate * dur);
+  const buffer = ac.createBuffer(1, frames, ac.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i++) {
+    // подъём за 0.25 с, плавный спад до нуля: без щелчка на конце
+    const k = i / frames;
+    const env = k < 0.22 ? k / 0.22 : Math.pow(1 - (k - 0.22) / 0.78, 1.6);
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = ac.createBufferSource();
+  src.buffer = buffer;
+  const filter = ac.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(420, ac.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(1400, ac.currentTime + 0.5);
+  const g = ac.createGain();
+  g.gain.value = 0.075 * v;
+  src.connect(filter).connect(g).connect(ac.destination);
+  src.start();
+}
+
 /** Один тон мотива: та же логика, что в tone(), но с задержкой. */
 function playTone(t: Tone, v: number) {
   const ac = context();
@@ -115,6 +145,8 @@ export function playConnected(cc: string | undefined) {
   if (!ac) return;
   if (ac.state === "suspended") void ac.resume();
   const v = volume();
+  // Сначала «вдох», потом мотив: так сигнал читается как событие, а не как нота
+  swell(v);
   for (const t of motifOf(regionOf(cc))) playTone(t, v);
 }
 
