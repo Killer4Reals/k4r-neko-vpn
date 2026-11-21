@@ -1,9 +1,37 @@
 <!doctype html><meta charset="utf-8"><title>theme</title>
 <script>
+// Подготовка снимков: тема, вид глобуса и, если попросят, пример истории.
+// Страница живёт только в tools/screens и в приложение не попадает.
 const p = new URLSearchParams(location.search);
 localStorage.setItem("k4r.theme", p.get("t") || "dark");
 if (p.get("g")) localStorage.setItem("k4r.globe.style", p.get("g"));
 localStorage.removeItem("k4r.tips");
-if (p.get("go")) location.replace("/");
+
+// seed=1 — насыпать истории, чтобы снимок экрана «История» был не пустым
+if (p.get("seed")) {
+  const now = Date.now();
+  const min = 60000;
+  const ev = (ago, kind, a, b) => ({ at: now - ago * min, kind, a, b });
+  const list = [
+    ev(4, "switch", "de-fra-1", "nl-ams-1"),
+    ev(4, "nodeDown", "jp-tok-1"),
+    ev(52, "connect", "nl-ams-1"),
+    ev(140, "disconnect"),
+    ev(150, "fail", undefined, "нет ответа от узла"),
+    ev(160, "nodeUp", "jp-tok-1"),
+    ev(26 * 60, "connect", "de-fra-1"),
+    ev(27 * 60, "nodeDown", "us-nyc-1"),
+    ev(29 * 60, "nodeUp", "us-nyc-1"),
+    ev(50 * 60, "disconnect"),
+  ];
+  localStorage.setItem("k4r.history", JSON.stringify(list));
+  localStorage.setItem(
+    "k4r.latAt",
+    JSON.stringify({ "de-fra-1": now - 2 * min, "nl-ams-1": now - 3 * min }),
+  );
+}
+
+const go = p.get("go") || "";
+if (go) location.replace("/" + (go.startsWith("?") ? go : "?" + go));
 else document.body.textContent = "ok: " + localStorage.getItem("k4r.theme");
 </script>

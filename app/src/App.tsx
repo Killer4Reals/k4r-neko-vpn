@@ -7,6 +7,8 @@ import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
 import { isBusy, pickServer, splitReserve } from "./autoSelect";
 import { slowSwitchTarget } from "./health";
+import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
+import { HistoryScreen } from "./screens/History";
 import { pairKey, quarantinedIds } from "./orchestrator";
 import { probeOnce } from "./probe";
 import { describe as describeSubError } from "./subError";
@@ -37,7 +39,16 @@ import { play } from "./sound";
 import { LogsScreen } from "./screens/Logs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-export type Screen = "home" | "servers" | "split" | "route" | "zapret" | "stats" | "logs" | "settings";
+export type Screen =
+  | "home"
+  | "servers"
+  | "split"
+  | "route"
+  | "zapret"
+  | "stats"
+  | "history"
+  | "logs"
+  | "settings";
 export type Theme = "dark" | "light" | "mascot";
 
 /** Что говорит маскот на каждой вкладке. */
@@ -48,6 +59,7 @@ const HINT_KEY: Record<Screen, string> = {
   route: "hintRoute",
   zapret: "hintZapret",
   stats: "hintStats",
+  history: "hintHistory",
   logs: "hintLogs",
   settings: "hintSettings",
 };
@@ -59,6 +71,7 @@ const HINT_POSE: Record<Screen, Pose> = {
   route: 3,
   zapret: 4,
   stats: 2,
+  history: 3,
   logs: 6,
   settings: 3,
 };
@@ -70,6 +83,7 @@ const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "route", key: "navRoute", icon: RouteIcon },
   { id: "zapret", key: "navZapret", icon: ShieldIcon },
   { id: "stats", key: "navStats", icon: RouteIcon },
+  { id: "history", key: "navHistory", icon: LogIcon },
   { id: "logs", key: "navLogs", icon: LogIcon },
   { id: "settings", key: "navSettings", icon: GearIcon },
 ];
@@ -114,6 +128,16 @@ export default function App() {
     return (initial.get("theme") as Theme) || "dark";
   });
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
+  // История событий: переживает перезапуск, 300 записей — это месяцы
+  const [events, setEvents] = useState<HistoryEvent[]>(() => parseEvents(localStorage.getItem("k4r.history")));
+  const record = useCallback((kind: HistoryEvent["kind"], a?: string, b?: string) => {
+    setEvents((prev) => {
+      const next = pushEvent(prev, { at: Date.now(), kind, a, b });
+      if (next === prev) return prev;
+      localStorage.setItem("k4r.history", serializeEvents(next));
+      return next;
+    });
+  }, []);
   const [conn, setConn] = useState<ConnState>((initial.get("state") as ConnState) || "idle");
   const [selectedId, setSelectedId] = useState(demoCatalog[0].id);
   const [zapretAuto, setZapretAuto] = useState(false);
@@ -177,6 +201,34 @@ export default function App() {
       return {};
     }
   });
+  /**
+   * История пишется по факту смены состояния, а не в каждом месте, где мы его
+   * меняем: путей много (кнопка, автопереключение, потеря данных, возврат сети),
+   * и раньше о части из них знал только журнал ядра.
+   */
+  const histConn = useRef<ConnState>(conn);
+  useEffect(() => {
+    const was = histConn.current;
+    if (was === conn) return;
+    histConn.current = conn;
+    if (conn === "connected") record("connect", selectedId);
+    else if (conn === "error") record("fail", undefined, error || undefined);
+    else if (conn === "idle" && (was === "connected" || was === "connecting")) record("disconnect");
+  }, [conn, error, record, selectedId]);
+
+  /** Узлы: событие — это переход «отвечал ↔ не отвечал», а не каждый замер. */
+  const prevLat = useRef<Record<string, number | null>>({});
+  useEffect(() => {
+    const before = prevLat.current;
+    for (const [id, ms] of Object.entries(lat)) {
+      const was = before[id];
+      if (was === undefined) continue; // первый замер узла — не событие
+      if (was !== null && ms === null) record("nodeDown", id);
+      else if (was === null && ms !== null) record("nodeUp", id);
+    }
+    prevLat.current = { ...before, ...lat };
+  }, [lat, record]);
+
   const [loaded, setLoaded] = useState(!inTauri);
   const [admin, setAdmin] = useState(true);
   const [zapretDir, setZapretDir] = useState<string | null>(null);
@@ -824,6 +876,7 @@ export default function App() {
         const stamp = new Date().toLocaleString();
         const line = `${stamp}  ${from?.name || selectedId} -> ${chosen.name || chosen.host}`;
         api.autoHistoryAdd(line).then(setAutoHistory).catch(() => undefined);
+        record("switch", selectedId, target);
       }
       try {
         await reconnectTunnel();
@@ -833,7 +886,7 @@ export default function App() {
         }, 4000);
       }
     },
-    [conn, lat, measurePing, orch, profiles, reconnectTunnel, selectedId, t],
+    [conn, lat, measurePing, orch, profiles, reconnectTunnel, record, selectedId, t],
   );
 
   /**
@@ -1378,6 +1431,23 @@ export default function App() {
           )}
           {screen === "split" && <SplitScreen {...ctx} />}
           {screen === "stats" && <StatsScreen t={t} />}
+          {screen === "history" && (
+            <HistoryScreen
+              t={t}
+              theme={theme}
+              lang={lang}
+              events={events}
+              nameOfId={(id) => {
+                const v = viewServers.find((x) => x.id === id);
+                if (!v) return id;
+                return v.city || v.country || v.tag || id;
+              }}
+              onClear={() => {
+                setEvents([]);
+                localStorage.removeItem("k4r.history");
+              }}
+            />
+          )}
           {screen === "route" && (
             <RouteScreen
               t={t}
