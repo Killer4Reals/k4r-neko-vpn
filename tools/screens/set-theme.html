@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>theme</title>
+<script>
+const p = new URLSearchParams(location.search);
+localStorage.setItem("k4r.theme", p.get("t") || "dark");
+if (p.get("g")) localStorage.setItem("k4r.globe.style", p.get("g"));
+localStorage.removeItem("k4r.tips");
+if (p.get("go")) location.replace("/");
+else document.body.textContent = "ok: " + localStorage.getItem("k4r.theme");
+</script>
