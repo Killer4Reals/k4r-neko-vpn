@@ -1501,8 +1501,11 @@ export default function App() {
               events={events}
               nameOfId={(id) => {
                 const v = viewServers.find((x) => x.id === id);
-                if (!v) return id;
-                return v.city || v.country || v.tag || id;
+                if (v) return v.city || v.country || v.tag || id;
+                // узел мог уйти из подписки: остался только id. Две буквы —
+                // это код страны, покажем страну, а не «jp»
+                if (/^[a-z]{2}$/i.test(id)) return nameOf(id.toLowerCase()) || id;
+                return id;
               }}
               onClear={() => {
                 setEvents([]);
