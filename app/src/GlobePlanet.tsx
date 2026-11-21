@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { project, rotationFor, shortestDelta, type LatLon } from "./globe";
+import { nearestWithin, project, rotationFor, shortestDelta, type LatLon } from "./globe";
 import { HOME } from "./map";
 
 /** Узел на планете: где он и как его последний замер. */
@@ -12,6 +12,8 @@ export type GlobeNode = {
   stale?: boolean;
   /** «Франкфурт» — для подсказки при наведении */
   label?: string;
+  /** id сервера: по нему нажатие на точку выбирает узел */
+  id?: string;
 };
 
 type Props = {
@@ -20,7 +22,22 @@ type Props = {
   label?: string;
   size: number;
   nodes?: GlobeNode[];
+  /** нажатие на точку узла: выбрать этот сервер */
+  onPick?: (id: string) => void;
 };
+
+/**
+ * Шар лежит внутри кнопки «включить», поэтому клик по точке дошёл бы и до неё.
+ * Метка времени решает спор: если только что выбрали узел, кнопка молчит.
+ * Живёт дольше одного кадра, потому что click приходит после pointerup.
+ */
+let pickedAt = 0;
+
+export function takePick(): boolean {
+  if (performance.now() - pickedAt > 500) return false;
+  pickedAt = 0;
+  return true;
+}
 
 const TILT = -14;
 const HOLD_SECS = 7;
@@ -231,7 +248,7 @@ function loadTex(gl: WebGLRenderingContext, url: string, wrapS: number): WebGLTe
  * Настоящая планета: сфера с текстурой Земли, солнце, ночные огни городов,
  * облака и атмосфера. WebGL, без сторонних библиотек.
  */
-export function GlobePlanet({ target, connected = false, label, size, nodes }: Props) {
+export function GlobePlanet({ target, connected = false, label, size, nodes, onPick }: Props) {
   const glRef = useRef<HTMLCanvasElement | null>(null);
   const overRef = useRef<HTMLCanvasElement | null>(null);
   // замеры обновляются каждые 10 минут; пересоздавать ради них WebGL незачем
@@ -239,6 +256,10 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
   nodesRef.current = nodes ?? [];
   // Курсор над планетой: по нему ищем ближайший узел для подсказки.
   const pointer = useRef<{ x: number; y: number; inside: boolean }>({ x: 0, y: 0, inside: false });
+  // Где точки оказались на экране в последнем кадре — по этому и ловим клик.
+  const hitRef = useRef<{ id: string; x: number; y: number }[]>([]);
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
 
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
@@ -475,11 +496,13 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
       // Человеку не нужно открывать список, чтобы увидеть, кто жив.
       const nodeList = nodesRef.current;
       if (nodeList.length > 0) {
+        const hits: { id: string; x: number; y: number }[] = [];
         for (const n of nodeList) {
           const p = project(n, s.angle, s.tilt);
           if (p.z <= 0.02) continue;
           const x = cx + p.x * R;
           const y = cy - p.y * R;
+          if (n.id) hits.push({ id: n.id, x, y });
           const color =
             n.ms === null ? "#ff5d6c" : n.stale ? "#8e8a9c" : n.ms < 90 ? "#39FF14" : n.ms < 180 ? "#ffd166" : "#ff9a4d";
           const a = (n.ms === null ? 0.6 : n.stale ? 0.45 : 0.85) * Math.min(1, p.z * 1.6);
@@ -502,6 +525,9 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
           }
         }
         ctx.globalAlpha = 1;
+        hitRef.current = hits;
+      } else {
+        hitRef.current = [];
       }
 
       // --- подсказка при наведении: ближайший узел и его замер.
@@ -519,11 +545,12 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
         }
         // 12 px — «почти попал»: прицеливаться в точку 3 px мышью невозможно
         if (near && near.d <= 12 && near.n.label) {
+          const tail = near.n.id ? " · нажми" : "";
           const text = near.n.ms === null
-            ? `${near.n.label} · нет ответа`
+            ? `${near.n.label} · нет ответа${tail}`
             : near.n.stale
-              ? `${near.n.label} · ${near.n.ms} мс (давно)`
-              : `${near.n.label} · ${near.n.ms} мс`;
+              ? `${near.n.label} · ${near.n.ms} мс (давно)${tail}`
+              : `${near.n.label} · ${near.n.ms} мс${tail}`;
           ctx.font = "600 11px system-ui, sans-serif";
           const w = ctx.measureText(text).width + 14;
           const h = 20;
@@ -695,6 +722,15 @@ export function GlobePlanet({ target, connected = false, label, size, nodes }: P
       // потянул шар — это не нажатие «включить»
       if (dragging && moved > 4) canvas.dataset.dragged = "1";
       dragging = false;
+      // короткое нажатие по точке узла: выбираем сервер, а не включаем VPN
+      const ptr = pointer.current;
+      if (moved <= 4 && ptr.inside && onPickRef.current) {
+        const hit = nearestWithin(hitRef.current, ptr.x, ptr.y);
+        if (hit) {
+          pickedAt = performance.now();
+          onPickRef.current(hit.id);
+        }
+      }
     };
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);

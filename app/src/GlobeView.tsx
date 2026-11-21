@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { landDots, project, rotationFor, shortestDelta, type LatLon } from "./globe";
 import { HOME } from "./map";
 import { globeStyle, onGlobeStyle, type GlobeStyle } from "./globeStyle";
-import { GlobePlanet, type GlobeNode } from "./GlobePlanet";
+import { GlobePlanet, takePick, type GlobeNode } from "./GlobePlanet";
+
+export { takePick };
 import { TONE_COLOR, nodeTone } from "./health";
 
 type Props = {
@@ -17,6 +19,8 @@ type Props = {
   style?: GlobeStyle;
   /** Точки узлов на планете с результатом последнего замера. */
   nodes?: GlobeNode[];
+  /** Нажали точку узла: выбрать этот сервер. */
+  onPick?: (id: string) => void;
 };
 
 const TILT = -14;
@@ -495,7 +499,7 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
  * Глобус на главной. «Планета» — WebGL-сфера с настоящей текстурой Земли,
  * «Неон» — лёгкий шар из точек. Вид переключается в настройках.
  */
-export function Globe({ target, connected = false, label, size = 300, style, nodes }: Props) {
+export function Globe({ target, connected = false, label, size = 300, style, nodes, onPick }: Props) {
   const [kind, setKind] = useState<GlobeStyle>(() => style ?? globeStyle());
 
   useEffect(() => {
@@ -505,7 +509,7 @@ export function Globe({ target, connected = false, label, size = 300, style, nod
   useEffect(() => onGlobeStyle(setKind), []);
 
   if (kind === "planet") {
-    return <GlobePlanet target={target} connected={connected} label={label} size={size} nodes={nodes} />;
+    return <GlobePlanet target={target} connected={connected} label={label} size={size} nodes={nodes} onPick={onPick} />;
   }
   return <GlobeDots target={target} connected={connected} label={label} size={size} nodes={nodes} />;
 }

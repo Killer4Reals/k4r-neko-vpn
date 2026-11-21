@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countryOf, isLand, landDots, project, rotationFor, shortestDelta } from "./globe";
+import { countryOf, isLand, landDots, project, rotationFor, shortestDelta, nearestWithin } from "./globe";
 
 describe("landmask", () => {
   it("has a meaningful amount of land, but not all of it", () => {
@@ -79,5 +79,33 @@ describe("центрирование страны", () => {
       const p = project(c, rotationFor(c), c.lat);
       expect(p.z, cc).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("попадание в точку узла", () => {
+  const pts = [
+    { id: "a", x: 10, y: 10 },
+    { id: "b", x: 60, y: 60 },
+  ];
+
+  it("берёт ближайшую точку в радиусе", () => {
+    expect(nearestWithin(pts, 14, 12)?.id).toBe("a");
+    expect(nearestWithin(pts, 58, 63)?.id).toBe("b");
+  });
+
+  it("дальше радиуса — мимо", () => {
+    expect(nearestWithin(pts, 40, 40)).toBeNull();
+  });
+
+  it("ровно на границе радиуса ещё считается", () => {
+    expect(nearestWithin(pts, 10 + 12, 10)?.id).toBe("a");
+  });
+
+  it("из двух близких побеждает ближняя", () => {
+    const two = [
+      { id: "far", x: 20, y: 0 },
+      { id: "near", x: 4, y: 0 },
+    ];
+    expect(nearestWithin(two, 0, 0)?.id).toBe("near");
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Globe } from "../GlobeView";
+import { Globe, takePick } from "../GlobeView";
 import type { GlobeNode } from "../GlobePlanet";
 import { countryOf } from "../globe";
 import type { ConnState, Server } from "../data";
@@ -80,6 +80,7 @@ export function HomeScreen(p: Props) {
     const stamp = p.latAt?.[s.id];
     const stale = typeof stamp !== "number" || Date.now() - stamp > 12 * 60 * 1000;
     globeNodes.push({
+      id: s.id,
       lat: at.lat,
       lon: at.lon,
       ms,
@@ -193,6 +194,8 @@ export function HomeScreen(p: Props) {
                 delete c.dataset.dragged;
                 return;
               }
+              // точка на шаре уже выбрала сервер — это не «включить»
+              if (takePick()) return;
               toggleConnection();
             }}
             aria-label={`${t(statusKey)}. ${t(hintKey)}`}
@@ -215,6 +218,7 @@ export function HomeScreen(p: Props) {
               target={countryOf(selected.flag || selected.cc)}
               connected={conn === "connected"}
               nodes={globeNodes}
+              onPick={(id) => setSelectedId(id)}
             />
           </button>
 

@@ -149,3 +149,25 @@ export function shortestDelta(from: number, to: number): number {
 export function easeOut(t: number): number {
   return 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 }
+
+/**
+ * Ближайшая точка на экране: по ней ловим наведение и нажатие. Радиус 12 px —
+ * «почти попал»: прицеливаться в точку 3 px мышью невозможно.
+ */
+export function nearestWithin<T extends { x: number; y: number }>(
+  points: T[],
+  x: number,
+  y: number,
+  radius = 12,
+): T | null {
+  let best: T | null = null;
+  let bestD = radius;
+  for (const p of points) {
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d <= bestD) {
+      best = p;
+      bestD = d;
+    }
+  }
+  return best;
+}
