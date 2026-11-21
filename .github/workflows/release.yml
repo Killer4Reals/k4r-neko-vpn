@@ -94,3 +94,6 @@ jobs:
             app/src-tauri/target/release/bundle/nsis/*.exe
             dist/K4R-Neko-VPN-portable.zip
           if-no-files-found: error
+          # сборка нужна только на время прогона: релизный ассет — это сам
+          # установщик, а копия в артефактах съедала квоту (упёрлись в неё 1.29.8)
+          retention-days: 1
