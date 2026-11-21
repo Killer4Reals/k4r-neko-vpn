@@ -37,7 +37,7 @@ import { ZapretScreen } from "./screens/Zapret";
 import { SettingsScreen } from "./screens/Settings";
 import { StatsScreen } from "./screens/Stats";
 import { MascotHint, type Pose } from "./MascotHint";
-import { play } from "./sound";
+import { play, playConnected } from "./sound";
 import { LogsScreen } from "./screens/Logs";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -1045,12 +1045,13 @@ export default function App() {
   useEffect(() => {
     const was = prevConnSound.current;
     if (was && was !== conn) {
-      if (conn === "connected") play("connect");
+      // Мотив зависит от страны узла: страну видно и на слух
+      if (conn === "connected") playConnected(selected?.flag || selected?.cc);
       if (conn === "error") play("error");
       if (conn === "idle" && was === "connected") play("disconnect");
     }
     prevConnSound.current = conn;
-  }, [conn]);
+  }, [conn, selected]);
 
   // Kill-switch на уровне ОС: спрашиваем helper и слушаем надзор.
   useEffect(() => {

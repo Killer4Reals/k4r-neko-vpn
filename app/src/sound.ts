@@ -3,6 +3,8 @@
  * В установщике 0 КБ, лицензий нет, громкость и «выключить» — в настройках.
  */
 
+import { motifOf, regionOf, type Tone } from "./regionSound";
+
 type Ctx = AudioContext | null;
 
 const KEY_ON = "k4r.sound.on";
@@ -84,6 +86,37 @@ function noise(dur: number, gain: number, filterHz: number) {
 }
 
 export type Sfx = "click" | "whoosh" | "impact" | "papers" | "connect" | "disconnect" | "error";
+
+/** Один тон мотива: та же логика, что в tone(), но с задержкой. */
+function playTone(t: Tone, v: number) {
+  const ac = context();
+  if (!ac) return;
+  const at = ac.currentTime + (t.delay ?? 0) / 1000;
+  const osc = ac.createOscillator();
+  const g = ac.createGain();
+  osc.type = t.type;
+  osc.frequency.setValueAtTime(t.hz, at);
+  if (t.to) osc.frequency.exponentialRampToValueAtTime(t.to, at + t.dur);
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, t.gain * v), at + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + t.dur);
+  osc.connect(g).connect(ac.destination);
+  osc.start(at);
+  osc.stop(at + t.dur + 0.02);
+}
+
+/**
+ * Звук подключения с мотивом региона: у Азии колокольчик, у Европы бас, у
+ * Америки две ноты вверх. Один и тот же сигнал везде — это упущенная подсказка.
+ */
+export function playConnected(cc: string | undefined) {
+  if (muted || !soundOn()) return;
+  const ac = context();
+  if (!ac) return;
+  if (ac.state === "suspended") void ac.resume();
+  const v = volume();
+  for (const t of motifOf(regionOf(cc))) playTone(t, v);
+}
 
 /** Проиграть звук, если звук включён и не заглушён на экране боя. */
 export function play(sfx: Sfx) {
