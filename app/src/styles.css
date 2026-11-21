@@ -983,6 +983,23 @@ input {
   gap: 8px;
   z-index: 1;
 }
+/* Подпись «Сценарий» слева от чипов: иначе три кнопки читаются как ещё
+   три переключателя, а не как выбор режима */
+.quick-label {
+  align-self: center;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  margin-right: 2px;
+}
+
+.quick.scenarios {
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;

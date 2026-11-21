@@ -9,6 +9,7 @@ import { isBusy, pickServer, splitReserve } from "./autoSelect";
 import { slowSwitchTarget } from "./health";
 import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
 import { HistoryScreen } from "./screens/History";
+import { activeScenario, changedKeys, scenarioById, type ScenarioId, type ScenarioSettings } from "./scenarios";
 import { pairKey, quarantinedIds } from "./orchestrator";
 import { probeOnce } from "./probe";
 import { describe as describeSubError } from "./subError";
@@ -1276,6 +1277,32 @@ export default function App() {
     }
   }, []);
 
+  /** Какой сценарий соответствует текущим настройкам (или null). */
+  const scenarioNow: ScenarioSettings = { autoSwitchSlow, blockIpv6, dnsMode, gameMode, splitMode };
+  const scenarioId = activeScenario(scenarioNow);
+  const applyScenario = (id: ScenarioId) => {
+    const sc = scenarioById(id);
+    if (!sc) return;
+    const diff = changedKeys(scenarioNow, sc.settings);
+    if (diff.length === 0) {
+      setToast({ title: t("scTitle"), body: t("scAlready") });
+      return;
+    }
+    // split_mode и DNS ядро читает только при старте, поэтому поднятый туннель
+    // перезапускаем сразу: иначе кнопка «сработала», а поведение прежнее
+    const needsRestart = diff.includes("splitMode") || diff.includes("dnsMode");
+    setAutoSwitchSlow(sc.settings.autoSwitchSlow);
+    setBlockIpv6(sc.settings.blockIpv6);
+    setDnsMode(sc.settings.dnsMode);
+    setGameMode(sc.settings.gameMode);
+    setSplitMode(sc.settings.splitMode);
+    play("click");
+    setToast({ title: t("scTitle"), body: `${t(sc.titleKey)} — ${t("scApplied")}` });
+    if (needsRestart && conn === "connected") {
+      window.setTimeout(() => void reconnectTunnel(), 120);
+    }
+  };
+
   const ctx = {
     t,
     lang,
@@ -1404,6 +1431,8 @@ export default function App() {
                 if (best) setSelectedId(best.id);
               }}
               realCount={profiles.length}
+              scenario={scenarioId}
+              onScenario={applyScenario}
               subExpire={activeSub?.info?.expire ?? 0}
               subTotal={activeSub?.info?.total ?? 0}
               subUsed={(activeSub?.info?.upload ?? 0) + (activeSub?.info?.download ?? 0)}

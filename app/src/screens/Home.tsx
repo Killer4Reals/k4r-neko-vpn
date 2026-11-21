@@ -4,6 +4,7 @@ import type { GlobeNode } from "../GlobePlanet";
 import { countryOf } from "../globe";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
+import { SCENARIOS, type ScenarioId } from "../scenarios";
 import { Flag } from "../Flag";
 import { humanBytes, leftBytes, subTiming } from "../sub";
 
@@ -38,6 +39,9 @@ type Props = {
   ipBusy: boolean;
   onCheckIp: () => void;
   realCount: number;
+  /** какой сценарий сейчас включён; null — настройки смешаны руками */
+  scenario: ScenarioId | null;
+  onScenario: (id: ScenarioId) => void;
   error: string;
   /** срок подписки, unix-секунды; 0 — провайдер не сказал */
   subExpire: number;
@@ -271,6 +275,22 @@ export function HomeScreen(p: Props) {
         </div>
 
         <SubLine expire={p.subExpire} total={p.subTotal} used={p.subUsed} t={t} />
+
+        {/* Сценарии: один клик вместо пяти переключателей в настройках */}
+        <div className="quick scenarios">
+          <span className="quick-label">{t("scLabel")}</span>
+          {SCENARIOS.map((sc) => (
+            <button
+              key={sc.id}
+              className="chip"
+              data-on={p.scenario === sc.id}
+              title={t(sc.hintKey)}
+              onClick={() => p.onScenario(sc.id)}
+            >
+              {t(sc.titleKey)}
+            </button>
+          ))}
+        </div>
 
         <div className="quick">
           <button
