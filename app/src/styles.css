@@ -2632,3 +2632,65 @@ input {
 :root[data-theme="light"] .hist-uptime-bar .warn { background: #d97706; }
 :root[data-theme="light"] .hist-uptime-bar .bad { background: #dc2626; }
 :root[data-theme="light"] .hist-dot.ok { background: #16a34a; box-shadow: none; }
+
+/* Проверка одной кнопкой: строка на пункт, цвет по уровню */
+.chk-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chk-row {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 6px 2px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.chk-row:last-of-type {
+  border-bottom: none;
+}
+
+.chk-mark {
+  font-family: var(--mono);
+  font-size: 12px;
+  width: 14px;
+  text-align: center;
+  flex: none;
+}
+
+.chk-row.ok .chk-mark { color: var(--green); }
+.chk-row.warn .chk-mark { color: #ffd666; }
+.chk-row.bad .chk-mark { color: var(--danger); }
+.chk-row.unknown .chk-mark { color: var(--txt-3); }
+
+.chk-title em {
+  font-style: normal;
+  color: var(--txt-3);
+}
+
+.chk-fix {
+  margin-left: auto;
+  color: var(--txt-3);
+  font-size: 11.5px;
+  text-align: right;
+}
+
+.chk-verdict {
+  margin-top: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+}
+
+.chk-verdict.ok { color: var(--ok-text); }
+.chk-verdict.warn { color: #ffd666; }
+.chk-verdict.bad { color: var(--danger); }
+.chk-verdict.unknown { color: var(--txt-2); }
+
+:root[data-theme="light"] .chk-verdict.warn { color: #b45309; }
+:root[data-theme="light"] .chk-row.warn .chk-mark { color: #b45309; }

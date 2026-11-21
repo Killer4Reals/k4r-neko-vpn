@@ -10,6 +10,7 @@ import { slowSwitchTarget } from "./health";
 import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
 import { HistoryScreen } from "./screens/History";
 import { activeScenario, changedKeys, scenarioById, type ScenarioId, type ScenarioSettings } from "./scenarios";
+import { buildReport } from "./selfcheck";
 import { pairKey, quarantinedIds } from "./orchestrator";
 import { probeOnce } from "./probe";
 import { describe as describeSubError } from "./subError";
@@ -1303,6 +1304,29 @@ export default function App() {
     }
   };
 
+  /**
+   * Данные для «проверки одной кнопкой». Собираем здесь, потому что состояние
+   * размазано по App; сама логика — в selfcheck.ts, она под тестами.
+   */
+  const selfCheck = () => {
+    const measured = Object.keys(lat);
+    const alive = measured.filter((id) => typeof lat[id] === "number").length;
+    return buildReport({
+      servers: profiles.length,
+      alive,
+      measured: measured.length,
+      conn,
+      subExpire: activeSub?.info?.expire ?? 0,
+      subTotal: activeSub?.info?.total ?? 0,
+      subUsed: (activeSub?.info?.upload ?? 0) + (activeSub?.info?.download ?? 0),
+      killSwitchOn: killSwitch,
+      ksState: ksState.state,
+      splitMode,
+      splitCount: chosen.length,
+      now: Date.now(),
+    });
+  };
+
   const ctx = {
     t,
     lang,
@@ -1511,6 +1535,7 @@ export default function App() {
               t={t}
               lang={lang}
               setLang={setLang}
+              selfCheck={selfCheck}
               killSwitch={killSwitch}
               setKillSwitch={setKillSwitchNow}
               ksState={ksState}

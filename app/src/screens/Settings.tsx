@@ -5,6 +5,7 @@ import { play, setSoundOn, setVolume, soundOn, volume } from "../sound";
 import { globeStyle, setGlobeStyle, type GlobeStyle } from "../globeStyle";
 import { api, inTauri, type KillSwitchStatus, type KsCheck } from "../api";
 import { DnsPick } from "../DnsPick";
+import { reportText, summarize, type Check } from "../selfcheck";
 
 type Props = {
   t: (k: string) => string;
@@ -38,6 +39,8 @@ type Props = {
   theme: Theme;
   setTheme: (t: Theme) => void;
   dnsMode: "tunnel" | "system";
+  /** данные для «проверки одной кнопкой»: считает их App */
+  selfCheck: () => Check[];
   setDnsMode: (v: "tunnel" | "system") => void;
   dnsServer: string;
   setDnsServer: (v: string) => void;
@@ -60,6 +63,8 @@ type Props = {
 };
 
 export function SettingsScreen(p: Props) {
+  const [checks, setChecks] = useState<Check[]>([]);
+  const [copied, setCopied] = useState("");
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
   const { connectOnStart, setConnectOnStart } = p;
   // Самодиагностика kill-switch: 7 проверок, результат — табличкой.
@@ -156,6 +161,63 @@ export function SettingsScreen(p: Props) {
     <>
       <div className="page-head">
         <h1>{t("settingsTitle")}</h1>
+      </div>
+
+      {/* Проверка одной кнопкой: семь пунктов, каждый — то, что реально можно
+          проверить по состоянию. Отчёт копируется, чтобы не описывать словами */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("chkTitle")}</b>
+            <span>{t("chkHint")}</span>
+          </div>
+          <button
+            className="btn primary"
+            style={{ width: "auto", paddingInline: 16 }}
+            onClick={() => {
+              const list = p.selfCheck();
+              setChecks(list);
+              setCopied("");
+            }}
+          >
+            {t("chkRun")}
+          </button>
+        </div>
+        {checks.length > 0 && (
+          <div className="chk-list">
+            {checks.map((c) => (
+              <div key={c.id} className={`chk-row ${c.level}`}>
+                <span className="chk-mark" aria-hidden>
+                  {c.level === "ok" ? "✓" : c.level === "bad" ? "✕" : c.level === "warn" ? "!" : "?"}
+                </span>
+                <span className="chk-title">
+                  {t(c.titleKey)}
+                  {c.detail ? <em> · {c.detail}</em> : null}
+                </span>
+                {c.level !== "ok" && c.fixKey && <span className="chk-fix">{t(c.fixKey)}</span>}
+              </div>
+            ))}
+            <div className={`chk-verdict ${summarize(checks).verdict}`}>
+              {t(
+                summarize(checks).bad > 0
+                  ? "chkVerdictBad"
+                  : summarize(checks).warn > 0
+                    ? "chkVerdictWarn"
+                    : "chkVerdictOk",
+              )}
+              <button
+                className="ghost-btn"
+                style={{ marginLeft: 10 }}
+                onClick={() => {
+                  const txt = reportText(checks, t, t("chkTitle"));
+                  void navigator.clipboard?.writeText(txt).then(() => setCopied("1"));
+                }}
+              >
+                {copied ? t("chkCopied") : t("chkCopy")}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
