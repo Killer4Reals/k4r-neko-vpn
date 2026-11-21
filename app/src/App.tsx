@@ -1282,7 +1282,10 @@ export default function App() {
   /** Какой сценарий соответствует текущим настройкам (или null). */
   const scenarioNow: ScenarioSettings = { autoSwitchSlow, blockIpv6, dnsMode, gameMode, splitMode };
   const scenarioId = activeScenario(scenarioNow);
+  /** Защита от двойного клика: второй перезапуск подряд рвёт соединение зря. */
+  const scenarioBusy = useRef(false);
   const applyScenario = (id: ScenarioId) => {
+    if (scenarioBusy.current) return;
     const sc = scenarioById(id);
     if (!sc) return;
     const diff = changedKeys(scenarioNow, sc.settings);
@@ -1301,7 +1304,12 @@ export default function App() {
     play("click");
     setToast({ title: t("scTitle"), body: `${t(sc.titleKey)} — ${t("scApplied")}` });
     if (needsRestart && conn === "connected") {
-      window.setTimeout(() => void reconnectTunnel(), 120);
+      scenarioBusy.current = true;
+      window.setTimeout(() => {
+        void reconnectTunnel().finally(() => {
+          scenarioBusy.current = false;
+        });
+      }, 120);
     }
   };
 
