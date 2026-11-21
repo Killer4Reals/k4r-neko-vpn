@@ -287,7 +287,14 @@ const dict: Dict = {
   agoNow: { ru: "проверено только что", en: "checked just now" },
   agoMin: { ru: "проверено минуту назад", en: "checked a minute ago" },
   agoMins: { ru: "мин назад", en: "min ago" },
-  aliveHint: { ru: "сколько узлов ответило на последний замер", en: "how many nodes answered the last check" },
+  aliveHint: {
+    ru: "сколько узлов ответило на последний замер",
+    en: "how many nodes answered the last check",
+  },
+  globeLegend: {
+    ru: "точка на планете: зелёная — быстро, жёлтая — медленнее, оранжевая — совсем медленно, красная — не отвечает, серая — давно не проверяли. Нажатие на точку выбирает узел",
+    en: "a dot on the planet: green is fast, yellow slower, orange slow, red no answer, grey not checked for a while. Clicking a dot picks that node",
+  },
   serverDead: { ru: "не отвечает", en: "no answer" },
   serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },
   serversSub: { ru: "Список приходит из твоей подписки", en: "The list comes from your subscription" },

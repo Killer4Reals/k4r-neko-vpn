@@ -287,7 +287,7 @@ export function ServersScreen(p: Props) {
           </span>
           {/* Сколько узлов реально отвечает: видно до открытия списка */}
           {alive.total > 0 && (
-            <span className="muted" title={t("aliveHint")}>
+            <span className="muted" title={`${t("aliveHint")}. ${t("globeLegend")}`}>
               {alive.alive} {t("aliveOf")} {alive.total}
               {/* когда мерили: серые точки — это «давно», а не «мёртв» */}
               {measuredAgo && ` · ${measuredAgo}`}
