@@ -79,6 +79,15 @@ export function ServersScreen(p: Props) {
   const [link, setLink] = useState("");
   // «4 из 6 отвечают»: считаем по последнему замеру
   const alive = aliveCount(servers.map((s) => s.id), p.lat);
+  // «проверено 3 мин назад»: без этого серые точки выглядят как приговор
+  const measuredAgo = (() => {
+    const stamps = Object.values(p.latAt ?? {}).filter((v) => typeof v === "number");
+    if (stamps.length === 0) return "";
+    const mins = Math.floor((Date.now() - Math.max(...stamps)) / 60000);
+    if (mins < 1) return t("agoNow");
+    if (mins === 1) return t("agoMin");
+    return `${mins} ${t("agoMins")}`;
+  })();
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -280,6 +289,8 @@ export function ServersScreen(p: Props) {
           {alive.total > 0 && (
             <span className="muted" title={t("aliveHint")}>
               {alive.alive} {t("aliveOf")} {alive.total}
+              {/* когда мерили: серые точки — это «давно», а не «мёртв» */}
+              {measuredAgo && ` · ${measuredAgo}`}
             </span>
           )}
         </div>
