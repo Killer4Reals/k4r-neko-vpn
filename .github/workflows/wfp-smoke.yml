@@ -246,6 +246,9 @@ jobs:
       - name: артефакты
         if: always()
         uses: actions/upload-artifact@v4
+        # квота хранилища артефактов не должна валить сборку: релизный
+        # ассет и APK/exe доставляются отдельно, артефакт — только удобство
+        continue-on-error: true
         with:
           name: wfp-smoke-${{ github.run_id }}
           path: |
