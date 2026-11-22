@@ -638,6 +638,7 @@ async fn sub_fetch(
             ("X-Device-OS", "Windows".to_string()),
             ("X-Device-Model", device_model()),
             ("X-Ver-OS", os_version()),
+            ("X-Ver-App", app_version()),
         ];
         for (name, value) in device {
             if !all.iter().any(|h| h.name.eq_ignore_ascii_case(name)) {

@@ -145,15 +145,17 @@ fn more_useful(current: &str, candidate: &str) -> bool {
 /// Клиенты, которых панели узнают. Порядок не случайный: `v2rayNG` почти
 /// всегда получает обычный список ссылок, который мы умеем читать; остальные —
 /// на случай, если панель знает только их.
-pub const UA_KNOWN: [&str; 5] = [
+pub const UA_KNOWN: [&str; 6] = [
     "v2rayNG/1.9.0",
     "Streisand/1.6.0",
-    "ClashMetaForAndroid/2.11.1",
+    "ClashMetaForAndroid/2.11.1.Meta",
     // Панели с учётом устройств (Remnawave и его форки) отвечают настоящими
     // конфигами только тем клиентам, которых знают по имени. v2rayNG у них
     // в белом списке почти всегда, Happ и v2raytun — тоже.
     "Happ/1.22.0",
     "v2raytun/3.0.1",
+    // Именно с хвостом «.Meta» панели отдают Clash-конфиг; без него — заглушку.
+    "ClashMetaForAndroid/2.11.1",
 ];
 
 /// Порядок попыток: сперва то, что стоит у человека в настройках (там может
@@ -295,7 +297,7 @@ pub fn import_text(text: &str) -> Result<Vec<Profile>, String> {
         return Err("пусто: вставь ссылку vless://…".into());
     }
     // Вставить могут и целый конфиг: тогда это тот же разбор, что и у подписки
-    if raw.starts_with('{') || raw.starts_with('[') {
+    if raw.starts_with('{') || raw.starts_with('[') || looks_like_clash(raw) {
         return parse(raw).map(|result| result.profiles);
     }
 
@@ -337,8 +339,8 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
     if text.starts_with('{') || text.starts_with('[') {
         return parse_json(text);
     }
-    if text.contains("proxies:") {
-        return Err("провайдер отдал Clash YAML — этот формат пока не поддержан".into());
+    if looks_like_clash(text) {
+        return parse_clash(text);
     }
 
     // base64 body with a list of vless:// links
@@ -380,6 +382,209 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
         format: "links".into(),
         ua_used: String::new(),
     })
+}
+
+/// YAML от Clash/Mihomo: провайдеры отдают его, когда узнают знакомый клиент,
+/// и другого списка у них может не быть вовсе.
+fn looks_like_clash(text: &str) -> bool {
+    text.contains("proxies:") && !text.contains("vless://")
+}
+
+fn parse_clash(text: &str) -> Result<SubResult, String> {
+    let doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(text)
+        .map_err(|e| format!("провайдер отдал Clash YAML, но разобрать не вышло: {e}"))?;
+    let list = doc
+        .get("proxies")
+        .and_then(|v| v.as_sequence())
+        .ok_or_else(|| "в Clash YAML нет списка proxies".to_string())?;
+
+    let mut profiles: Vec<Profile> = Vec::new();
+    // Что пропустили и почему — человек должен видеть, что список короче, чем
+    // у провайдера, и почему.
+    let mut skipped: Vec<(String, usize)> = Vec::new();
+    for item in list {
+        match clash_profile(item) {
+            Some(p) => profiles.push(p),
+            None => {
+                let kind = ystr(item, "type");
+                let kind = if kind.is_empty() {
+                    "без типа".to_string()
+                } else {
+                    kind
+                };
+                match skipped.iter_mut().find(|(k, _)| *k == kind) {
+                    Some((_, n)) => *n += 1,
+                    None => skipped.push((kind, 1)),
+                }
+            }
+        }
+    }
+
+    if profiles.is_empty() {
+        let detail = if skipped.is_empty() {
+            "список серверов пуст".to_string()
+        } else {
+            let list: Vec<String> = skipped.iter().map(|(k, n)| format!("{k} — {n}")).collect();
+            format!("в списке только неподдерживаемые типы: {}", list.join(", "))
+        };
+        return Err(format!("Clash YAML: {detail}"));
+    }
+
+    let mut warnings = Vec::new();
+    for (kind, n) in &skipped {
+        warnings.push(format!(
+            "пропущено узлов {kind}: {n} — приложение работает по VLESS"
+        ));
+    }
+
+    Ok(SubResult {
+        profiles,
+        warnings,
+        info: None,
+        title: String::new(),
+        refresh_hint: 0,
+        format: "clash".into(),
+        ua_used: String::new(),
+    })
+}
+
+/// Один узел Clash YAML в нашу структуру. Пусто — узел, который мы не умеем
+/// запускать (ss, vmess, trojan, hysteria…): лучше честно пропустить, чем
+/// показать сервер, к которому не подключиться.
+fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
+    if ystr(item, "type") != "vless" {
+        return None;
+    }
+    let host = ystr(item, "server");
+    let uuid = ystr(item, "uuid");
+    if host.is_empty() || uuid.is_empty() {
+        return None;
+    }
+    let port = ynum(item, "port").unwrap_or(443) as u16;
+    if port == 0 {
+        return None;
+    }
+
+    let network = {
+        let n = ystr(item, "network");
+        if n.is_empty() {
+            "tcp".to_string()
+        } else {
+            n
+        }
+    };
+    // h2 в sing-box нет; такие узлы честнее пропустить, чем подсунуть tcp.
+    if network == "h2" {
+        return None;
+    }
+
+    let reality = item.get("reality-opts");
+    let tls_on = ybool(item, "tls").unwrap_or(false) || reality.is_some();
+    let security = if reality.is_some() {
+        "reality".to_string()
+    } else if tls_on {
+        "tls".to_string()
+    } else {
+        "none".to_string()
+    };
+
+    let sni = {
+        let a = ystr(item, "servername");
+        if a.is_empty() {
+            ystr(item, "sni")
+        } else {
+            a
+        }
+    };
+    let public_key = reality
+        .map(|r| ystr(r, "public-key"))
+        .unwrap_or_default();
+    let short_id = reality.map(|r| ystr(r, "short-id")).unwrap_or_default();
+    let fingerprint = {
+        let f = ystr(item, "client-fingerprint");
+        if f.is_empty() {
+            "chrome".to_string()
+        } else {
+            f
+        }
+    };
+    let path = item
+        .get("ws-opts")
+        .map(|w| ystr(w, "path"))
+        .unwrap_or_default();
+    let service_name = item
+        .get("grpc-opts")
+        .map(|g| ystr(g, "grpc-service-name"))
+        .unwrap_or_default();
+
+    let name = {
+        let n = ystr(item, "name");
+        if n.trim().is_empty() {
+            format!("{host}:{port}")
+        } else {
+            n
+        }
+    };
+    let cc = cc_from_host(&host)
+        .or_else(|| cc_from_text(&name))
+        .unwrap_or_default();
+
+    Some(Profile {
+        id: format!("{host}:{port}:{uuid}"),
+        name,
+        host,
+        port,
+        uuid,
+        flow: ystr(item, "flow"),
+        security,
+        network,
+        sni,
+        public_key,
+        short_id,
+        fingerprint,
+        service_name,
+        path,
+        kind: String::new(),
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
+        cc,
+    })
+}
+
+/// Строка из YAML: строки, числа и булевы значения — всё, что панели пишут
+/// в поля вроде `port: 443` или `tls: true`.
+fn ystr(v: &serde_yaml_ng::Value, key: &str) -> String {
+    match v.get(key) {
+        Some(serde_yaml_ng::Value::String(s)) => s.trim().to_string(),
+        Some(serde_yaml_ng::Value::Number(n)) => n.to_string(),
+        Some(serde_yaml_ng::Value::Bool(b)) => b.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn ynum(v: &serde_yaml_ng::Value, key: &str) -> Option<u64> {
+    match v.get(key) {
+        Some(serde_yaml_ng::Value::Number(n)) => n.as_u64(),
+        Some(serde_yaml_ng::Value::String(s)) => s.trim().parse::<u64>().ok(),
+        _ => None,
+    }
+}
+
+fn ybool(v: &serde_yaml_ng::Value, key: &str) -> Option<bool> {
+    match v.get(key) {
+        Some(serde_yaml_ng::Value::Bool(b)) => Some(*b),
+        Some(serde_yaml_ng::Value::String(s)) => match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "yes" | "1" => Some(true),
+            "false" | "no" | "0" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Если все серверы в ответе — заглушка, возвращаем то, что провайдер написал
@@ -1113,13 +1318,50 @@ mod tests {
 mod net_tests {
     use super::*;
 
-    /// Live check against the owner's subscription. Ignored by default.
+    /// Живая проверка на настоящей подписке владельца. По умолчанию пропущена:
+    /// нужен интернет и ссылка.
+    ///
+    /// ```text
+    /// K4R_SUB_URL=... K4R_SUB_HWID=... cargo test --ignored fetches_real_subscription
+    /// ```
     #[test]
     #[ignore]
     fn fetches_real_subscription() {
-        let r = fetch("https://example.invalid/subscription", "Happ/4.7.2", &[]).unwrap();
-        println!("format={} profiles={} warnings={:?}", r.format, r.profiles.len(), r.warnings);
-        assert!(!r.profiles.is_empty());
+        let Ok(url) = std::env::var("K4R_SUB_URL") else { return };
+        let hwid = std::env::var("K4R_SUB_HWID").unwrap_or_else(|_| "k4r-night-smoke".into());
+        let headers = vec![
+            SubHeader { name: "X-HWID".into(), value: hwid },
+            SubHeader { name: "X-Device-OS".into(), value: "Windows".into() },
+            SubHeader { name: "X-Ver-OS".into(), value: "10.0".into() },
+            SubHeader { name: "X-Ver-App".into(), value: "1.35.0".into() },
+        ];
+        match fetch(&url, "", &headers) {
+            Ok(r) => {
+                println!(
+                    "формат={} серверов={} клиент={} название={:?}",
+                    r.format,
+                    r.profiles.len(),
+                    r.ua_used,
+                    r.title
+                );
+                if let Some(info) = &r.info {
+                    println!("трафик: скачано {} Б, лимит {}", info.download, info.total);
+                }
+                for w in &r.warnings {
+                    println!("  предупреждение: {w}");
+                }
+                let mut countries: Vec<&str> = r.profiles.iter().map(|p| p.cc.as_str()).collect();
+                countries.sort_unstable();
+                countries.dedup();
+                println!("страны: {}", countries.join(" "));
+                assert!(!r.profiles.is_empty());
+            }
+            Err(e) => {
+                // Отказ провайдера — тоже результат: главное, что он человеческий.
+                println!("отказ: {e}");
+                assert!(!e.is_empty());
+            }
+        }
     }
 
     #[test]
@@ -1285,6 +1527,152 @@ mod net_tests {
             request.to_lowercase().contains("x-hwid: k4r-test-id"),
             "заголовок устройства не отправлен: {request}"
         );
+    }
+
+    #[test]
+    fn reads_clash_yaml_with_reality_ws_and_grpc() {
+        // Так выглядит ответ панели Remnawave клиенту Clash: серверы только
+        // здесь, ссылок vless:// в ответе нет вовсе.
+        let yaml = r#"
+mixed-port: 7890
+proxies:
+  - name: "🇩🇪 Франкфурт"
+    type: vless
+    server: de1.example.net
+    port: 443
+    uuid: 11111111-2222-3333-4444-555555555555
+    network: tcp
+    tls: true
+    servername: de1.example.net
+    reality-opts:
+      public-key: PUBKEY111
+      short-id: abcd
+    client-fingerprint: chrome
+    flow: xtls-rprx-vision
+  - name: "🇳🇱 Амстердам"
+    type: vless
+    server: nl1.example.net
+    port: 8443
+    uuid: 22222222-3333-4444-5555-666666666666
+    network: ws
+    tls: true
+    servername: nl1.example.net
+    ws-opts:
+      path: /tunnel
+      headers:
+        Host: nl1.example.net
+  - name: "🇺🇸 Нью-Йорк"
+    type: vless
+    server: us1.example.net
+    port: 2053
+    uuid: 33333333-4444-5555-6666-777777777777
+    network: grpc
+    tls: true
+    grpc-opts:
+      grpc-service-name: grpcsvc
+  - name: "🇸🇬 Сингапур"
+    type: ss
+    server: sg1.example.net
+    port: 8388
+    cipher: aes-256-gcm
+    password: secret
+  - name: "🇯🇵 Токио"
+    type: trojan
+    server: jp1.example.net
+    port: 443
+    password: secret
+"#;
+        let parsed = parse(yaml).expect("YAML разбирается");
+        assert_eq!(parsed.format, "clash");
+        assert_eq!(parsed.profiles.len(), 3, "ss и trojan не должны попасть в список");
+
+        let de = &parsed.profiles[0];
+        assert_eq!(de.host, "de1.example.net");
+        assert_eq!(de.security, "reality");
+        assert_eq!(de.public_key, "PUBKEY111");
+        assert_eq!(de.short_id, "abcd");
+        assert_eq!(de.flow, "xtls-rprx-vision");
+        assert_eq!(de.cc, "de");
+
+        let nl = &parsed.profiles[1];
+        assert_eq!(nl.network, "ws");
+        assert_eq!(nl.path, "/tunnel");
+        assert_eq!(nl.cc, "nl");
+
+        let us = &parsed.profiles[2];
+        assert_eq!(us.network, "grpc");
+        assert_eq!(us.service_name, "grpcsvc");
+        assert_eq!(us.cc, "us");
+
+        let note = parsed.warnings.join(" ");
+        assert!(note.contains("ss"), "предупреждение про ss: {note}");
+        assert!(note.contains("trojan"), "предупреждение про trojan: {note}");
+    }
+
+    #[test]
+    fn clash_placeholder_is_recognised_as_a_limit() {
+        // Панель на пределе устройств отдаёт целый конфиг Clash, но внутри
+        // один узел-заглушка с причиной в имени.
+        let yaml = r#"
+proxies:
+  - name: Достигнут предел количества устройств
+    type: vless
+    server: 0.0.0.0
+    port: 1
+    uuid: 00000000-0000-0000-0000-000000000000
+    network: tcp
+"#;
+        let parsed = parse(yaml).expect("YAML разбирается даже пустышкой");
+        let reason = placeholder_reason(&parsed.profiles).expect("заглушка распознана");
+        assert!(reason.contains("предел"), "причина: {reason}");
+    }
+
+    #[test]
+    fn clash_with_only_unsupported_types_explains_itself() {
+        let yaml = r#"
+proxies:
+  - name: Сингапур
+    type: ss
+    server: sg.example.net
+    port: 8388
+    cipher: aes-256-gcm
+    password: x
+  - name: Токио
+    type: hysteria2
+    server: jp.example.net
+    port: 443
+    password: y
+"#;
+        let err = parse(yaml).expect_err("без vless список пуст");
+        assert!(err.contains("неподдерживаемые"), "сообщение: {err}");
+        assert!(err.contains("ss"), "сообщение: {err}");
+    }
+
+    #[test]
+    fn clash_yaml_can_be_pasted_as_text() {
+        let yaml = r#"
+proxies:
+  - name: Берлин
+    type: vless
+    server: de.example.net
+    port: 443
+    uuid: 44444444-5555-6666-7777-888888888888
+    network: tcp
+    tls: true
+"#;
+        let list = import_text(yaml).expect("импорт вставкой");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].host, "de.example.net");
+    }
+
+    #[test]
+    fn base64_link_list_is_not_mistaken_for_clash() {
+        // В обычном ответе тоже бывает слово proxies:, но ссылки на месте —
+        // такой ответ надо читать как ссылки.
+        let body = "dmxlc3M6Ly8xOGM1YjkyMC0yMWE2LTQzYjEtODkzNi1lOGRjYjY5YTU0NzlAYmlzdzIyMi5heGlub2RlLnNicy4xMDEyMT9lbmNyeXB0aW9uPW5vbmUjJUQwJUE0JUQwJUI4JUQwJUJEJUQwJUJCJUQwJUI1JUQwJUJEJUQwJUI0JUQwJUI4JUQxJThG";
+        assert!(!looks_like_clash(body));
+        let parsed = parse(body).expect("список ссылок разбирается");
+        assert_eq!(parsed.format, "links");
     }
 
 }
