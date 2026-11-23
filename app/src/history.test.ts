@@ -10,6 +10,7 @@ import {
   plural,
   pushEvent,
   serializeEvents,
+  toCsv,
   type HistoryEvent,
 } from "./history";
 
@@ -192,5 +193,28 @@ describe("прочее", () => {
   it("время в часах и минутах", () => {
     const at = new Date(2026, 10, 21, 9, 5, 0).getTime();
     expect(clock(at)).toBe("09:05");
+  });
+});
+
+describe("toCsv", () => {
+  const name = (id: string) => (id === "de" ? "Франкфурт" : id);
+
+  it("первая строка — заголовки с BOM, разделитель «;»", () => {
+    const csv = toCsv([], name, "ru");
+    expect(csv.startsWith("\uFEFF")).toBe(true);
+    expect(csv.split("\r\n")[0]).toContain("Время");
+  });
+
+  it("строка на событие, свежие сверху, узел назван по имени", () => {
+    const csv = toCsv([ev(T, "connect", "de"), ev(T + MIN, "switch", "de", "nl")], name, "ru");
+    const lines = csv.trim().split("\r\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain("Переключение");
+    expect(lines[2]).toContain("Франкфурт");
+  });
+
+  it("кавычки внутри значений не ломают таблицу", () => {
+    const csv = toCsv([ev(T, "fail", undefined, 'нет "сети"')], name, "ru");
+    expect(csv).toContain('""сети""');
   });
 });

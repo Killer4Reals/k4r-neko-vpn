@@ -1519,6 +1519,14 @@ export default function App() {
                 if (/^[a-z]{2}$/i.test(id)) return nameOf(id.toLowerCase()) || id;
                 return id;
               }}
+              onSave={async (csv) => {
+                try {
+                  const path = await api.exportText("history", csv);
+                  setWarnings([`История сохранена: ${path}`]);
+                } catch (e) {
+                  setWarnings([String(e)]);
+                }
+              }}
               onClear={() => {
                 setEvents([]);
                 localStorage.removeItem("k4r.history");

@@ -199,6 +199,38 @@ export function plural(n: number, lang: "ru" | "en"): "one" | "few" | "many" {
 }
 
 /** Время в формате 21:40 — секунды в истории не нужны. */
+/**
+ * История в таблицу для Excel: BOM (иначе Excel читает кириллицу кракозябрами),
+ * разделитель `;` — так открывается двойным кликом в русской локали.
+ */
+export function toCsv(
+  events: HistoryEvent[],
+  nameOfId: (id: string) => string,
+  lang: "ru" | "en",
+): string {
+  const head = lang === "ru" ? ["Время", "Дата", "Событие", "Узел", "Подробности"] : ["Time", "Date", "Event", "Node", "Details"];
+  const cell = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const rows = [head.map(cell).join(";")];
+  for (const ev of [...events].sort((a, b) => b.at - a.at)) {
+    const d = new Date(ev.at);
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    // labelKey даёт ключ перевода; для файла он читается как есть — поэтому
+    // русские события подписаны прямо здесь, без словаря интерфейса.
+    const kind: Record<HistoryEvent["kind"], string> = {
+      connect: lang === "ru" ? "Подключение" : "Connected",
+      disconnect: lang === "ru" ? "Отключение" : "Disconnected",
+      switch: lang === "ru" ? "Переключение" : "Switched",
+      fail: lang === "ru" ? "Ошибка" : "Failure",
+      nodeDown: lang === "ru" ? "Узел пропал" : "Node down",
+      nodeUp: lang === "ru" ? "Узел вернулся" : "Node back",
+    };
+    const node = ev.a ? nameOfId(ev.a) : "";
+    const details = ev.b ?? "";
+    rows.push([clock(ev.at), date, kind[ev.kind], node, details].map(cell).join(";"));
+  }
+  return "\uFEFF" + rows.join("\r\n") + "\r\n";
+}
+
 export function clock(at: number): string {
   const d = new Date(at);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;

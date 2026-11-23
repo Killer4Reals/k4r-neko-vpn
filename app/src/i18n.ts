@@ -494,6 +494,8 @@ const dict: Dict = {
   histDownMany: { ru: "сбоев", en: "failures" },
   histAvailabilityHint: { ru: "Считается по сбоям: чем ниже полоска, тем чаще узел пропадал. Такой лучше не выбирать.", en: "Computed from failures: the shorter the bar, the more often the node dropped. Better avoid it." },
   histClear: { ru: "Очистить историю", en: "Clear history" },
+  histSave: { ru: "Сохранить в файл", en: "Save to file" },
+  histSaveHint: { ru: "Таблица для Excel: время, событие, узел. Свой файл, никуда не отправляется.", en: "A spreadsheet for Excel: time, event, node. Local file, nothing is uploaded." },
   mapTitle: { ru: "Карта выходов", en: "Where you exit" },
   mapHint: { ru: "Нажми на точку, чтобы выбрать сервер", en: "Click a dot to pick a server" },
   mapYou: { ru: "ты", en: "you" },

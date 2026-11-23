@@ -568,6 +568,26 @@ pub fn scan_installed() -> Vec<InstalledApp> {
     list
 }
 
+/// Save a small text file (history export) next to the log exports.
+/// Named `k4r-<name>-<stamp>.txt` so a person can find it later.
+#[tauri::command]
+fn export_text(app: tauri::AppHandle, name: String, text: String) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+    let out_dir = dir.join("exports");
+    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .collect();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = out_dir.join(format!("k4r-{}-{}.csv", safe, stamp));
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 /// One readable file the user can hand over when something breaks.
 #[tauri::command]
 fn export_log(app: tauri::AppHandle) -> Result<String, String> {
@@ -2186,7 +2206,8 @@ pub fn run() {
             zapret_status,
             set_tray_state,
             apps_scan,
-            export_log
+            export_log,
+            export_text
         ])
         .build(tauri::generate_context!())
         .expect("error while building K4R Neko VPN")

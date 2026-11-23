@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { availability, clock, groupByDay, labelKey, plural, type HistoryEvent } from "../history";
+import { availability, clock, groupByDay, labelKey, plural, toCsv, type HistoryEvent } from "../history";
 
 type Props = {
   t: (k: string) => string;
@@ -8,6 +8,8 @@ type Props = {
   nameOfId: (id: string) => string;
   lang: "ru" | "en";
   onClear: () => void;
+  /** Сохранить историю файлом: строка CSV на событие. */
+  onSave?: (csv: string) => void;
 };
 
 const DAY_LABEL: Record<string, string> = {
@@ -31,7 +33,7 @@ const KIND_TONE: Record<HistoryEvent["kind"], string> = {
  * событие и честная доступность узлов: «этот за неделю падал 6 раз» — повод
  * его больше не выбирать.
  */
-export function HistoryScreen({ t, events, nameOfId, onClear, lang }: Props) {
+export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Props) {
   const now = Date.now();
   const groups = useMemo(() => groupByDay(events, now), [events, now]);
   const health = useMemo(() => availability(events, now).slice(0, 6), [events, now]);
@@ -110,9 +112,21 @@ export function HistoryScreen({ t, events, nameOfId, onClear, lang }: Props) {
       )}
 
       {events.length > 0 && (
-        <button className="btn" style={{ width: "auto", paddingInline: 16 }} onClick={onClear}>
-          {t("histClear")}
-        </button>
+        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+          {onSave && (
+            <button
+              className="btn"
+              style={{ width: "auto", paddingInline: 16 }}
+              title={t("histSaveHint")}
+              onClick={() => onSave(toCsv(events, nameOfId, lang))}
+            >
+              {t("histSave")}
+            </button>
+          )}
+          <button className="ghost-btn" onClick={onClear}>
+            {t("histClear")}
+          </button>
+        </div>
       )}
     </>
   );

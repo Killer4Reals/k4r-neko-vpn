@@ -10,7 +10,7 @@ import time
 
 from PIL import Image
 
-EXE = r'C:\Users\KILLER~1\AppData\Local\Temp\k4r_portable\K4R Neko VPN.exe'
+EXE = r'C:\Users\KILLER~1\AppData\Local\Temp\k4r_portable2\K4R Neko VPN.exe'
 OUT = r'C:\Users\KILLER~1\AppData\Local\Temp'
 
 user32 = ctypes.windll.user32
