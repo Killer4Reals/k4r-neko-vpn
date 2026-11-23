@@ -199,6 +199,28 @@ export function plural(n: number, lang: "ru" | "en"): "one" | "few" | "many" {
 }
 
 /** Время в формате 21:40 — секунды в истории не нужны. */
+/** Что показывать в истории: всё, только подключения или только сбои. */
+export type HistoryFilter = "all" | "links" | "trouble";
+
+const LINK_KINDS: HistoryEvent["kind"][] = ["connect", "disconnect", "switch"];
+const TROUBLE_KINDS: HistoryEvent["kind"][] = ["fail", "nodeDown", "nodeUp"];
+
+/**
+ * Фильтр истории. «Подключения» — то, что человек делал сам; «Сбои» — то, что
+ * случилось без него. Так проще найти «когда оно падало», без чтения всего.
+ */
+export function filterEvents(list: HistoryEvent[], filter: HistoryFilter): HistoryEvent[] {
+  if (filter === "all") return list;
+  const wanted = filter === "links" ? LINK_KINDS : TROUBLE_KINDS;
+  return list.filter((e) => wanted.includes(e.kind));
+}
+
+/** Сколько событий каждого вида — для подписи на кнопках фильтра. */
+export function countByFilter(list: HistoryEvent[]): Record<HistoryFilter, number> {
+  const links = list.filter((e) => LINK_KINDS.includes(e.kind)).length;
+  return { all: list.length, links, trouble: list.length - links };
+}
+
 /**
  * История в таблицу для Excel: BOM (иначе Excel читает кириллицу кракозябрами),
  * разделитель `;` — так открывается двойным кликом в русской локали.

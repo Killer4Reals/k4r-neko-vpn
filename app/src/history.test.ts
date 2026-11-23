@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   availability,
   clock,
+  countByFilter,
+  filterEvents,
   dayKey,
   groupByDay,
   HISTORY_CAP,
@@ -216,5 +218,32 @@ describe("toCsv", () => {
   it("кавычки внутри значений не ломают таблицу", () => {
     const csv = toCsv([ev(T, "fail", undefined, 'нет "сети"')], name, "ru");
     expect(csv).toContain('""сети""');
+  });
+});
+
+describe("filterEvents", () => {
+  const list = [
+    ev(T, "connect", "de"),
+    ev(T + 1000, "switch", "de", "nl"),
+    ev(T + 2000, "fail", undefined, "timeout"),
+    ev(T + 3000, "nodeDown", "nl"),
+  ];
+
+  it("«всё» возвращает всё и ничего не теряет", () => {
+    expect(filterEvents(list, "all")).toHaveLength(list.length);
+  });
+
+  it("«подключения» — только действия человека", () => {
+    expect(filterEvents(list, "links").map((e) => e.kind)).toEqual(["connect", "switch"]);
+  });
+
+  it("«сбои» — падения, отказы и возвраты узлов", () => {
+    expect(filterEvents(list, "trouble").map((e) => e.kind)).toEqual(["fail", "nodeDown"]);
+  });
+
+  it("счётчики сходятся: связи плюс сбои равно всему", () => {
+    const c = countByFilter(list);
+    expect(c.all).toBe(4);
+    expect(c.links + c.trouble).toBe(c.all);
   });
 });

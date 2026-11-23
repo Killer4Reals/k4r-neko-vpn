@@ -1,5 +1,16 @@
-import { useMemo } from "react";
-import { availability, clock, groupByDay, labelKey, plural, toCsv, type HistoryEvent } from "../history";
+import { useMemo, useState } from "react";
+import {
+  availability,
+  clock,
+  countByFilter,
+  filterEvents,
+  groupByDay,
+  labelKey,
+  plural,
+  toCsv,
+  type HistoryEvent,
+  type HistoryFilter,
+} from "../history";
 
 type Props = {
   t: (k: string) => string;
@@ -35,7 +46,10 @@ const KIND_TONE: Record<HistoryEvent["kind"], string> = {
  */
 export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Props) {
   const now = Date.now();
-  const groups = useMemo(() => groupByDay(events, now), [events, now]);
+  const [filter, setFilter] = useState<HistoryFilter>("all");
+  const counts = useMemo(() => countByFilter(events), [events]);
+  const shown = useMemo(() => filterEvents(events, filter), [events, filter]);
+  const groups = useMemo(() => groupByDay(shown, now), [shown, now]);
   const health = useMemo(() => availability(events, now).slice(0, 6), [events, now]);
 
   const downWord = (n: number) => {
@@ -79,9 +93,36 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Pr
         </div>
       )}
 
+      {events.length > 0 && (
+        <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          {(
+            [
+              ["all", "histFilterAll", counts.all],
+              ["links", "histFilterLinks", counts.links],
+              ["trouble", "histFilterTrouble", counts.trouble],
+            ] as [HistoryFilter, string, number][]
+          ).map(([key, label, n]) => (
+            <button
+              key={key}
+              className="chip"
+              data-on={filter === key}
+              onClick={() => setFilter(key)}
+              style={{ cursor: "pointer" }}
+            >
+              <span className="led" />
+              {t(label)} · {n}
+            </button>
+          ))}
+        </div>
+      )}
+
       {events.length === 0 ? (
         <div className="card">
           <div className="muted">{t("histEmpty")}</div>
+        </div>
+      ) : shown.length === 0 ? (
+        <div className="card">
+          <div className="muted">{t("histFilterEmpty")}</div>
         </div>
       ) : (
         groups.map((g) => (
@@ -118,7 +159,7 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Pr
               className="btn"
               style={{ width: "auto", paddingInline: 16 }}
               title={t("histSaveHint")}
-              onClick={() => onSave(toCsv(events, nameOfId, lang))}
+              onClick={() => onSave(toCsv(shown, nameOfId, lang))}
             >
               {t("histSave")}
             </button>
