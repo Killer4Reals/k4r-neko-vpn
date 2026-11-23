@@ -46,7 +46,16 @@ const KIND_TONE: Record<HistoryEvent["kind"], string> = {
  */
 export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Props) {
   const now = Date.now();
-  const [filter, setFilter] = useState<HistoryFilter>("all");
+  // Фильтр запоминается: человек, который смотрит только сбои, не должен
+  // каждый раз переключать его заново.
+  const [filter, setFilter] = useState<HistoryFilter>(() => {
+    const saved = localStorage.getItem("k4r.histFilter");
+    return saved === "links" || saved === "trouble" ? saved : "all";
+  });
+  const pick = (f: HistoryFilter) => {
+    setFilter(f);
+    localStorage.setItem("k4r.histFilter", f);
+  };
   const counts = useMemo(() => countByFilter(events), [events]);
   const shown = useMemo(() => filterEvents(events, filter), [events, filter]);
   const groups = useMemo(() => groupByDay(shown, now), [shown, now]);
@@ -106,7 +115,7 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Pr
               key={key}
               className="chip"
               data-on={filter === key}
-              onClick={() => setFilter(key)}
+              onClick={() => pick(key)}
               style={{ cursor: "pointer" }}
             >
               <span className="led" />
