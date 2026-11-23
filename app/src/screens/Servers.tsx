@@ -91,6 +91,15 @@ export function ServersScreen(p: Props) {
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  // Поиск по списку: у провайдеров бывает по 30–60 узлов, и «найди мне Токио»
+  // глазами — это прокрутка на полминуты.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? servers.filter((s) =>
+        [s.city, s.country, s.tag, s.cc].some((v) => (v ?? "").toLowerCase().includes(q)),
+      )
+    : servers;
   const [hwidNote, setHwidNote] = useState("");
   // Сброс HWID прямо из ошибки: не нужно искать карточку в настройках
   const resetHwid = async () => {
@@ -407,6 +416,30 @@ export function ServersScreen(p: Props) {
       )}
 
       {servers.length > 0 && (
+        <div className="card" style={{ padding: 10, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder={t("searchNodes")}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              spellCheck={false}
+              aria-label={t("searchNodes")}
+            />
+            {q && (
+              <button className="ghost-btn" onClick={() => setQuery("")} aria-label={t("clear")}>
+                ×
+              </button>
+            )}
+            <span className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+              {shown.length} / {servers.length}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {servers.length > 0 && (
         <ServerMap
           servers={servers}
           selectedId={selectedId}
@@ -415,10 +448,16 @@ export function ServersScreen(p: Props) {
         />
       )}
 
-      {servers.length > 0 && (
+      {servers.length > 0 && q && shown.length === 0 && (
+        <div className="card" style={{ padding: 14 }}>
+          <span className="muted">{t("nothingFound")}</span>
+        </div>
+      )}
+
+      {servers.length > 0 && shown.length > 0 && (
       <div className="card" style={{ padding: 8 }}>
         <div className="server-list">
-          {servers.map((s) => (
+          {shown.map((s) => (
             <button
               key={s.id}
               className="server"

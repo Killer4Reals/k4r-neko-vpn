@@ -209,6 +209,9 @@ const dict: Dict = {
     en: "Refresh the subscription or paste a server link manually.",
   },
   servers: { ru: "Серверы", en: "Servers" },
+  searchNodes: { ru: "Поиск по городу, стране или протоколу", en: "Search by city, country or protocol" },
+  nothingFound: { ru: "Ничего не нашлось — попробуй другое слово", en: "Nothing found — try another word" },
+  clear: { ru: "Очистить", en: "Clear" },
   serversCount: { ru: "из подписки", en: "from the subscription" },
   serversDemo: {
     ru: "это пример списка — нажми «Обновить», чтобы загрузить свои серверы",
