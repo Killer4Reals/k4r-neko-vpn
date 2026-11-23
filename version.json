@@ -1,5 +1,7 @@
 {
   "version": "1.39.0",
   "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.39.0/K4R.Neko.VPN_1.39.0_x64-setup.exe",
-  "notes": "Windows 1.38.0: поиск по серверам"
+  "notes": "1.39.0 — история в файл (CSV), Clash-подписки, поиск по серверам",
+  "sha256": "96341789cc094f9e2a4523156e944fb1b4d9701e0c9f6f426487a85db0b24190",
+  "portable_sha256": "13b86f9a105faa2a05d65d666f78b56d61bb6718bf9407871be42b37189f33d9"
 }
