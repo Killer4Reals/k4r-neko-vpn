@@ -56,13 +56,16 @@ type Props = {
   hotkey: string;
   setHotkey: (v: string) => void;
   onExportLog: () => Promise<string>;
+  /** отчёт «проверки одной кнопкой» в файл: его удобно приложить к вопросу */
+  onSaveReport: (report: string) => void;
   onDeviceId: (id: string) => void;
 };
 
 export function SettingsScreen(p: Props) {
   const [checks, setChecks] = useState<Check[]>([]);
   const [copied, setCopied] = useState("");
-  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart,  } = p;
+  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart } = p;
+  const { onSaveReport } = p;
   const { connectOnStart, setConnectOnStart } = p;
   // Самодиагностика kill-switch: 7 проверок, результат — табличкой.
   const [ksChecks, setKsChecks] = useState<KsCheck[] | null>(null);
@@ -211,6 +214,13 @@ export function SettingsScreen(p: Props) {
                 }}
               >
                 {copied ? t("chkCopied") : t("chkCopy")}
+              </button>
+              <button
+                className="ghost-btn"
+                style={{ marginLeft: 8 }}
+                onClick={() => onSaveReport(reportText(checks, t, t("chkTitle")))}
+              >
+                {t("chkSave")}
               </button>
             </div>
           </div>

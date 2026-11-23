@@ -446,6 +446,7 @@ const dict: Dict = {
   chkRun: { ru: "Проверить", en: "Check" },
   chkCopy: { ru: "Скопировать отчёт", en: "Copy report" },
   chkCopied: { ru: "Скопировано", en: "Copied" },
+  chkSave: { ru: "Сохранить в файл", en: "Save to file" },
   chkVerdictOk: { ru: "Всё в порядке", en: "All good" },
   chkVerdictWarn: { ru: "Работает, но есть замечания", en: "Works, with notes" },
   chkVerdictBad: { ru: "Есть то, из-за чего не заработает", en: "Something blocks it" },

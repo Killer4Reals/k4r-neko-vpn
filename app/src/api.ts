@@ -177,7 +177,8 @@ export const api = {
   installIdReset: () => invoke<string>("install_id_reset"),
   appsScan: () => invoke<InstalledApp[]>("apps_scan"),
   exportLog: () => invoke<string>("export_log"),
-  exportText: (name: string, text: string) => invoke<string>("export_text", { name, text }),
+  exportText: (name: string, text: string, ext = "csv") =>
+    invoke<string>("export_text", { name, text, ext }),
 };
 
 export type InstalledApp = { exe: string; name: string; path: string; running: boolean };

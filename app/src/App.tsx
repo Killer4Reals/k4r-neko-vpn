@@ -1612,6 +1612,14 @@ export default function App() {
               setSubRefreshHours={setSubRefreshHours}
               updateUrl={updateUrl}
               setUpdateUrl={setUpdateUrl}
+              onSaveReport={async (report) => {
+                try {
+                  const path = await api.exportText("selfcheck", report, "txt");
+                  setWarnings([`Отчёт сохранён: ${path}`]);
+                } catch (e) {
+                  setWarnings([String(e)]);
+                }
+              }}
             />
           )}
         </main>

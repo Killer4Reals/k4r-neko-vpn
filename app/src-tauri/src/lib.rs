@@ -571,9 +571,15 @@ pub fn scan_installed() -> Vec<InstalledApp> {
 /// Save a small text file (history export) next to the log exports.
 /// Named `k4r-<name>-<stamp>.txt` so a person can find it later.
 #[tauri::command]
-fn export_text(app: tauri::AppHandle, name: String, text: String) -> Result<String, String> {
+fn export_text(
+    app: tauri::AppHandle,
+    name: String,
+    text: String,
+    ext: Option<String>,
+) -> Result<String, String> {
     let dir = data_dir(&app)?;
-    let path = write_export(&dir.join("exports"), &name, &text, export_stamp())?;
+    let ext = ext.unwrap_or_else(|| "csv".to_string());
+    let path = write_export(&dir.join("exports"), &name, &text, &ext, export_stamp())?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -603,10 +609,13 @@ fn write_export(
     dir: &std::path::Path,
     name: &str,
     text: &str,
+    ext: &str,
     stamp: u64,
 ) -> Result<std::path::PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let path = dir.join(format!("k4r-{}-{}.csv", export_name(name), stamp));
+    // расширение тоже фильтруем: «txt», «csv» — и ничего другого
+    let ext = export_name(ext);
+    let path = dir.join(format!("k4r-{}-{}.{}", export_name(name), stamp, ext));
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
     Ok(path)
 }
@@ -2358,7 +2367,7 @@ mod export_tests {
     fn csv_landing_in_exports_folder_with_bom_and_stamp() {
         let dir = tmp_dir("csv");
         let text = "\u{FEFF}Время;Событие\r\n12:00;Подключение\r\n";
-        let path = write_export(&dir, "history", text, 1_700_000_000).unwrap();
+        let path = write_export(&dir, "history", text, "csv", 1_700_000_000).unwrap();
         assert_eq!(
             path.file_name().unwrap().to_string_lossy(),
             "k4r-history-1700000000.csv"
@@ -2378,7 +2387,7 @@ mod export_tests {
         assert_eq!(export_name("история"), "-------");
 
         let dir = tmp_dir("escape");
-        let path = write_export(&dir, "../evil", "x", 42).unwrap();
+        let path = write_export(&dir, "../evil", "x", "txt", 42).unwrap();
         assert_eq!(path.parent().unwrap(), dir.as_path());
         std::fs::remove_dir_all(&dir).ok();
     }
