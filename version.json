@@ -1,7 +1,7 @@
 {
   "version": "1.41.0",
   "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.41.0/K4R.Neko.VPN_1.41.0_x64-setup.exe",
-  "notes": "1.40.0: фильтр истории, экспорт истории в CSV, Clash-подписки, поиск",
-  "sha256": "39f0dc07ea3e0879d4ea041ddf5be2fc59cb34a99438cc5cec1f0bdd1b677f6c",
-  "portable_sha256": "8411b6660dfa2240da978a19b5d3828942fc36757370b693bac7788cd889d95e"
+  "notes": "1.41.0: отчёт проверки в файл, фильтр истории, экспорт истории в CSV",
+  "sha256": "23d7c5bd47a44e36f7c485b23526661131894478c2cc1688f36a7f265edf7183",
+  "portable_sha256": "64083991928e181f4fd913439906814e741e73a196a6279affaae0cae2002ed1"
 }
