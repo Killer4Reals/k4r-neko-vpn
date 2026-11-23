@@ -169,12 +169,104 @@ fn wireguard_outbound(profile: &Profile) -> Value {
     out
 }
 
-/// Builds a sing-box config: TUN in, VLESS or WireGuard out, split by process.
+/// Builds a sing-box config: TUN in, one server out, split by process.
+/// Протокол выбирается по `kind`: провайдеры мешают VLESS, Trojan, Shadowsocks
+/// и VMess в одной подписке, и пропускать три четверти списка было бы странно.
 pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -> Value {
-    if profile.kind == "wireguard" {
-        return build_with_outbound(wireguard_outbound(profile), profile, excluded, opts);
+    let outbound = match profile.kind.as_str() {
+        "wireguard" => wireguard_outbound(profile),
+        "trojan" => trojan_outbound(profile),
+        "shadowsocks" => shadowsocks_outbound(profile),
+        "vmess" => vmess_outbound(profile),
+        _ => vless_outbound(profile),
+    };
+    build_with_outbound(outbound, profile, excluded, opts)
+}
+
+/// Trojan: обычный TLS с паролем вместо UUID.
+fn trojan_outbound(profile: &Profile) -> Value {
+    let mut tls = json!({
+        "enabled": true,
+        "utls": {
+            "enabled": true,
+            "fingerprint": if profile.fingerprint.is_empty() { "chrome" } else { &profile.fingerprint },
+        }
+    });
+    let sni = if profile.sni.is_empty() { &profile.host } else { &profile.sni };
+    tls["server_name"] = json!(sni);
+    let mut outbound = json!({
+        "type": "trojan",
+        "tag": "proxy",
+        "server": profile.host,
+        "server_port": profile.port,
+        "password": profile.password,
+        "tls": tls,
+    });
+    match profile.network.as_str() {
+        "ws" => {
+            let path = if profile.path.is_empty() { "/" } else { &profile.path };
+            outbound["transport"] = json!({ "type": "ws", "path": path });
+        }
+        "grpc" => {
+            let mut transport = json!({ "type": "grpc" });
+            if !profile.service_name.is_empty() {
+                transport["service_name"] = json!(profile.service_name);
+            }
+            outbound["transport"] = transport;
+        }
+        _ => {}
     }
-    build_with_outbound(vless_outbound(profile), profile, excluded, opts)
+    outbound
+}
+
+/// Shadowsocks: шифр и пароль, без TLS и без UUID.
+fn shadowsocks_outbound(profile: &Profile) -> Value {
+    json!({
+        "type": "shadowsocks",
+        "tag": "proxy",
+        "server": profile.host,
+        "server_port": profile.port,
+        "method": profile.method,
+        "password": profile.password,
+    })
+}
+
+/// VMess: UUID плюс `alter_id`; остальное как у VLESS.
+fn vmess_outbound(profile: &Profile) -> Value {
+    let mut outbound = json!({
+        "type": "vmess",
+        "tag": "proxy",
+        "server": profile.host,
+        "server_port": profile.port,
+        "uuid": profile.uuid,
+        "security": "auto",
+        "alter_id": profile.alter_id,
+    });
+    if matches!(profile.security.as_str(), "tls" | "reality") {
+        let mut tls = json!({
+            "enabled": true,
+            "utls": { "enabled": true, "fingerprint": if profile.fingerprint.is_empty() { "chrome" } else { &profile.fingerprint } },
+        });
+        if !profile.sni.is_empty() {
+            tls["server_name"] = json!(profile.sni);
+        }
+        outbound["tls"] = tls;
+    }
+    match profile.network.as_str() {
+        "ws" => {
+            let path = if profile.path.is_empty() { "/" } else { &profile.path };
+            outbound["transport"] = json!({ "type": "ws", "path": path });
+        }
+        "grpc" => {
+            let mut transport = json!({ "type": "grpc" });
+            if !profile.service_name.is_empty() {
+                transport["service_name"] = json!(profile.service_name);
+            }
+            outbound["transport"] = transport;
+        }
+        _ => {}
+    }
+    outbound
 }
 
 fn vless_outbound(profile: &Profile) -> Value {
@@ -1084,6 +1176,9 @@ mod tests {
             service_name: "api".into(),
             path: String::new(),
             kind: String::new(),
+            password: String::new(),
+            method: String::new(),
+            alter_id: 0,
             wg_private_key: String::new(),
             wg_peer_public_key: String::new(),
             wg_preshared_key: String::new(),
@@ -1093,6 +1188,45 @@ mod tests {
             reserve: false,
         cc: String::new(),
         }
+    }
+
+    #[test]
+    fn trojan_goes_out_as_trojan() {
+        let mut profile = sample();
+        profile.kind = "trojan".into();
+        profile.password = "pw".into();
+        let cfg = build_config(&profile, &[], &NetOptions::default());
+        let out = &cfg["outbounds"][0];
+        assert_eq!(out["type"], "trojan");
+        assert_eq!(out["password"], "pw");
+        assert_eq!(out["tls"]["enabled"], true);
+    }
+
+    #[test]
+    fn shadowsocks_goes_out_as_shadowsocks() {
+        let mut profile = sample();
+        profile.kind = "shadowsocks".into();
+        profile.method = "aes-256-gcm".into();
+        profile.password = "sspw".into();
+        let cfg = build_config(&profile, &[], &NetOptions::default());
+        let out = &cfg["outbounds"][0];
+        assert_eq!(out["type"], "shadowsocks");
+        assert_eq!(out["method"], "aes-256-gcm");
+        assert_eq!(out["password"], "sspw");
+    }
+
+    #[test]
+    fn vmess_goes_out_as_vmess() {
+        let mut profile = sample();
+        profile.kind = "vmess".into();
+        profile.network = "ws".into();
+        profile.path = "/vm".into();
+        let cfg = build_config(&profile, &[], &NetOptions::default());
+        let out = &cfg["outbounds"][0];
+        assert_eq!(out["type"], "vmess");
+        assert_eq!(out["alter_id"], 0);
+        assert_eq!(out["security"], "auto");
+        assert_eq!(out["transport"]["type"], "ws");
     }
 
     #[test]
@@ -1278,6 +1412,9 @@ mod tests {
     fn wg_sample() -> Profile {
         Profile {
             kind: "wireguard".into(),
+            password: String::new(),
+            method: String::new(),
+            alter_id: 0,
             host: "engage.cloudflareclient.com".into(),
             port: 2408,
             wg_private_key: "priv".into(),

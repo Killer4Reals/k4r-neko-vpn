@@ -122,6 +122,22 @@ function toAccelerator(hotkey: string): string {
   return [...mods, code].join("+");
 }
 
+/** Чем подписан узел в списке: протокол важнее режима TLS. */
+function protoTag(p: Profile): string {
+  switch ((p.kind || "").toLowerCase()) {
+    case "trojan":
+      return "TROJAN";
+    case "shadowsocks":
+      return (p.method || "SS").toUpperCase();
+    case "vmess":
+      return "VMESS";
+    case "wireguard":
+      return "WIREGUARD";
+    default:
+      return (p.security === "none" ? p.network : p.security).toUpperCase();
+  }
+}
+
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
@@ -291,7 +307,7 @@ export default function App() {
       flag: cc ?? "",
       city: title,
       country: sub,
-      tag: (p.security === "none" ? p.network : p.security).toUpperCase(),
+      tag: protoTag(p),
       lat: lat[p.id] ?? 0,
       quality: "good" as const,
       reserve: p.reserve ?? false,

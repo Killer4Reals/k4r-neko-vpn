@@ -13,8 +13,13 @@ export type Profile = {
   public_key: string;
   short_id: string;
   fingerprint: string;
-  /** "wireguard" — профиль WireGuard/WARP, пусто — VLESS. */
+  /** "wireguard" | "trojan" | "shadowsocks" | "vmess"; пусто — VLESS. */
   kind?: string;
+  /** Пароль: у Trojan и Shadowsocks он вместо UUID. */
+  password?: string;
+  /** Шифр Shadowsocks. */
+  method?: string;
+  alter_id?: number;
   wg_private_key?: string;
   wg_peer_public_key?: string;
   wg_preshared_key?: string;

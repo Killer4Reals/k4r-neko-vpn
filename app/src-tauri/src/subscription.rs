@@ -28,9 +28,19 @@ pub struct Profile {
     /// WebSocket path.
     #[serde(default)]
     pub path: String,
-    /// "wireguard" — профиль WireGuard (в том числе WARP), пусто — VLESS.
+    /// "wireguard" — WireGuard (в том числе WARP), "trojan", "shadowsocks",
+    /// "vmess", "hysteria2" — соответствующие протоколы, пусто — VLESS.
     #[serde(default)]
     pub kind: String,
+    /// Пароль: у Trojan и Shadowsocks он вместо UUID.
+    #[serde(default)]
+    pub password: String,
+    /// Шифр Shadowsocks (`aes-256-gcm`, `chacha20-ietf-poly1305` и прочие).
+    #[serde(default)]
+    pub method: String,
+    /// VMess: `alterId` из конфига, почти везде 0.
+    #[serde(default)]
+    pub alter_id: u16,
     /// WireGuard: пара ключей, адрес внутри туннеля и MTU.
     #[serde(default)]
     pub wg_private_key: String,
@@ -327,7 +337,10 @@ pub fn import_text(text: &str) -> Result<Vec<Profile>, String> {
     }
 
     if out.is_empty() {
-        let detail = errors.first().cloned().unwrap_or_else(|| "ссылок vless:// не найдено".into());
+        let detail = errors
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "ссылок vless://, trojan://, ss://, vmess:// не найдено".into());
         return Err(format!("не удалось импортировать: {detail}"));
     }
     Ok(out)
@@ -354,7 +367,11 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
     let mut profiles = Vec::new();
     for line in decoded.lines() {
         let line = line.trim();
-        if line.starts_with("vless://") {
+        if line.starts_with("vless://")
+            || line.starts_with("trojan://")
+            || line.starts_with("ss://")
+            || line.starts_with("vmess://")
+        {
             if let Ok(p) = parse_link(line) {
                 profiles.push(p);
             }
@@ -452,12 +469,29 @@ fn parse_clash(text: &str) -> Result<SubResult, String> {
 /// запускать (ss, vmess, trojan, hysteria…): лучше честно пропустить, чем
 /// показать сервер, к которому не подключиться.
 fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
-    if ystr(item, "type") != "vless" {
+    let kind = ystr(item, "type").to_ascii_lowercase();
+    if !matches!(kind.as_str(), "vless" | "trojan" | "shadowsocks" | "ss" | "vmess") {
         return None;
     }
     let host = ystr(item, "server");
+    if host.is_empty() {
+        return None;
+    }
+    // Shadowsocks в Clash пишут и как `ss`, и как `shadowsocks`
+    let kind = if kind == "ss" { "shadowsocks".to_string() } else { kind };
+    let is_vless = kind == "vless";
     let uuid = ystr(item, "uuid");
-    if host.is_empty() || uuid.is_empty() {
+    let password = ystr(item, "password");
+    let method = ystr(item, "cipher");
+    // У VLESS и VMess опознавательный знак — UUID, у Trojan и SS — пароль.
+    if is_vless || kind == "vmess" {
+        if uuid.is_empty() {
+            return None;
+        }
+    } else if password.is_empty() {
+        return None;
+    }
+    if kind == "shadowsocks" && method.is_empty() {
         return None;
     }
     let port = ynum(item, "port").unwrap_or(443) as u16;
@@ -482,8 +516,11 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
     let tls_on = ybool(item, "tls").unwrap_or(false) || reality.is_some();
     let security = if reality.is_some() {
         "reality".to_string()
-    } else if tls_on {
+    } else if tls_on || kind == "trojan" {
+        // У Trojan TLS не опция, а часть протокола — в конфигах поле часто не пишут
         "tls".to_string()
+    } else if false {
+        String::new()
     } else {
         "none".to_string()
     };
@@ -529,22 +566,29 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
         .or_else(|| cc_from_text(&name))
         .unwrap_or_default();
 
+    let alter_id = ynum(item, "alterId").unwrap_or(0).min(u16::MAX as u64) as u16;
+    let id_key = if uuid.is_empty() { password.clone() } else { uuid.clone() };
+
     Some(Profile {
-        id: format!("{host}:{port}:{uuid}"),
+        id: format!("{host}:{port}:{id_key}"),
         name,
         host,
         port,
         uuid,
         flow: ystr(item, "flow"),
-        security,
-        network,
+        // У Trojan TLS включён всегда, у Shadowsocks его нет вовсе
+        security: if kind == "shadowsocks" { "none".to_string() } else { security },
+        network: if kind == "shadowsocks" { "tcp".to_string() } else { network },
         sni,
         public_key,
         short_id,
         fingerprint,
         service_name,
         path,
-        kind: String::new(),
+        kind: if is_vless { String::new() } else { kind },
+        password,
+        method,
+        alter_id,
         wg_private_key: String::new(),
         wg_peer_public_key: String::new(),
         wg_preshared_key: String::new(),
@@ -948,6 +992,12 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
         path,
     
             kind: String::new(),
+    
+            password: String::new(),
+    
+            method: String::new(),
+    
+            alter_id: 0,
             wg_private_key: String::new(),
             wg_peer_public_key: String::new(),
             wg_preshared_key: String::new(),
@@ -1045,6 +1095,12 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
         path,
     
             kind: String::new(),
+    
+            password: String::new(),
+    
+            method: String::new(),
+    
+            alter_id: 0,
             wg_private_key: String::new(),
             wg_peer_public_key: String::new(),
             wg_preshared_key: String::new(),
@@ -1056,7 +1112,206 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
         })
 }
 
+/// `trojan://пароль@host:443?sni=&type=ws&path=/#Имя`.
+fn parse_trojan_link(link: &str) -> Result<Profile, String> {
+    let url = url::Url::parse(link).map_err(|e| format!("битая ссылка: {e}"))?;
+    let password = url.username().to_string();
+    let host = url
+        .host_str()
+        .ok_or_else(|| "в ссылке нет адреса сервера".to_string())?
+        .to_string();
+    let port = url.port().unwrap_or(443);
+    let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
+    let get = |k: &str| q.get(k).cloned().unwrap_or_default();
+    let name = percent_encoding::percent_decode_str(url.fragment().unwrap_or(""))
+        .decode_utf8_lossy()
+        .to_string();
+    let name = if name.trim().is_empty() { format!("{host}:{port}") } else { name };
+    let cc = cc_from_host(&host).or_else(|| cc_from_text(&name)).unwrap_or_default();
+    Ok(Profile {
+        id: format!("{host}:{port}:{password}"),
+        name,
+        host,
+        port,
+        uuid: String::new(),
+        flow: String::new(),
+        security: "tls".to_string(),
+        network: if get("type").is_empty() { "tcp".to_string() } else { get("type") },
+        sni: get("sni"),
+        public_key: String::new(),
+        short_id: String::new(),
+        fingerprint: if get("fp").is_empty() { "chrome".to_string() } else { get("fp") },
+        service_name: get("serviceName"),
+        path: get("path"),
+        kind: "trojan".to_string(),
+        password,
+        method: String::new(),
+        alter_id: 0,
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
+        cc,
+    })
+}
+
+/// `ss://base64(метод:пароль)@host:port#Имя` и старый вид, где в base64 лежит
+/// весь адрес вместе с портом.
+fn parse_ss_link(link: &str) -> Result<Profile, String> {
+    let rest = link.trim_start_matches("ss://");
+    let (body, name) = match rest.split_once('#') {
+        Some((b, n)) => (
+            b,
+            percent_encoding::percent_decode_str(n).decode_utf8_lossy().to_string(),
+        ),
+        None => (rest, String::new()),
+    };
+    let body = body.split('?').next().unwrap_or(body);
+    let decoded = |t: &str| -> String {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD_NO_PAD
+            .decode(t.trim_end_matches('='))
+            .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(t))
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok())
+            .unwrap_or_else(|| t.to_string())
+    };
+    // Два вида: «метод:пароль@host:port» (хвост открытым текстом) и
+    // «base64(метод:пароль@host:port)» целиком.
+    let (credentials, host_port) = match body.rsplit_once('@') {
+        Some((cred, hp)) => (decoded(cred), hp.to_string()),
+        None => {
+            let all = decoded(body);
+            let (cred, hp) = all
+                .rsplit_once('@')
+                .ok_or_else(|| "в ss-ссылке нет адреса".to_string())?;
+            (cred.to_string(), hp.to_string())
+        }
+    };
+    let (method, password) = credentials
+        .split_once(':')
+        .ok_or_else(|| "в ss-ссылке нет метода и пароля".to_string())?;
+    let (host, port) = host_port
+        .rsplit_once(':')
+        .ok_or_else(|| "в ss-ссылке нет порта".to_string())?;
+    let host = host.trim_matches(['[', ']']).to_string();
+    let port: u16 = port.trim().parse().map_err(|_| "порт не число".to_string())?;
+    if host.is_empty() || method.trim().is_empty() {
+        return Err("ss-ссылка неполная".into());
+    }
+    let name = if name.trim().is_empty() { format!("{host}:{port}") } else { name };
+    let cc = cc_from_host(&host).or_else(|| cc_from_text(&name)).unwrap_or_default();
+    Ok(Profile {
+        id: format!("{host}:{port}:{password}"),
+        name,
+        host,
+        port,
+        uuid: String::new(),
+        flow: String::new(),
+        security: "none".to_string(),
+        network: "tcp".to_string(),
+        sni: String::new(),
+        public_key: String::new(),
+        short_id: String::new(),
+        fingerprint: String::new(),
+        service_name: String::new(),
+        path: String::new(),
+        kind: "shadowsocks".to_string(),
+        password: password.to_string(),
+        method: method.trim().to_string(),
+        alter_id: 0,
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
+        cc,
+    })
+}
+
+/// `vmess://base64(json)`: самый старый и самый распространённый вид.
+fn parse_vmess_link(link: &str) -> Result<Profile, String> {
+    use base64::Engine as _;
+    let raw = link.trim_start_matches("vmess://");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(raw)
+        .or_else(|_| base64::engine::general_purpose::STANDARD.decode(raw.trim_end_matches('=')))
+        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(raw.trim_end_matches('=')))
+        .map_err(|_| "vmess-ссылка не в base64".to_string())?;
+    let text = String::from_utf8(bytes).map_err(|_| "vmess-ссылка не в UTF-8".to_string())?;
+    let doc: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("vmess JSON не разобрался: {e}"))?;
+    let get = |k: &str| {
+        doc.get(k)
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.trim().to_string(),
+                other => other.to_string(),
+            })
+            .unwrap_or_default()
+    };
+    let host = get("add");
+    let uuid = get("id");
+    if host.is_empty() || uuid.is_empty() {
+        return Err("в vmess-ссылке нет адреса или id".into());
+    }
+    let port: u16 = get("port").parse().unwrap_or(443);
+    let net = {
+        let n = get("net");
+        if n.is_empty() { "tcp".to_string() } else { n }
+    };
+    let tls_on = get("tls").eq_ignore_ascii_case("tls");
+    let name = {
+        let n = get("ps");
+        if n.trim().is_empty() { format!("{host}:{port}") } else { n }
+    };
+    let cc = cc_from_host(&host).or_else(|| cc_from_text(&name)).unwrap_or_default();
+    Ok(Profile {
+        id: format!("{host}:{port}:{uuid}"),
+        name,
+        host,
+        port,
+        uuid,
+        flow: String::new(),
+        security: if tls_on { "tls".to_string() } else { "none".to_string() },
+        network: net,
+        sni: {
+            let s = get("sni");
+            if s.is_empty() { get("host") } else { s }
+        },
+        public_key: String::new(),
+        short_id: String::new(),
+        fingerprint: "chrome".to_string(),
+        service_name: get("path"),
+        path: get("path"),
+        kind: "vmess".to_string(),
+        password: String::new(),
+        method: String::new(),
+        alter_id: get("aid").parse().unwrap_or(0),
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
+        cc,
+    })
+}
+
 pub fn parse_link(link: &str) -> Result<Profile, String> {
+    let scheme = link.split("://").next().unwrap_or("").to_ascii_lowercase();
+    match scheme.as_str() {
+        "trojan" => return parse_trojan_link(link),
+        "ss" => return parse_ss_link(link),
+        "vmess" => return parse_vmess_link(link),
+        "vless" => {}
+        other => return Err(format!("протокол {other} не поддержан")),
+    }
     let url = url::Url::parse(link).map_err(|e| format!("битая ссылка: {e}"))?;
     if url.scheme() != "vless" {
         return Err("поддерживаются только vless-ссылки".into());
@@ -1116,6 +1371,9 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         service_name: get("serviceName"),
         path: get("path"),
         kind: String::new(),
+        password: String::new(),
+        method: String::new(),
+        alter_id: 0,
         wg_private_key: String::new(),
         wg_peer_public_key: String::new(),
         wg_preshared_key: String::new(),
@@ -1584,7 +1842,7 @@ proxies:
 "#;
         let parsed = parse(yaml).expect("YAML разбирается");
         assert_eq!(parsed.format, "clash");
-        assert_eq!(parsed.profiles.len(), 3, "ss и trojan не должны попасть в список");
+        assert_eq!(parsed.profiles.len(), 5, "VLESS, Trojan и SS читаются все");
 
         let de = &parsed.profiles[0];
         assert_eq!(de.host, "de1.example.net");
@@ -1604,9 +1862,7 @@ proxies:
         assert_eq!(us.service_name, "grpcsvc");
         assert_eq!(us.cc, "us");
 
-        let note = parsed.warnings.join(" ");
-        assert!(note.contains("ss"), "предупреждение про ss: {note}");
-        assert!(note.contains("trojan"), "предупреждение про trojan: {note}");
+        assert!(parsed.warnings.is_empty(), "пропускать больше нечего: {:?}", parsed.warnings);
     }
 
     #[test]
@@ -1631,21 +1887,19 @@ proxies:
     fn clash_with_only_unsupported_types_explains_itself() {
         let yaml = r#"
 proxies:
-  - name: Сингапур
-    type: ss
-    server: sg.example.net
-    port: 8388
-    cipher: aes-256-gcm
-    password: x
   - name: Токио
     type: hysteria2
     server: jp.example.net
     port: 443
     password: y
+  - name: Токио 2
+    type: tuic
+    server: jp2.example.net
+    port: 443
 "#;
-        let err = parse(yaml).expect_err("без vless список пуст");
+        let err = parse(yaml).expect_err("без знакомых протоколов список пуст");
         assert!(err.contains("неподдерживаемые"), "сообщение: {err}");
-        assert!(err.contains("ss"), "сообщение: {err}");
+        assert!(err.contains("hysteria2"), "сообщение: {err}");
     }
 
     #[test]
@@ -1673,6 +1927,114 @@ proxies:
         assert!(!looks_like_clash(body));
         let parsed = parse(body).expect("список ссылок разбирается");
         assert_eq!(parsed.format, "links");
+    }
+
+    #[test]
+    fn clash_gives_trojan_and_shadowsocks_too() {
+        let yaml = r#"
+proxies:
+  - name: "🇩🇪 Франкфурт Trojan"
+    type: trojan
+    server: de.example.net
+    port: 443
+    password: secret-pass
+    sni: de.example.net
+    skip-cert-verify: false
+  - name: "🇳🇱 Амстердам SS"
+    type: ss
+    server: nl.example.net
+    port: 8388
+    cipher: aes-256-gcm
+    password: ss-pass
+  - name: "🇺🇸 Нью-Йорк VMess"
+    type: vmess
+    server: us.example.net
+    port: 443
+    uuid: 55555555-6666-7777-8888-999999999999
+    alterId: 0
+    network: ws
+    tls: true
+    ws-opts:
+      path: /vm
+"#;
+        let parsed = parse(yaml).expect("YAML разбирается");
+        assert_eq!(parsed.profiles.len(), 3);
+
+        let trojan = &parsed.profiles[0];
+        assert_eq!(trojan.kind, "trojan");
+        assert_eq!(trojan.password, "secret-pass");
+        assert_eq!(trojan.security, "tls");
+
+        let ss = &parsed.profiles[1];
+        assert_eq!(ss.kind, "shadowsocks");
+        assert_eq!(ss.method, "aes-256-gcm");
+        assert_eq!(ss.password, "ss-pass");
+        assert_eq!(ss.security, "none");
+
+        let vmess = &parsed.profiles[2];
+        assert_eq!(vmess.kind, "vmess");
+        assert_eq!(vmess.network, "ws");
+        assert_eq!(vmess.path, "/vm");
+        assert!(parsed.warnings.is_empty(), "пропускать больше нечего: {:?}", parsed.warnings);
+    }
+
+    #[test]
+    fn trojan_link_is_understood() {
+        let p = parse_link("trojan://pass123@de.example.net:443?sni=de.example.net&type=ws&path=%2Fws#Германия").unwrap();
+        assert_eq!(p.kind, "trojan");
+        assert_eq!(p.password, "pass123");
+        assert_eq!(p.network, "ws");
+        assert_eq!(p.path, "/ws");
+        assert_eq!(p.sni, "de.example.net");
+        assert_eq!(p.cc, "de");
+    }
+
+    #[test]
+    fn ss_link_is_understood_in_both_shapes() {
+        use base64::Engine as _;
+        // вид 1: base64(метод:пароль)@host:port
+        let cred = base64::engine::general_purpose::STANDARD_NO_PAD.encode("aes-256-gcm:sspass");
+        let p = parse_link(&format!("ss://{cred}@nl.example.net:8388#Амстердам")).unwrap();
+        assert_eq!(p.kind, "shadowsocks");
+        assert_eq!(p.method, "aes-256-gcm");
+        assert_eq!(p.password, "sspass");
+        assert_eq!(p.port, 8388);
+
+        // вид 2: base64 от всего адреса целиком
+        let all = base64::engine::general_purpose::STANDARD_NO_PAD
+            .encode("chacha20-ietf-poly1305:pw@us.example.net:443");
+        let p2 = parse_link(&format!("ss://{all}#Нью-Йорк")).unwrap();
+        assert_eq!(p2.host, "us.example.net");
+        assert_eq!(p2.port, 443);
+        assert_eq!(p2.method, "chacha20-ietf-poly1305");
+    }
+
+    #[test]
+    fn vmess_link_is_understood() {
+        use base64::Engine as _;
+        let json = r#"{"v":"2","ps":"Токио","add":"jp.example.net","port":"443","id":"66666666-7777-8888-9999-000000000000","aid":"0","net":"ws","path":"/v","tls":"tls","sni":"jp.example.net"}"#;
+        let b = base64::engine::general_purpose::STANDARD.encode(json);
+        let p = parse_link(&format!("vmess://{b}")).unwrap();
+        assert_eq!(p.kind, "vmess");
+        assert_eq!(p.host, "jp.example.net");
+        assert_eq!(p.network, "ws");
+        assert_eq!(p.security, "tls");
+        assert_eq!(p.name, "Токио");
+        assert_eq!(p.cc, "jp");
+    }
+
+    #[test]
+    fn link_list_with_mixed_protocols_is_read() {
+        use base64::Engine as _;
+        let body_text = concat!(
+            "vless://11111111-2222-3333-4444-555555555555@de.example.net:443?type=tcp&security=tls#Германия\n",
+            "trojan://pw@nl.example.net:443#Нидерланды\n",
+            "ss://YWVzLTI1Ni1nY206cHc@us.example.net:8388#США\n"
+        );
+        let body = base64::engine::general_purpose::STANDARD.encode(body_text);
+        let parsed = parse(&body).expect("список разбирается");
+        let kinds: Vec<&str> = parsed.profiles.iter().map(|p| p.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["", "trojan", "shadowsocks"]);
     }
 
 }
