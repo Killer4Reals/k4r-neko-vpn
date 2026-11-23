@@ -573,19 +573,42 @@ pub fn scan_installed() -> Vec<InstalledApp> {
 #[tauri::command]
 fn export_text(app: tauri::AppHandle, name: String, text: String) -> Result<String, String> {
     let dir = data_dir(&app)?;
-    let out_dir = dir.join("exports");
-    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+    let path = write_export(&dir.join("exports"), &name, &text, export_stamp())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// Имя файла без сюрпризов: только ascii, буквы-цифры-дефис.
+/// Всё остальное (пробелы, слэши, кириллица) становится дефисом, чтобы файл
+/// гарантированно лёг в папку экспорта, а не куда-то ещё.
+fn export_name(name: &str) -> String {
     let safe: String = name
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
         .collect();
-    let stamp = std::time::SystemTime::now()
+    if safe.is_empty() {
+        "export".to_string()
+    } else {
+        safe
+    }
+}
+
+fn export_stamp() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let path = out_dir.join(format!("k4r-{}-{}.csv", safe, stamp));
+        .unwrap_or(0)
+}
+
+fn write_export(
+    dir: &std::path::Path,
+    name: &str,
+    text: &str,
+    stamp: u64,
+) -> Result<std::path::PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("k4r-{}-{}.csv", export_name(name), stamp));
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
-    Ok(path.to_string_lossy().to_string())
+    Ok(path)
 }
 
 /// One readable file the user can hand over when something breaks.
@@ -2313,5 +2336,50 @@ Environment: go1.23.6 windows/amd64
 ";
         assert_eq!(engine::parse_version(text), "1.14.4");
         assert_eq!(engine::parse_version("что-то другое"), "");
+    }
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    /// Временная папка без внешних крейтов: имя из pid и счётчика.
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("k4r-export-{}-{}-{}", tag, std::process::id(), n));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn csv_landing_in_exports_folder_with_bom_and_stamp() {
+        let dir = tmp_dir("csv");
+        let text = "\u{FEFF}Время;Событие\r\n12:00;Подключение\r\n";
+        let path = write_export(&dir, "history", text, 1_700_000_000).unwrap();
+        assert_eq!(
+            path.file_name().unwrap().to_string_lossy(),
+            "k4r-history-1700000000.csv"
+        );
+        let back = std::fs::read_to_string(&path).unwrap();
+        assert!(back.starts_with('\u{FEFF}'), "BOM потерялся — Excel съест кириллицу");
+        assert!(back.contains("Подключение"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn dangerous_names_cannot_escape_the_folder() {
+        assert_eq!(export_name("../../windows/system32"), "------windows-system32");
+        assert_eq!(export_name("my history"), "my-history");
+        assert_eq!(export_name(""), "export");
+        // кириллица в имени файла не остаётся: иначе часть архиваторов ломается
+        assert_eq!(export_name("история"), "-------");
+
+        let dir = tmp_dir("escape");
+        let path = write_export(&dir, "../evil", "x", 42).unwrap();
+        assert_eq!(path.parent().unwrap(), dir.as_path());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
