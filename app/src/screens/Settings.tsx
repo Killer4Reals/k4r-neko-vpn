@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { Lang } from "../i18n";
-import type { Theme } from "../App";
 import { play, setSoundOn, setVolume, soundOn, volume } from "../sound";
 import { globeStyle, setGlobeStyle, type GlobeStyle } from "../globeStyle";
 import { api, inTauri, type KillSwitchStatus, type KsCheck } from "../api";
@@ -36,8 +35,6 @@ type Props = {
   setAutostart: (v: boolean) => void;
   connectOnStart: boolean;
   setConnectOnStart: (v: boolean) => void;
-  theme: Theme;
-  setTheme: (t: Theme) => void;
   dnsMode: "tunnel" | "system";
   /** данные для «проверки одной кнопкой»: считает их App */
   selfCheck: () => Check[];
@@ -65,7 +62,7 @@ type Props = {
 export function SettingsScreen(p: Props) {
   const [checks, setChecks] = useState<Check[]>([]);
   const [copied, setCopied] = useState("");
-  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart, theme, setTheme } = p;
+  const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart,  } = p;
   const { connectOnStart, setConnectOnStart } = p;
   // Самодиагностика kill-switch: 7 проверок, результат — табличкой.
   const [ksChecks, setKsChecks] = useState<KsCheck[] | null>(null);
@@ -231,23 +228,6 @@ export function SettingsScreen(p: Props) {
             </button>
             <button data-on={lang === "en"} onClick={() => setLang("en")}>
               English
-            </button>
-          </div>
-        </div>
-        <div className="row">
-          <div className="txt">
-            <b>{t("theme")}</b>
-            <span>{t("themeHint")}</span>
-          </div>
-          <div className="seg">
-            <button data-on={theme === "dark"} onClick={() => setTheme("dark")}>
-              {t("themeDark")}
-            </button>
-            <button data-on={theme === "light"} onClick={() => setTheme("light")}>
-              {t("themeLight")}
-            </button>
-            <button data-on={theme === "mascot"} onClick={() => setTheme("mascot")}>
-              {t("themeMascot")}
             </button>
           </div>
         </div>

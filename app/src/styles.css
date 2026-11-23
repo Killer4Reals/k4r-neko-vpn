@@ -1,77 +1,4 @@
 :root {
-  --bg-0: #07080c;
-  --bg-1: #0b0d13;
-  --bg-2: #101319;
-  --bg-3: #151922;
-  --line: #1e2431;
-  --line-soft: #171c26;
-  --txt: #e9eef7;
-  --txt-2: #9aa5b8;
-  --txt-3: #67718a;
-  --green: #39ff14;
-  --green-soft: rgba(57, 255, 20, 0.12);
-  --green-line: rgba(57, 255, 20, 0.32);
-  --violet: #a855f7;
-  --violet-soft: rgba(168, 85, 247, 0.14);
-  --cyan: #22d3ee;
-  --danger: #ff7a85;
-  --danger-soft: rgba(255, 122, 133, 0.12);
-  --ok-text: #d6ffcc;
-  --ok-bg: rgba(57, 255, 20, 0.12);
-  --info-text: #bfefff;
-  --info-bg: rgba(34, 211, 238, 0.1);
-  --warn-text: #ffe6a8;
-  --warn-bg: rgba(255, 214, 102, 0.08);
-  --warn-line: rgba(255, 214, 102, 0.28);
-  --danger-text: #ffd2d6;
-  --danger-bg: rgba(255, 122, 133, 0.12);
-  --on-accent: #06210a;
-  --grid-line: rgba(255, 255, 255, 0.022);
-  --orb-bg: radial-gradient(circle at 50% 38%, #131a24, #0a0d13 70%);
-  --stat-bg: rgba(11, 13, 19, 0.7);
-  --rail-sheen: rgba(255, 255, 255, 0.012);
-  --radius-lg: 18px;
-  --radius-md: 12px;
-  --radius-sm: 9px;
-  --font: "Manrope Variable", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --mono: "Cascadia Mono", ui-monospace, "Consolas", monospace;
-}
-
-[data-theme="light"] {
-  --bg-0: #efece6;
-  --bg-1: #f7f5f1;
-  --bg-2: #ffffff;
-  --bg-3: #f1eee8;
-  --line: #ddd7cd;
-  --line-soft: #e7e2d9;
-  --txt: #1b1a1f;
-  --txt-2: #5c5a63;
-  --txt-3: #8b8792;
-  --green: #128a3f;
-  --green-soft: rgba(18, 138, 63, 0.1);
-  --green-line: rgba(18, 138, 63, 0.35);
-  --violet: #7c3aed;
-  --violet-soft: rgba(124, 58, 237, 0.1);
-  --cyan: #0e7490;
-  --danger: #c02b3a;
-  --danger-soft: rgba(192, 43, 58, 0.1);
-  --ok-text: #0d5c2c;
-  --ok-bg: rgba(18, 138, 63, 0.1);
-  --info-text: #0b5566;
-  --info-bg: rgba(14, 116, 144, 0.1);
-  --warn-text: #7a5200;
-  --warn-bg: rgba(214, 158, 0, 0.12);
-  --warn-line: rgba(214, 158, 0, 0.35);
-  --danger-text: #8f1f2b;
-  --danger-bg: rgba(192, 43, 58, 0.09);
-  --on-accent: #ffffff;
-  --grid-line: rgba(0, 0, 0, 0.035);
-  --orb-bg: radial-gradient(circle at 50% 38%, #ffffff, #f2efe9 72%);
-  --stat-bg: rgba(255, 255, 255, 0.85);
-  --rail-sheen: rgba(0, 0, 0, 0.012);
-}
-
-[data-theme="mascot"] {
   --bg-0: #0a0512;
   --bg-1: #100819;
   --bg-2: #170c24;
@@ -103,15 +30,18 @@
   --orb-bg: radial-gradient(circle at 50% 38%, #241238, #120a1c 72%);
   --stat-bg: rgba(23, 12, 36, 0.75);
   --rail-sheen: rgba(192, 132, 252, 0.03);
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-sm: 9px;
+  --font: "Manrope Variable", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", ui-monospace, "Consolas", monospace;
 }
 
-/* light theme polish */
-[data-theme="light"] .orb {
-  box-shadow: 0 18px 50px -28px rgba(18, 138, 63, 0.5);
-}
-[data-theme="light"] .mascot {
-  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.18));
-}
+
+
+
+
+/* плотность и обводки, которые были только у неоновой темы */
 
 
 /* ---- welcome / empty ---------------------------------------------------- */
@@ -258,14 +188,10 @@ body::before {
   pointer-events: none;
 }
 
-[data-theme="dark"] body::before,
-[data-theme="mascot"] body::before {
+body::before {
   opacity: 0.06;
 }
 
-[data-theme="mascot"] body::before {
-  opacity: 0.1;
-}
 
 .shell {
   position: relative;
@@ -2144,80 +2070,120 @@ input {
 }
 
 /* ---------- бой с РКН ---------- */
+/* Сцена боя: цельная нарисованная картинка. Поверх неё — только эффекты,
+   иначе получались бы два мультика: и спрайты, и картинка одновременно. */
 .fight {
   position: relative;
-  height: 152px;
+  /* Картинка 1024×339: держим её пропорции, иначе cover обрезает головы
+     и ботинки. Высота приходит от ширины, а не наоборот. */
+  aspect-ratio: 1024 / 339;
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 14px;
-  background: radial-gradient(120% 140% at 50% 40%, #1a0b22 0%, #0a0710 70%);
   border: 1px solid rgba(57, 255, 20, 0.14);
+  background-color: #0a0710;
+  background-image: url("/fx/rkn-bg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
-.fight-hero {
+/* Спокойное состояние чуть темнее: удар должен быть заметен */
+.fight-idle::after {
+  content: "";
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.3;
-  filter: saturate(0.8) blur(0.5px);
-}
-
-.fight-mascot,
-.fight-rkn {
-  position: absolute;
-  bottom: 10px;
-  height: 82%;
-  width: auto;
-  max-width: 32%;
-  object-fit: contain;
-  transition: transform 120ms ease-out;
-  filter: drop-shadow(0 0 14px rgba(57, 255, 20, 0.35));
-}
-
-.fight-mascot {
-  left: 4%;
-  transform-origin: 80% 100%;
-}
-
-.fight-rkn {
-  right: 4%;
-  filter: drop-shadow(0 0 12px rgba(90, 160, 255, 0.3));
-}
-
-.fight-live .fight-mascot {
-  animation: fight-bob 1.6s ease-in-out infinite;
-}
-
-.fight-hit .fight-mascot {
-  animation: none;
-  transform: translateX(10px) scale(1.04);
+  background: rgba(8, 6, 12, 0.16);
+  pointer-events: none;
+  transition: opacity 260ms ease-out;
 }
 
 .fight-hit {
-  animation: fight-shake 220ms ease-out;
-}
-
-.fight-hit .fight-rkn {
-  transform: translateX(14px) rotate(6deg);
+  animation: fight-shake 240ms ease-out;
 }
 
 .fight-flash {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 52% 55%, rgba(255, 255, 255, 0.9), rgba(57, 255, 20, 0.5) 22%, transparent 55%);
+  background: radial-gradient(circle at 46% 46%, rgba(255, 255, 255, 0.92), rgba(57, 255, 20, 0.45) 24%, transparent 58%);
   pointer-events: none;
   animation: fight-flash 240ms ease-out;
+  z-index: 1;
+}
+
+/* Бумажки: разлетаются от точки удара в разные стороны */
+.fight-papers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.fight-papers span {
+  position: absolute;
+  left: 47%;
+  top: 46%;
+  width: 14px;
+  height: 10px;
+  border-radius: 2px;
+  background: #f4f6ff;
+  opacity: 0;
+  box-shadow: 0 0 6px rgba(180, 220, 255, 0.55);
+  animation: fight-paper 620ms ease-out forwards;
+  animation-delay: calc(var(--i) * 18ms);
+}
+
+.fight-papers span:nth-child(3n) {
+  width: 10px;
+  height: 13px;
+  background: #e7ecff;
+}
+
+.fight-papers span:nth-child(3n + 1) {
+  background: #fdfdff;
+}
+
+@keyframes fight-paper {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx, 60px)), calc(-50% + var(--dy, -40px))) scale(1) rotate(var(--rot, 160deg));
+  }
+}
+
+/* Направление разлёта: по кругу, но неровно — как настоящие бумажки */
+.fight-papers span:nth-child(1) { --dx: -110px; --dy: -46px; --rot: -180deg; }
+.fight-papers span:nth-child(2) { --dx: -86px; --dy: 34px; --rot: 120deg; }
+.fight-papers span:nth-child(3) { --dx: -44px; --dy: -58px; --rot: -240deg; }
+.fight-papers span:nth-child(4) { --dx: 92px; --dy: -52px; --rot: 210deg; }
+.fight-papers span:nth-child(5) { --dx: 116px; --dy: 22px; --rot: -150deg; }
+.fight-papers span:nth-child(6) { --dx: 40px; --dy: 52px; --rot: 260deg; }
+.fight-papers span:nth-child(7) { --dx: -128px; --dy: 8px; --rot: 170deg; }
+.fight-papers span:nth-child(8) { --dx: 132px; --dy: -18px; --rot: -200deg; }
+.fight-papers span:nth-child(9) { --dx: -20px; --dy: 62px; --rot: 140deg; }
+.fight-papers span:nth-child(10) { --dx: 66px; --dy: 44px; --rot: -260deg; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fight-papers span,
+  .fight-hit,
+  .fight-flash {
+    animation: none;
+  }
 }
 
 .fight-bar {
   position: absolute;
   left: 0;
   right: 0;
-  top: 0;
-  padding: 8px 12px 18px;
-  background: linear-gradient(to bottom, rgba(8, 6, 12, 0.82), transparent);
+  bottom: 0;
+  padding: 26px 12px 10px;
+  background: linear-gradient(to top, rgba(8, 6, 12, 0.92) 0%, rgba(8, 6, 12, 0.45) 55%, transparent 100%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2228,7 +2194,9 @@ input {
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--txt-3);
+  color: var(--txt);
+  /* Подпись лежит на яркой картинке — без тени она теряется */
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.9);
 }
 
 .fight-mute {
@@ -2627,11 +2595,7 @@ input {
 }
 
 /* В светлой теме зелёная полоска на белом должна быть темнее */
-:root[data-theme="light"] .hist-uptime-bar .ok { background: #16a34a; }
 /* жёлтый на белом не читается: в светлой теме берём янтарный */
-:root[data-theme="light"] .hist-uptime-bar .warn { background: #d97706; }
-:root[data-theme="light"] .hist-uptime-bar .bad { background: #dc2626; }
-:root[data-theme="light"] .hist-dot.ok { background: #16a34a; box-shadow: none; }
 
 /* Проверка одной кнопкой: строка на пункт, цвет по уровню */
 .chk-list {
@@ -2692,5 +2656,3 @@ input {
 .chk-verdict.bad { color: var(--danger); }
 .chk-verdict.unknown { color: var(--txt-2); }
 
-:root[data-theme="light"] .chk-verdict.warn { color: #b45309; }
-:root[data-theme="light"] .chk-row.warn .chk-mark { color: #b45309; }

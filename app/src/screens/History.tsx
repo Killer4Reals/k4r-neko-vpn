@@ -1,13 +1,11 @@
 import { useMemo } from "react";
 import { availability, clock, groupByDay, labelKey, plural, type HistoryEvent } from "../history";
-import type { Theme } from "../App";
 
 type Props = {
   t: (k: string) => string;
   events: HistoryEvent[];
   /** Имя узла по id: в истории видно «Франкфурт», а не «de-1». */
   nameOfId: (id: string) => string;
-  theme: Theme;
   lang: "ru" | "en";
   onClear: () => void;
 };

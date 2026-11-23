@@ -51,7 +51,9 @@ export type Screen =
   | "history"
   | "logs"
   | "settings";
-export type Theme = "dark" | "light" | "mascot";
+// Тема одна — «Неон». Светлую и тёмную убрали: две из трёх не прижились,
+// а держать три палитры ради выбора из одного — лишняя работа.
+export type Theme = "mascot";
 
 /** Что говорит маскот на каждой вкладке. */
 const HINT_KEY: Record<Screen, string> = {
@@ -123,12 +125,6 @@ function toAccelerator(hotkey: string): string {
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
-  const [theme, setTheme] = useState<Theme>(() => {
-    // index.html already resolved this before first paint
-    const applied = document.documentElement.dataset.theme as Theme | undefined;
-    if (applied === "light" || applied === "mascot" || applied === "dark") return applied;
-    return (initial.get("theme") as Theme) || "dark";
-  });
   const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
   // История событий: переживает перезапуск, 300 записей — это месяцы
   const [events, setEvents] = useState<HistoryEvent[]>(() => parseEvents(localStorage.getItem("k4r.history")));
@@ -274,10 +270,11 @@ export default function App() {
 
   const t = useT(lang);
 
+  // Старые сохранённые темы (dark/light) просто игнорируются: палитра одна.
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("k4r.theme", theme);
-  }, [theme]);
+    document.documentElement.dataset.theme = "mascot";
+    localStorage.removeItem("k4r.theme");
+  }, []);
 
   const viewServers = useMemo<Server[]>(() => {
     if (profiles.length === 0) return demoCatalog;
@@ -1496,7 +1493,6 @@ export default function App() {
           {screen === "history" && (
             <HistoryScreen
               t={t}
-              theme={theme}
               lang={lang}
               events={events}
               nameOfId={(id) => {
@@ -1568,8 +1564,6 @@ export default function App() {
               connectOnStart={connectOnStart}
               setConnectOnStart={setConnectOnStart}
               setAutostart={setAutostart}
-              theme={theme}
-              setTheme={setTheme}
               dnsMode={dnsMode}
               setDnsMode={setDnsMode}
               dnsServer={dnsServer}

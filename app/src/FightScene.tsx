@@ -8,20 +8,21 @@ type Props = {
   hits: number;
 };
 
-const KICK = Array.from({ length: 9 }, (_, i) => `/fx/kick-${i + 1}.webp`);
-const RKN = Array.from({ length: 9 }, (_, i) => `/fx/rkn-${i + 1}.webp`);
+/** Сколько бумажек разлетается от удара. Меньше — скучно, больше — рябь. */
+const PAPERS = 10;
 
 /**
  * Бой с РКН: маскот бьёт ногой, бюрократия разлетается вместе с бумагами.
- * Кадры — из нарисованных спрайтов, эффекты и звук — код.
+ * Фон — нарисованная сцена целиком; поверх неё только эффекты: вспышка в точке
+ * удара, тряска, разлетающиеся бумажки и звук. Так картинка остаётся картинкой,
+ * а удар — ударом.
  */
 export function FightScene({ active, hits }: Props) {
-  const [frame, setFrame] = useState(0);
   const [flash, setFlash] = useState(false);
   const [quiet, setQuiet] = useState(isMuted());
   const timers = useRef<number[]>([]);
   const reduce = useRef(false);
-  const idle = !active && frame === 0;
+  const idle = !active && !flash;
 
   useEffect(() => {
     reduce.current = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -32,23 +33,13 @@ export function FightScene({ active, hits }: Props) {
     timers.current = [];
     if (reduce.current) return;
     play("whoosh");
-    // 9 кадров удара: замах → контакт → отлёт
-    for (let i = 0; i < KICK.length; i++) {
-      const id = window.setTimeout(() => {
-        setFrame(i);
-        if (i === 4) {
-          play("impact");
-          setFlash(true);
-        }
-        if (i === 5) {
-          play("papers");
-          window.setTimeout(() => setFlash(false), 220);
-        }
-      }, i * 65);
-      timers.current.push(id);
-    }
-    const end = window.setTimeout(() => setFrame(0), KICK.length * 65 + 420);
-    timers.current.push(end);
+    const impact = window.setTimeout(() => {
+      play("impact");
+      setFlash(true);
+    }, 130);
+    const papers = window.setTimeout(() => play("papers"), 220);
+    const calm = window.setTimeout(() => setFlash(false), 520);
+    timers.current.push(impact, papers, calm);
   };
 
   // Первый заход в бой — проигрываем удар, дальше живём спокойно
@@ -71,11 +62,15 @@ export function FightScene({ active, hits }: Props) {
   };
 
   return (
-    <div className={`fight${active ? " fight-live" : ""}${flash ? " fight-hit" : ""}`}>
-      <img className="fight-hero" src="/fx/hero.webp" alt="" draggable={false} />
-      <img className="fight-mascot" src={idle ? "/fx/pose-2.webp" : KICK[frame]} alt="" draggable={false} />
-      <img className="fight-rkn" src={idle ? RKN[0] : RKN[Math.min(8, frame)]} alt="" draggable={false} />
+    <div className={`fight${active ? " fight-live" : ""}${flash ? " fight-hit" : ""}${idle ? " fight-idle" : ""}`}>
       {flash && <span className="fight-flash" aria-hidden />}
+      {flash && (
+        <span className="fight-papers" aria-hidden>
+          {Array.from({ length: PAPERS }, (_, i) => (
+            <span key={i} style={{ ["--i" as string]: i }} />
+          ))}
+        </span>
+      )}
       <div className="fight-bar">
         <span className="fight-status">{active ? "РКН в нокдауне" : "РКН на страже"}</span>
         <button className="fight-mute" onClick={toggleQuiet} title={quiet ? "Включить звук" : "Выключить звук"}>
