@@ -26,7 +26,10 @@ export function Flag({ cc, size = "md", dim = false }: Props) {
   }
   return (
     <span className="flag" data-size={size} data-dim={dim} aria-hidden="true">
-      <img src={`flags/${code}.svg`} alt="" draggable={false} loading="lazy" />
+      {/* Без loading="lazy": иначе в окне, которое свернули или отрисовали
+          через PrintWindow, флаги остаются пустыми квадратами — WebView
+          считает их «вне экрана». Файлы крошечные, грузить все сразу дешевле. */}
+      <img src={`flags/${code}.svg`} alt="" draggable={false} decoding="async" loading="eager" />
     </span>
   );
 }
