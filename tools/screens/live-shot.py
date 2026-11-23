@@ -10,7 +10,7 @@ import time
 
 from PIL import Image
 
-EXE = r'C:\Users\KILLER~1\AppData\Local\Temp\k4r_portable2\K4R Neko VPN.exe'
+EXE = r'C:\Users\KILLER~1\AppData\Local\Temp\k4r_portable3\K4R Neko VPN.exe'
 OUT = r'C:\Users\KILLER~1\AppData\Local\Temp'
 
 user32 = ctypes.windll.user32
@@ -80,7 +80,9 @@ def print_window(hwnd, path):
     print('PrintWindow', ok, path, (w, h))
 
 
-proc = subprocess.Popen([EXE], cwd=os.path.dirname(EXE))
+# screen=history — открыть нужный экран сразу, без кликов мышью
+SCREEN = os.environ.get('K4R_SCREEN', '')
+proc = subprocess.Popen([EXE] + ([f'--screen={SCREEN}'] if SCREEN else []), cwd=os.path.dirname(EXE))
 time.sleep(10)
 win = find_window('K4R Neko VPN')
 if not win:
