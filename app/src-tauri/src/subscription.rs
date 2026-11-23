@@ -810,7 +810,8 @@ fn country_label(cc: &str) -> Option<String> {
     if name.is_empty() {
         return None;
     }
-    Some(format!("{} {name}", crate::subscription::emoji_for(cc)))
+    // Без флага в строке: интерфейс рисует его сам по коду страны
+    Some(name.to_string())
 }
 
 /// `de` → 🇩🇪. Строим сами: провайдер может прислать имя без флага.
@@ -823,6 +824,90 @@ fn emoji_for(cc: &str) -> String {
         }
     }
     out
+}
+
+/// Насколько имя узла похоже на человеческое. Провайдер отдаёт один и тот же
+/// сервер и в группе «Авто-выбор», и отдельной строкой со страной: если взять
+/// первое вхождение, весь список называется «Авто-выбор сервера», а страна не
+/// определяется — ни флагов, ни меток на глобусе.
+fn name_score(name: &str) -> u8 {
+    let low = name.to_lowercase();
+    if cc_from_emoji(name).is_some() || CC_WORDS.iter().any(|(word, _)| low.contains(word)) {
+        return 3;
+    }
+    let generic = [
+        "авто", "auto", "fastest", "быстр", "выбор", "select", "all nodes", "глобал",
+    ];
+    if generic.iter().any(|g| low.contains(g)) {
+        return 0;
+    }
+    if name.trim().is_empty() {
+        0
+    } else {
+        1
+    }
+}
+
+/// Тот же сервер приходит несколько раз: держим вариант с лучшим именем,
+/// а при равных — первый (он обычно и есть основной).
+fn push_best(profiles: &mut Vec<Profile>, p: Profile) {
+    if let Some(existing) = profiles.iter_mut().find(|x| x.id == p.id) {
+        if name_score(&p.name) > name_score(&existing.name) {
+            *existing = p;
+        }
+        return;
+    }
+    profiles.push(p);
+}
+
+/// Русская подпись страны плюс метки варианта из имени провайдера:
+/// «🇪🇸 Испания gRPC» → «Испания gRPC», «🇩🇪 Германия 2 TCP» → «Германия 2 TCP».
+/// Метки — только короткие ascii-токены с цифрой или заглавной буквой
+/// (2, gRPC, TCP, WS, H2); названия городов отбрасываем, страна важнее.
+fn localize_name(name: &str, cc: &str) -> String {
+    let label = country_label(cc).unwrap_or_else(|| cc.to_string());
+    let mut marks: Vec<String> = Vec::new();
+    for token in strip_flag(name).split(|c: char| !c.is_ascii_alphanumeric()) {
+        if token.is_empty() || token.len() > 6 {
+            continue;
+        }
+        let looks_like_variant = token.chars().any(|c| c.is_ascii_digit() || c.is_ascii_uppercase());
+        // «Germany» — это страна, а не метка варианта: её заменит русская подпись
+        let is_country_word = CC_WORDS
+            .iter()
+            .any(|(word, _)| word.eq_ignore_ascii_case(token) || word.replace(' ', "") == token.to_lowercase());
+        if is_country_word || token.eq_ignore_ascii_case(&label) {
+            continue;
+        }
+        if !looks_like_variant && token.len() > 6 {
+            continue;
+        }
+        if !marks.iter().any(|m| m.eq_ignore_ascii_case(token)) {
+            marks.push(token.to_string());
+        }
+    }
+    if marks.is_empty() {
+        label
+    } else {
+        format!("{label} {}", marks.join(" "))
+    }
+}
+
+/// Флаг в начале имени, если его там нет: список читается одинаково,
+/// откуда бы провайдер ни взял название.
+fn strip_flag(name: &str) -> String {
+    // Флаг рисует интерфейс по коду страны. Если оставить эмодзи в названии,
+    // в списке будет два флага подряд.
+    let cleaned: String = name
+        .chars()
+        .filter(|c| !(0x1F1E6..=0x1F1FF).contains(&(*c as u32)))
+        .collect();
+    let cleaned = cleaned.trim().trim_start_matches('-').trim();
+    if cleaned.is_empty() {
+        name.trim().to_string()
+    } else {
+        cleaned.to_string()
+    }
 }
 
 fn parse_json(text: &str) -> Result<SubResult, String> {
@@ -863,12 +948,20 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
                     .or_else(|| cc_from_text(&p.name))
                     .or_else(|| cc_from_text(&remarks));
                 if let Some(cc) = cc {
-                    p.name = country_label(&cc).unwrap_or(p.name);
+                    let score = name_score(&p.name);
+                    p.name = if score == 3 {
+                        // «🇪🇸 Испания gRPC» → «Испания gRPC»: подпись страны
+                        // по-русски, но метка варианта сохраняется, иначе
+                        // gRPC и TCP выглядят одинаково
+                        localize_name(&p.name, &cc)
+                    } else {
+                        country_label(&cc).unwrap_or(p.name)
+                    };
                     p.cc = cc;
                 } else if !remarks.is_empty() {
                     p.name = remarks.clone();
                 }
-                profiles.push(p);
+                push_best(&mut profiles, p);
             }
         }
     }
@@ -976,7 +1069,7 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
     let name = if tag.is_empty() { host.clone() } else { tag.to_string() };
 
     Some(Profile {
-        id: format!("{host}:{port}:{uuid}"),
+        id: format!("{host}:{port}:{uuid}:{network}"),
         name,
         host,
         port,
@@ -1079,7 +1172,7 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
     };
 
     Some(Profile {
-        id: format!("{host}:{port}:{uuid}"),
+        id: format!("{host}:{port}:{uuid}:{network}"),
         name,
         host,
         port,
@@ -1530,6 +1623,74 @@ mod tests {
       ]
     }"#;
 
+    const AUTO_GROUP_XRAY: &str = r#"[
+      {"remarks":"🔥 Авто-выбор сервера","outbounds":[
+        {"protocol":"vless","settings":{"vnext":[{"address":"fi.example.invalid","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111"}]}]},"streamSettings":{"network":"tcp","security":"reality"}},
+        {"protocol":"vless","settings":{"vnext":[{"address":"de.example.invalid","port":443,"users":[{"id":"22222222-2222-2222-2222-222222222222"}]}]},"streamSettings":{"network":"tcp","security":"reality"}}]},
+      {"remarks":"🇫🇮 Финляндия","outbounds":[
+        {"protocol":"vless","settings":{"vnext":[{"address":"fi.example.invalid","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111"}]}]},"streamSettings":{"network":"tcp","security":"reality"}}]},
+      {"remarks":"🇩🇪 Германия","outbounds":[
+        {"protocol":"vless","settings":{"vnext":[{"address":"de.example.invalid","port":443,"users":[{"id":"22222222-2222-2222-2222-222222222222"}]}]},"streamSettings":{"network":"tcp","security":"reality"}}]}
+    ]"#;
+
+    /// Живой провайдер кладёт каждый сервер дважды: в группе «Авто-выбор»
+    /// и отдельной строкой со страной. Если брать первое вхождение, весь список
+    /// называется «Авто-выбор сервера», а страна не определяется — ни флагов,
+    /// ни меток на глобусе.
+    #[test]
+    fn auto_group_does_not_steal_node_names() {
+        let r = parse(AUTO_GROUP_XRAY).expect("список должен разобраться");
+        assert_eq!(r.profiles.len(), 2, "узлы не должны размножаться");
+        assert_eq!(r.profiles[0].name, "Финляндия");
+        assert_eq!(r.profiles[0].cc, "fi");
+        assert_eq!(r.profiles[1].name, "Германия");
+        assert_eq!(r.profiles[1].cc, "de");
+    }
+
+    /// gRPC и TCP — разные варианты одного сервера: их нельзя схлопнуть.
+    #[test]
+    fn grpc_and_tcp_variants_stay_separate() {
+        let body = r#"[{"remarks":"🇪🇸 Испания gRPC","outbounds":[
+            {"protocol":"vless","settings":{"vnext":[{"address":"es.example.invalid","port":443,"users":[{"id":"33333333-3333-3333-3333-333333333333"}]}]},"streamSettings":{"network":"grpc","security":"reality"}}]},
+          {"remarks":"🇪🇸 Испания TCP","outbounds":[
+            {"protocol":"vless","settings":{"vnext":[{"address":"es.example.invalid","port":443,"users":[{"id":"33333333-3333-3333-3333-333333333333"}]}]},"streamSettings":{"network":"tcp","security":"reality"}}]}]"#;
+        let r = parse(body).expect("список должен разобраться");
+        assert_eq!(r.profiles.len(), 2);
+        let names: Vec<&str> = r.profiles.iter().map(|p| p.name.as_str()).collect();
+        assert!(names.contains(&"Испания gRPC"), "имена: {names:?}");
+        assert!(names.contains(&"Испания TCP"), "имена: {names:?}");
+    }
+
+    /// Живая проверка: тянет настоящую подписку и складывает конфиг нашего ядра
+    /// в файл. Дальше его можно отдать `sing-box run` и увидеть, что сервер
+    /// действительно поднимается. Запуск: K4R_SUB_URL=... cargo test
+    /// dumps_engine_config -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn dumps_engine_config_for_live_check() {
+        let url = std::env::var("K4R_SUB_URL").expect("нужен K4R_SUB_URL");
+        let hwid = std::env::var("K4R_SUB_HWID").unwrap_or_default();
+        let headers = vec![SubHeader {
+            name: "X-HWID".into(),
+            value: hwid,
+        }];
+        let r = fetch(&url, "", &headers).expect("подписка должна загрузиться");
+        let want = std::env::var("K4R_CC").unwrap_or_default();
+        let p = r
+            .profiles
+            .iter()
+            .find(|p| want.is_empty() || p.cc == want)
+            .expect("в подписке нет узла с такой страной");
+        // «всё через туннель»: по умолчанию в NetOptions выбран режим «только
+        // отмеченные программы», и тогда пустой список отправляет всё напрямую
+        let mut opts = crate::engine::NetOptions::default();
+        opts.split_mode = "all".to_string();
+        let cfg = crate::engine::build_config(p, &[], &opts);
+        let path = std::env::temp_dir().join("k4r-live-engine.json");
+        std::fs::write(&path, serde_json::to_string_pretty(&cfg).unwrap()).unwrap();
+        println!("узел: {} ({}) → {}", p.name, p.cc, path.display());
+    }
+
     #[test]
     fn singbox_json_reality_becomes_a_profile() {
         let result = parse(SINGBOX_JSON).expect("конфиг sing-box должен разобраться");
@@ -1607,6 +1768,9 @@ mod net_tests {
                 }
                 for w in &r.warnings {
                     println!("  предупреждение: {w}");
+                }
+                for p in &r.profiles {
+                    println!("  узел: {:?} страна={:?} host={}", p.name, p.cc, p.host);
                 }
                 let mut countries: Vec<&str> = r.profiles.iter().map(|p| p.cc.as_str()).collect();
                 countries.sort_unstable();
@@ -1708,9 +1872,9 @@ mod net_tests {
         // один и тот же узел в двух конфигах — не два сервера
         assert_eq!(r.profiles.len(), 2, "дубликаты склеены");
         assert_eq!(r.profiles[0].cc, "de");
-        assert_eq!(r.profiles[0].name, "🇩🇪 Германия");
+        assert_eq!(r.profiles[0].name, "Германия");
         assert_eq!(r.profiles[1].cc, "jp");
-        assert_eq!(r.profiles[1].name, "🇯🇵 Япония");
+        assert_eq!(r.profiles[1].name, "Япония");
         assert!(r.profiles.iter().all(|p| p.host.contains(".savethis.cloud")));
     }
 
