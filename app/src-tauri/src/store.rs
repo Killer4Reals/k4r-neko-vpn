@@ -512,6 +512,7 @@ mod tests {
         Profile {
             id: "a".into(),
             name: "A".into(),
+            from_sub: true,
             host: "example.com".into(),
             port: 443,
             uuid: "u".into(),

@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 export type Profile = {
   id: string;
   name: string;
+  /** Узел пришёл из подписки: при обновлении такие заменяются целиком. */
+  from_sub?: boolean;
   host: string;
   port: number;
   uuid: string;
@@ -108,8 +110,14 @@ export const api = {
   coreInfo: () => invoke<CoreInfo>("core_info"),
   fetchSub: (url: string, userAgent: string, headers: { name: string; value: string }[]) =>
     invoke<SubResult>("sub_fetch", { url, userAgent, headers }),
-  engineStart: (profile: Profile, excluded: string[], dns: string, mode: string, via: string[]) =>
-    invoke<EngineStatus>("engine_start", { profile, excluded, dns, mode, via }),
+  engineStart: (
+    profile: Profile,
+    pool: Profile[],
+    excluded: string[],
+    dns: string,
+    mode: string,
+    via: string[],
+  ) => invoke<EngineStatus>("engine_start", { profile, pool, excluded, dns, mode, via }),
   // release=false — это переподключение: блокировку не снимаем
   engineStop: (release = true) => invoke<EngineStatus>("engine_stop", { release }),
   killSwitchStatus: () => invoke<KillSwitchStatus>("kill_switch_status"),

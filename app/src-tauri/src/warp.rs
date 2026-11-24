@@ -135,6 +135,7 @@ pub fn to_profile(keys: (&str, &str), reg: &Registered, id: &str) -> Profile {
         wg_reserved: reserved_from_client_id(&reg.client_id),
         reserve: true,
         cc: String::new(),
+        from_sub: false,
     }
 }
 

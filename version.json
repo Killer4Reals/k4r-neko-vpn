@@ -1,6 +1,6 @@
 {
-  "version": "1.42.0",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.42.0/K4R.Neko.VPN_1.42.0_x64-setup.exe",
+  "version": "1.43.0",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.43.0/K4R.Neko.VPN_1.43.0_x64-setup.exe",
   "notes": "1.42.0: имена узлов из живой подписки, варианты gRPC/TCP",
   "sha256": "3d50024dcbabd38ff53e3c7839534d2fc43f6690983d72b7877889fb1a4f6b02",
   "portable_sha256": "828c2ebdd6be324b722afe4ef8197f93f96320e3cbd6a192b4c2f193920708fd"

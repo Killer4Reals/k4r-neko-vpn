@@ -173,15 +173,76 @@ fn wireguard_outbound(profile: &Profile) -> Value {
 /// Протокол выбирается по `kind`: провайдеры мешают VLESS, Trojan, Shadowsocks
 /// и VMess в одной подписке, и пропускать три четверти списка было бы странно.
 pub fn build_config(profile: &Profile, excluded: &[String], opts: &NetOptions) -> Value {
-    let outbound = match profile.kind.as_str() {
+    build_with_outbound(outbound_for(profile), profile, excluded, opts)
+}
+
+/// Исходящее соединение одного узла — независимо от того, один он или в пуле.
+fn outbound_for(profile: &Profile) -> Value {
+    match profile.kind.as_str() {
         "wireguard" => wireguard_outbound(profile),
         "trojan" => trojan_outbound(profile),
         "shadowsocks" => shadowsocks_outbound(profile),
         "vmess" => vmess_outbound(profile),
         _ => vless_outbound(profile),
-    };
-    build_with_outbound(outbound, profile, excluded, opts)
+    }
 }
+
+/// Умный пул: до трёх узлов в одном конфиге, ядро само решает, через какой идти.
+///
+/// Зачем: запуск ядра — самая долгая часть подключения, и она одна. Ядро меряет
+/// все узлы пула и сразу отдаёт трафик лучшему, а если тот умер — через несколько
+/// секунд переключается на живой. Отсюда и быстрый старт, и автолечение: не нужно
+/// ни второй запуск, ни наш код-надзиратель.
+pub fn build_pool_config(
+    chosen: &Profile,
+    pool: &[Profile],
+    excluded: &[String],
+    opts: &NetOptions,
+) -> Value {
+    // Первым в пуле всегда стоит выбранный человеком (или авто-выбором) узел:
+    // если ядро ещё не успело ничего померить, трафик пойдёт через него.
+    let mut nodes: Vec<&Profile> = vec![chosen];
+    for p in pool {
+        if nodes.len() >= SMART_POOL {
+            break;
+        }
+        if p.id != chosen.id && !nodes.iter().any(|n| n.id == p.id) {
+            nodes.push(p);
+        }
+    }
+
+    let mut config = build_config(chosen, excluded, opts);
+    if nodes.len() < 2 {
+        return config;
+    }
+
+    let mut outs: Vec<Value> = Vec::new();
+    let mut tags: Vec<String> = Vec::new();
+    for (i, node) in nodes.iter().enumerate() {
+        let tag = format!("proxy-{i}");
+        let mut ob = outbound_for(node);
+        ob["tag"] = json!(tag);
+        tags.push(tag);
+        outs.push(ob);
+    }
+    outs.push(json!({
+        "type": "urltest",
+        "tag": "proxy",
+        "outbounds": tags,
+        // 204 от Google — самый дешёвый честный ответ: есть связь или нет
+        "url": "https://www.gstatic.com/generate_204",
+        "interval": "3m",
+        "tolerance": 50,
+        "idle_timeout": "10m"
+    }));
+    outs.push(json!({ "type": "direct", "tag": "direct" }));
+    config["outbounds"] = json!(outs);
+    config
+}
+
+/// Сколько узлов держим в пуле. Три — компромисс: два обычно мало (оба могут
+/// лежать), а каждый следующий узел это лишний трафик проверок.
+pub const SMART_POOL: usize = 3;
 
 /// Trojan: обычный TLS с паролем вместо UUID.
 fn trojan_outbound(profile: &Profile) -> Value {
@@ -1163,6 +1224,7 @@ mod tests {
         Profile {
             id: "x".into(),
             name: "Test".into(),
+            from_sub: true,
             host: "example.com".into(),
             port: 443,
             uuid: "11111111-2222-3333-4444-555555555555".into(),

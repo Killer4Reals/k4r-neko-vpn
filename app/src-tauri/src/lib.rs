@@ -688,7 +688,11 @@ async fn sub_fetch(
         let device = [
             ("X-HWID", hwid),
             ("X-Device-OS", "Windows".to_string()),
-            ("X-Device-Model", device_model()),
+            // Панель показывает это имя в списке устройств: человек должен видеть
+            // «ПК», а не «неизвестное устройство». Полное имя — отдельным полем.
+            ("X-Device-Model", "ПК".to_string()),
+            ("X-Device-Name", "ПК".to_string()),
+            ("X-Device-Host", device_model()),
             ("X-Ver-OS", os_version()),
             ("X-Ver-App", app_version()),
         ];
@@ -1067,6 +1071,7 @@ fn engine_start(
     app: tauri::AppHandle,
     engine: State<'_, engine::Engine>,
     profile: Profile,
+    pool: Option<Vec<Profile>>,
     excluded: Vec<String>,
     dns: String,
     mode: Option<String>,
@@ -1157,7 +1162,8 @@ fn engine_start(
         );
     }
 
-    let config = engine::build_config(&profile, &excluded, &opts);
+    let pool = pool.unwrap_or_default();
+    let config = engine::build_pool_config(&profile, &pool, &excluded, &opts);
     let status = engine::start(&engine, &bin, &config, &log_path, &profile.name)?;
     supervise(app, saved.reconnect, saved.kill_switch);
     Ok(status)
@@ -1320,6 +1326,7 @@ fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
         app.clone(),
         state,
         profile,
+        None,
         excluded,
         dns,
         Some(saved.split_mode.clone()),
@@ -1370,6 +1377,7 @@ fn connect_saved(app: &tauri::AppHandle) -> Result<(), String> {
         app.clone(),
         state,
         profile,
+        None,
         excluded,
         dns,
         Some(saved.split_mode.clone()),
@@ -1944,6 +1952,7 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
         app.clone(),
         state,
         profile,
+        None,
         excluded,
         dns,
         Some(saved.split_mode.clone()),

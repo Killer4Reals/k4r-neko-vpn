@@ -62,6 +62,11 @@ pub struct Profile {
     /// Без неё глобус не знает, куда ставить метку, а список — какой рисовать флаг.
     #[serde(default)]
     pub cc: String,
+    /// Узел пришёл из подписки. Такие узлы заменяются при каждом обновлении:
+    /// провайдер убрал сервер — он должен исчезнуть и у нас. Свои узлы
+    /// (импорт по ссылке, WARP) не трогаем никогда.
+    #[serde(default)]
+    pub from_sub: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -597,6 +602,7 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
         wg_reserved: Vec::new(),
         reserve: false,
         cc,
+        from_sub: true,
     })
 }
 
@@ -920,8 +926,24 @@ fn parse_json(text: &str) -> Result<SubResult, String> {
         _ => return Err("неизвестный формат подписки".into()),
     };
 
+    // Группа «Авто-выбор / Fastest» — не сервер, а список тех же серверов.
+    // Если в подписке есть конфиги с человеческими названиями, группу пропускаем:
+    // иначе в списке появляется строка, которая никогда не отвечает.
+    let config_rank = |cfg: &&serde_json::Value| {
+        let remarks = cfg.get("remarks").and_then(|v| v.as_str()).unwrap_or("");
+        if name_score(remarks) >= 3 {
+            0
+        } else if name_score(remarks) == 0 {
+            2
+        } else {
+            1
+        }
+    };
+    let mut ordered: Vec<&serde_json::Value> = configs.clone();
+    ordered.sort_by_key(config_rank);
+
     let mut profiles: Vec<Profile> = Vec::new();
-    for cfg in configs {
+    for cfg in ordered {
         let remarks = cfg
             .get("remarks")
             .and_then(|v| v.as_str())
@@ -1099,6 +1121,7 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
             wg_reserved: Vec::new(),
             reserve: false,
         cc: String::new(),
+        from_sub: true,
         })
 }
 
@@ -1202,6 +1225,7 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
             wg_reserved: Vec::new(),
             reserve: false,
         cc: String::new(),
+        from_sub: true,
         })
 }
 
@@ -1248,6 +1272,7 @@ fn parse_trojan_link(link: &str) -> Result<Profile, String> {
         wg_reserved: Vec::new(),
         reserve: false,
         cc,
+        from_sub: false,
     })
 }
 
@@ -1324,6 +1349,7 @@ fn parse_ss_link(link: &str) -> Result<Profile, String> {
         wg_reserved: Vec::new(),
         reserve: false,
         cc,
+        from_sub: false,
     })
 }
 
@@ -1393,6 +1419,7 @@ fn parse_vmess_link(link: &str) -> Result<Profile, String> {
         wg_reserved: Vec::new(),
         reserve: false,
         cc,
+        from_sub: false,
     })
 }
 
@@ -1475,6 +1502,7 @@ pub fn parse_link(link: &str) -> Result<Profile, String> {
         wg_reserved: Vec::new(),
         reserve: false,
         cc,
+        from_sub: false,
     })
 }
 
@@ -1647,6 +1675,22 @@ mod tests {
         assert_eq!(r.profiles[1].cc, "de");
     }
 
+    /// Группу «Авто-выбор» ставим в разбор последней, иначе она занимает место
+    /// настоящего сервера и в списке висит строка, которая не отвечает.
+    #[test]
+    fn generic_group_does_not_take_the_place_of_a_named_node() {
+        let body = r#"[
+          {"remarks":"🔥 Авто-выбор сервера","outbounds":[
+            {"protocol":"vless","settings":{"vnext":[{"address":"a.example.invalid","port":443,"users":[{"id":"44444444-4444-4444-4444-444444444444"}]}]},"streamSettings":{"network":"tcp","security":"reality"}}]},
+          {"remarks":"🇳🇱 Нидерланды","outbounds":[
+            {"protocol":"vless","settings":{"vnext":[{"address":"a.example.invalid","port":443,"users":[{"id":"44444444-4444-4444-4444-444444444444"}]}]},"streamSettings":{"network":"tcp","security":"reality"}}]}
+        ]"#;
+        let r = parse(body).expect("разбирается");
+        assert_eq!(r.profiles.len(), 1);
+        assert_eq!(r.profiles[0].name, "Нидерланды");
+        assert_eq!(r.profiles[0].cc, "nl");
+    }
+
     /// gRPC и TCP — разные варианты одного сервера: их нельзя схлопнуть.
     #[test]
     fn grpc_and_tcp_variants_stay_separate() {
@@ -1685,7 +1729,15 @@ mod tests {
         // отмеченные программы», и тогда пустой список отправляет всё напрямую
         let mut opts = crate::engine::NetOptions::default();
         opts.split_mode = "all".to_string();
-        let cfg = crate::engine::build_config(p, &[], &opts);
+        // пул: выбранный узел плюс два соседних — так проверяем urltest на живом ядре
+        let pool: Vec<_> = r
+            .profiles
+            .iter()
+            .filter(|x| x.id != p.id)
+            .take(2)
+            .cloned()
+            .collect();
+        let cfg = crate::engine::build_pool_config(p, &pool, &[], &opts);
         let path = std::env::temp_dir().join("k4r-live-engine.json");
         std::fs::write(&path, serde_json::to_string_pretty(&cfg).unwrap()).unwrap();
         println!("узел: {} ({}) → {}", p.name, p.cc, path.display());

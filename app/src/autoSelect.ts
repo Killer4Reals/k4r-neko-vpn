@@ -74,3 +74,23 @@ export function isBusy(bytesPerSec: number, limit: number = BUSY_BYTES_PER_SEC):
 export function label(minutes: number): string {
   return minutes <= 0 ? "off" : `${minutes} min`;
 }
+
+/**
+ * Узлы для умного пула: выбранный первым, дальше два самых быстрых живых.
+ *
+ * Порядок важен: пока ядро не успело померить узлы, трафик идёт через первый,
+ * поэтому первым всегда стоит тот, кого выбрал человек (или авто-выбор).
+ */
+export function smartPool<T extends { id: string }>(
+  chosen: T | undefined,
+  all: T[],
+  ms: Record<string, number | null | undefined>,
+  limit = 3,
+): T[] {
+  if (!chosen) return [];
+  const rest = all
+    .filter((p) => p.id !== chosen.id)
+    .filter((p) => typeof ms[p.id] === "number" && (ms[p.id] as number) >= 0)
+    .sort((a, b) => (ms[a.id] as number) - (ms[b.id] as number));
+  return [chosen, ...rest.slice(0, Math.max(0, limit - 1))].slice(0, limit);
+}

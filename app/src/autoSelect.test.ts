@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUSY_BYTES_PER_SEC, isBusy, pickServer, splitReserve } from "./autoSelect";
+import { BUSY_BYTES_PER_SEC, isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 
 const m = (id: string, ms: number | null) => ({ id, ms });
 
@@ -56,5 +56,31 @@ describe("splitReserve", () => {
     const { main, reserve } = splitReserve(list, new Set());
     expect(main).toHaveLength(4);
     expect(reserve).toHaveLength(0);
+  });
+});
+
+describe("умный пул узлов", () => {
+  const nodes = [
+    { id: "a" },
+    { id: "b" },
+    { id: "c" },
+    { id: "d" },
+  ];
+  const ms = { a: 90, b: 20, c: 40, d: null };
+
+  it("первым всегда идёт выбранный узел", () => {
+    expect(smartPool(nodes[0], nodes, ms)[0].id).toBe("a");
+  });
+
+  it("добирает самых быстрых живых и не берёт мёртвых", () => {
+    expect(smartPool(nodes[0], nodes, ms).map((n) => n.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("без выбранного узла пул пуст", () => {
+    expect(smartPool(undefined, nodes, ms)).toEqual([]);
+  });
+
+  it("не больше трёх узлов", () => {
+    expect(smartPool(nodes[0], nodes, ms, 3)).toHaveLength(3);
   });
 });

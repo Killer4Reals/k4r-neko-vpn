@@ -5,7 +5,7 @@ import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
-import { isBusy, pickServer, splitReserve } from "./autoSelect";
+import { isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 import { slowSwitchTarget } from "./health";
 import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
 import { HistoryScreen } from "./screens/History";
@@ -370,6 +370,9 @@ export default function App() {
       .stateLoad()
       .then((st) => {
         if (st.profiles.length) setProfiles(st.profiles);
+        // Свежие серверы нужны сразу при запуске: провайдер мог добавить или
+        // убрать узлы, а ждать двенадцать часов до таймера незачем.
+        if (st.subs?.length || st.sub_url) setTimeout(() => void loadSubscription(), 400);
         if (st.sub_url) setSubUrl(st.sub_url);
         if (st.sub_ua) setSubUa(st.sub_ua);
         if (st.selected) setSelectedId(st.selected);
@@ -600,6 +603,7 @@ export default function App() {
       try {
         const st = await api.engineStart(
           profile,
+          smartPool(profile, profiles, lat),
           excluded,
           dnsMode === "tunnel" ? dnsServer : "",
           splitMode,
@@ -708,7 +712,12 @@ export default function App() {
 
     const seen = new Set<string>();
     const unique = merged.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
-    setProfiles(unique);
+    // Узлы из подписки заменяем целиком: провайдер убрал сервер — он должен уйти
+    // и у нас. Свои узлы (импорт по ссылке, WARP) остаются всегда.
+    // Узлы без отметки `from_sub` — наследие старых версий: они пришли из подписки,
+    // но отметки не имеют, поэтому тоже уходят. Свои узлы (импорт, WARP) помечены
+    // явным `false` и остаются.
+    setProfiles((prev) => (unique.length ? [...prev.filter((p) => p.from_sub === false), ...unique] : prev));
     setWarnings(notes);
     setSubs((prev) =>
       prev.map((s) =>
