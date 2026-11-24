@@ -97,6 +97,11 @@ const dict: Dict = {
   },
   statsEmpty: { ru: "Пока пусто: данные появятся после первой сессии", en: "Empty for now: numbers appear after the first session" },
   statsEmptyTitle: { ru: "Считать пока нечего", en: "Nothing to count yet" },
+  poolChip: { ru: "· умный пул из {n}", en: "· smart pool of {n}" },
+  poolHint: {
+    ru: "Ядро держит несколько узлов сразу и само уходит с умершего — без разрыва.",
+    en: "The core keeps several nodes and leaves a dead one on its own, without a drop.",
+  },
   statsPeriod: { ru: "За период", en: "Period" },
   statsToday: { ru: "Сегодня", en: "Today" },
   statsReset: { ru: "Сбросить статистику", en: "Reset stats" },

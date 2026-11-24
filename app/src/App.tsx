@@ -191,6 +191,8 @@ export default function App() {
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
   // след скорости для живой кривой на главной: последние сорок секунд
   const [trail, setTrail] = useState<number[]>([]);
+  // Сколько узлов в пуле сейчас: один — обычный режим, больше — умный выбор.
+  const [poolSize, setPoolSize] = useState(1);
   const [tgProxy, setTgProxy] = useState(false);
   // накопленное с последней записи в статистику, байты
   const statsPending = useRef({ down: 0, up: 0 });
@@ -611,9 +613,11 @@ export default function App() {
       const excluded = chosen.filter((a) => !a.via).map((a) => a.exe);
       const via = chosen.filter((a) => a.via).map((a) => a.exe);
       try {
+        const pool = smartPool(profile, profiles, lat);
+        setPoolSize(pool.length || 1);
         const st = await api.engineStart(
           profile,
-          smartPool(profile, profiles, lat),
+          pool,
           excluded,
           dnsMode === "tunnel" ? dnsServer : "",
           splitMode,
@@ -1477,6 +1481,7 @@ export default function App() {
               down={traffic.down}
               up={traffic.up}
               trail={trail}
+              poolSize={poolSize}
               killSwitch={killSwitch}
               blocked={false}
               ip={ip}

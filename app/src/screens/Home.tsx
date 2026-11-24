@@ -27,6 +27,8 @@ type Props = {
   down: number;
   /** последние замеры скорости, МБ/с — для живой кривой */
   trail: number[];
+  /** сколько узлов в пуле: больше одного — работает умный выбор */
+  poolSize: number;
   up: number;
   /** true only when traffic is really being held back (needs the WFP backend) */
   blocked: boolean;
@@ -188,6 +190,11 @@ export function HomeScreen(p: Props) {
           <div className="status-pill" data-state={view}>
             <span className="dot" />
             {t(statusKey)}
+            {p.poolSize > 1 && view === "connected" && (
+              <em className="pool-chip" title={t("poolHint")}>
+                {t("poolChip").replace("{n}", String(p.poolSize))}
+              </em>
+            )}
           </div>
 
           <button

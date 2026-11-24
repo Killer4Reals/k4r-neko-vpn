@@ -2730,3 +2730,12 @@ html[data-accent="ice"] {
   border-color: var(--fg, #fff);
   transform: scale(1.06);
 }
+
+/* Чип умного пула рядом со статусом: маленький, но видно, что режим не обычный. */
+.pool-chip {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--green);
+  opacity: 0.85;
+  margin-left: 2px;
+}
