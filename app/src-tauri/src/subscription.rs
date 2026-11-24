@@ -1802,6 +1802,14 @@ mod tests {
         // отмеченные программы», и тогда пустой список отправляет всё напрямую
         let mut opts = crate::engine::NetOptions::default();
         opts.split_mode = "all".to_string();
+        // тот же набор, что включает приложение в обычной работе: правила РФ,
+        // блок рекламы, игровой режим и endpoint для счётчиков
+        opts.route_ru_direct = true;
+        opts.route_block_ads = true;
+        opts.game_mode = true;
+        opts.api_port = 19099;
+        opts.api_secret = "test".into();
+        opts.cache_path = std::env::temp_dir().join("k4r-rule-sets.db").display().to_string();
         // пул: выбранный узел плюс два соседних — так проверяем urltest на живом ядре
         let pool: Vec<_> = r
             .profiles

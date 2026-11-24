@@ -564,13 +564,17 @@ fn build_with_outbound(
             "default_domain_resolver": resolver
         }
     });
+    // «experimental» собираем по кусочкам: раньше endpoint для счётчиков затирал
+    // кэш списков, и ядро качало их заново при каждом запуске — это лишние
+    // секунды до готового туннеля.
+    let mut experimental = serde_json::Map::new();
     if !rule_sets.is_empty() {
         config["route"]["rule_set"] = json!(rule_sets);
         if !opts.cache_path.trim().is_empty() {
-            // Без кэша ядро качало бы списки при каждом запуске
-            config["experimental"] = json!({
-                "cache_file": { "enabled": true, "path": opts.cache_path.trim() }
-            });
+            experimental.insert(
+                "cache_file".into(),
+                json!({ "enabled": true, "path": opts.cache_path.trim() }),
+            );
         }
     }
     if opts.tg_port != 0 {
@@ -594,12 +598,16 @@ fn build_with_outbound(
     }
     if opts.api_port != 0 {
         // Our own loopback endpoint: the only way to read real traffic counters.
-        config["experimental"] = json!({
-            "clash_api": {
+        experimental.insert(
+            "clash_api".into(),
+            json!({
                 "external_controller": format!("127.0.0.1:{}", opts.api_port),
                 "secret": opts.api_secret
-            }
-        });
+            }),
+        );
+    }
+    if !experimental.is_empty() {
+        config["experimental"] = serde_json::Value::Object(experimental);
     }
     config
 }
@@ -1569,6 +1577,26 @@ mod tests {
         assert!(rules
             .iter()
             .any(|r| r["rule_set"][0] == "ru-domains" && r["outbound"] == "direct"));
+    }
+
+    /// Кэш списков и endpoint счётчиков должны жить вместе: иначе ядро качает
+    /// списки при каждом запуске, и туннель поднимается заметно дольше.
+    #[test]
+    fn cache_and_api_live_together() {
+        let opts = NetOptions {
+            route_ru_direct: true,
+            cache_path: "C:/data/rule-sets.db".into(),
+            api_port: 9999,
+            api_secret: "s3cret".into(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        assert_eq!(cfg["experimental"]["cache_file"]["path"], "C:/data/rule-sets.db");
+        assert_eq!(
+            cfg["experimental"]["clash_api"]["external_controller"],
+            "127.0.0.1:9999"
+        );
+        assert_eq!(cfg["experimental"]["clash_api"]["secret"], "s3cret");
     }
 
     #[test]
