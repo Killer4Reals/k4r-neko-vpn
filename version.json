@@ -1,6 +1,6 @@
 {
   "version": "1.47.3",
-  "notes": "1.46.0: пометка умного пула, кривая скорости, акцент, пул узлов",
+  "notes": "1.47.3: список серверов не растёт, служебные строки убираются",
   "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.47.3/K4R.Neko.VPN_1.47.3_x64-setup.exe",
-  "sha256": "797998319e2976e7fdcdd56eefcf1f306bbc6709edc46868961f732489dc6378"
+  "sha256": "85e386d9f4b4e4d1af31cc4c4be1ce63560687aa0e41a516472352a7c47e82a6"
 }
