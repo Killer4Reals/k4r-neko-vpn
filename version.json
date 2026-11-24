@@ -1,6 +1,6 @@
 {
-  "version": "1.47.4",
+  "version": "1.47.5",
   "notes": "1.47.4: быстрый старт без повторной загрузки списков, умный пул, кривая скорости, акцент",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.47.4/K4R.Neko.VPN_1.47.4_x64-setup.exe",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.47.5/K4R.Neko.VPN_1.47.5_x64-setup.exe",
   "sha256": "bff561a446e3be9a37eda3651107fbcfabb4909e7220898693dcfcb54e282094"
 }

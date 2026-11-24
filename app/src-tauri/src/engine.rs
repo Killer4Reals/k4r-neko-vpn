@@ -231,7 +231,9 @@ pub fn build_pool_config(
         "outbounds": tags,
         // 204 от Google — самый дешёвый честный ответ: есть связь или нет
         "url": "https://www.gstatic.com/generate_204",
-        "interval": "3m",
+        // Минута, а не три: если первый узел перестал отвечать, человек не должен
+        // ждать три минуты, пока ядро само заметит это.
+        "interval": "1m",
         "tolerance": 50,
         "idle_timeout": "10m"
     }));
@@ -399,16 +401,20 @@ fn build_with_outbound(
     if opts.route_ru_direct {
         rule_sets.push(json!({
             "type": "remote", "tag": "ru-domains", "format": "binary",
+            // через пул, а не «первый исходящий»: мёртвый узел не должен валить старт
+            "download_detour": "proxy",
             "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ru.srs"
         }));
         rule_sets.push(json!({
             "type": "remote", "tag": "ru-ips", "format": "binary",
+            "download_detour": "proxy",
             "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-ru.srs"
         }));
     }
     if opts.route_block_ads {
         rule_sets.push(json!({
             "type": "remote", "tag": "ads", "format": "binary",
+            "download_detour": "proxy",
             "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs"
         }));
     }
