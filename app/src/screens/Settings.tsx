@@ -63,6 +63,9 @@ type Props = {
 
 export function SettingsScreen(p: Props) {
   const [checks, setChecks] = useState<Check[]>([]);
+  const [accent, setAccent] = useState<string>(
+    () => (typeof localStorage !== "undefined" && localStorage.getItem("k4r.accent")) || "neon",
+  );
   const [copied, setCopied] = useState("");
   const { t, lang, setLang, killSwitch, setKillSwitch, autostart, setAutostart } = p;
   const { onSaveReport } = p;
@@ -161,6 +164,38 @@ export function SettingsScreen(p: Props) {
     <>
       <div className="page-head">
         <h1>{t("settingsTitle")}</h1>
+      </div>
+
+      {/* Акцент: тема одна, но цвет действия человек выбирает сам */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("accentTitle")}</b>
+            <span>{t("accentHint")}</span>
+          </div>
+        </div>
+        <div className="accent-row">
+          {[
+            { id: "neon", color: "#39ff14", hint: "Неон" },
+            { id: "violet", color: "#b46bff", hint: "Фиолет" },
+            { id: "rose", color: "#ff4fd8", hint: "Розовый" },
+            { id: "ice", color: "#4dd9ff", hint: "Лёд" },
+          ].map((a) => (
+            <button
+              key={a.id}
+              className="accent-dot"
+              data-on={(accent || "neon") === a.id}
+              style={{ background: a.color }}
+              title={a.hint}
+              aria-label={a.hint}
+              onClick={() => {
+                setAccent(a.id);
+                localStorage.setItem("k4r.accent", a.id);
+                document.documentElement.dataset.accent = a.id;
+              }}
+            />
+          ))}
+        </div>
       </div>
 
       {/* Проверка одной кнопкой: семь пунктов, каждый — то, что реально можно

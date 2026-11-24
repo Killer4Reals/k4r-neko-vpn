@@ -25,6 +25,8 @@ type Props = {
   latAt?: Record<string, number>;
   /** bytes per second measured by the engine */
   down: number;
+  /** последние замеры скорости, МБ/с — для живой кривой */
+  trail: number[];
   up: number;
   /** true only when traffic is really being held back (needs the WFP backend) */
   blocked: boolean;
@@ -261,6 +263,8 @@ export function HomeScreen(p: Props) {
           ))}
         </div>
 
+        <Sparkline data={p.trail} />
+
         <div className="stats">
           <div className="stat">
             <div className="k">{t("down")}</div>
@@ -375,6 +379,35 @@ export function HomeScreen(p: Props) {
  * Срок подписки и остаток трафика. Показываем только то, что провайдер
  * действительно сообщил: выдуманная дата хуже, чем пустое место.
  */
+/**
+ * Живая кривая скорости. Тридцать девять точек — это ровно сорок секунд: видно
+ * не цифру «сейчас», а как канал дышит. Пока данных нет, линия прижата к нулю,
+ * но панель не прыгает по высоте.
+ */
+function Sparkline(p: { data: number[] }) {
+  // Меньше трёх точек — ещё не кривая, а случайная палка: не рисуем.
+  if (p.data.length < 3) return null;
+  const points = p.data;
+  const max = Math.max(1, ...points);
+  const step = 100 / Math.max(1, points.length - 1);
+  const line = points
+    .map((v, i) => `${(i * step).toFixed(2)},${(28 - (v / max) * 26).toFixed(2)}`)
+    .join(" ");
+  const area = `0,28 ${line} 100,28`;
+  return (
+    <svg className="spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" className="spark-top" />
+          <stop offset="100%" className="spark-bottom" />
+        </linearGradient>
+      </defs>
+      <polygon points={area} fill="url(#sparkFill)" />
+      <polyline points={line} className="spark-line" />
+    </svg>
+  );
+}
+
 function SubLine(p: { expire: number; total: number; used: number; t: (k: string) => string }) {
   const timing = subTiming(p.expire);
   const left = leftBytes(p.total, p.used, 0);
@@ -389,10 +422,14 @@ function SubLine(p: { expire: number; total: number; used: number; t: (k: string
             : p.t("subUntil").replace("{d}", date).replace("{n}", String(timing.days))}
         </span>
       )}
-      {p.total > 0 && (
+      {p.total > 0 ? (
         <span>
           {p.t("subLeft").replace("{l}", humanBytes(left)).replace("{t}", humanBytes(p.total))}
         </span>
+      ) : (
+        p.used > 0 && (
+          <span>{p.t("subUsedUnlimited").replace("{u}", humanBytes(p.used))}</span>
+        )
       )}
     </div>
   );

@@ -8,6 +8,9 @@
   --txt: #f2e9ff;
   --txt-2: #b9a6d4;
   --txt-3: #7f6b9c;
+  /* Акцент: одна тема, четыре настроения. Меняется только цвет действия. */
+  --accent: var(--green);
+  --accent-glow: var(--violet);
   --green: #39ff14;
   --green-soft: rgba(57, 255, 20, 0.12);
   --green-line: rgba(57, 255, 20, 0.34);
@@ -2656,3 +2659,74 @@ input {
 .chk-verdict.bad { color: var(--danger); }
 .chk-verdict.unknown { color: var(--txt-2); }
 
+
+/* Живая кривая скорости на главной: тишина в покое, движение в работе. */
+.spark {
+  width: 100%;
+  height: 56px;
+  display: block;
+  margin: 10px 0 -6px;
+  overflow: visible;
+}
+.spark-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+  transition: d 0.4s linear;
+}
+.spark-top {
+  stop-color: var(--accent);
+  stop-opacity: 0.35;
+}
+.spark-bottom {
+  stop-color: var(--accent);
+  stop-opacity: 0;
+}
+
+/* ---- Акценты. Тема одна («Неон»), меняется только цвет действия. ---- */
+html[data-accent="violet"] {
+  --green: #b46bff;
+  --green-soft: rgba(180, 107, 255, 0.14);
+  --green-line: rgba(180, 107, 255, 0.4);
+  --violet: #7a3cff;
+  --violet-soft: rgba(122, 60, 255, 0.18);
+}
+html[data-accent="rose"] {
+  --green: #ff4fd8;
+  --green-soft: rgba(255, 79, 216, 0.14);
+  --green-line: rgba(255, 79, 216, 0.4);
+  --violet: #8b2bd6;
+  --violet-soft: rgba(139, 43, 214, 0.18);
+}
+html[data-accent="ice"] {
+  --green: #4dd9ff;
+  --green-soft: rgba(77, 217, 255, 0.14);
+  --green-line: rgba(77, 217, 255, 0.4);
+  --violet: #2b8bff;
+  --violet-soft: rgba(43, 139, 255, 0.18);
+}
+
+/* Выбор акцента в настройках: четыре кружка, видно сразу. */
+.accent-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.accent-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.accent-dot:hover { transform: scale(1.06); }
+.accent-dot[data-on="true"] {
+  border-color: var(--fg, #fff);
+  transform: scale(1.06);
+}

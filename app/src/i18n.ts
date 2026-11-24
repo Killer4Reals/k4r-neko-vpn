@@ -163,6 +163,15 @@ const dict: Dict = {
   subUntil: { ru: "Подписка до {d} · {n} дн.", en: "Subscription until {d} · {n} days" },
   subExpired: { ru: "Срок подписки истёк", en: "Subscription expired" },
   subLeft: { ru: "Остаток {l} из {t}", en: "{l} of {t} left" },
+  subUsedUnlimited: {
+    ru: "Израсходовано {u} · безлимит",
+    en: "{u} used · unlimited",
+  },
+  accentTitle: { ru: "Акцент", en: "Accent" },
+  accentHint: {
+    ru: "Цвет кнопок и свечения. Тема остаётся одна — «Неон».",
+    en: "Colour of buttons and glow. The theme stays one — Neon.",
+  },
   myIp: { ru: "Твой IP", en: "Your IP" },
   myIpHint: {
     ru: "Адрес, который видят сайты. Включи VPN и нажми «проверить» — он должен смениться",

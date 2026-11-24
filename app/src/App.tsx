@@ -182,7 +182,15 @@ export default function App() {
   const [ver, setVer] = useState("");
   const autoUpd = useRef(false);
   /// real counters from the engine, never a made-up number
+  // Акцент читаем до первой отрисовки: иначе при запуске мигнёт зелёным.
+  useEffect(() => {
+    const saved = localStorage.getItem("k4r.accent") || "neon";
+    document.documentElement.dataset.accent = saved;
+  }, []);
+
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
+  // след скорости для живой кривой на главной: последние сорок секунд
+  const [trail, setTrail] = useState<number[]>([]);
   const [tgProxy, setTgProxy] = useState(false);
   // накопленное с последней записи в статистику, байты
   const statsPending = useRef({ down: 0, up: 0 });
@@ -506,6 +514,7 @@ export default function App() {
     if (!inTauri) return;
     if (conn !== "connected") {
       setTraffic({ down: 0, up: 0 });
+      setTrail([]);
       return;
     }
     let alive = true;
@@ -515,6 +524,7 @@ export default function App() {
         .then((t) => {
           if (!alive) return;
           setTraffic({ down: t.down, up: t.up });
+          setTrail((prev) => [...prev.slice(-39), t.down]);
           // копим прирост суммарных счётчиков: down/up — это байты в секунду,
           // для «сколько за день» они не годятся
           if (prevTotals.current) {
@@ -1466,6 +1476,7 @@ export default function App() {
               zapretState={zapretState}
               down={traffic.down}
               up={traffic.up}
+              trail={trail}
               killSwitch={killSwitch}
               blocked={false}
               ip={ip}
