@@ -47,7 +47,14 @@ export function StatsScreen({ t }: Props) {
         </div>
 
         {sum.total === 0 ? (
-          <div className="muted">{t("statsEmpty")}</div>
+          // Пустой экран — тоже экран: маскот и текст вместо голой строки
+          <div className="empty-box">
+            <img src="/mascot/log-empty.webp" alt="" draggable={false} />
+            <div>
+              <h3>{t("statsEmptyTitle")}</h3>
+              <p className="muted">{t("statsEmpty")}</p>
+            </div>
+          </div>
         ) : (
           <>
             <div

@@ -126,8 +126,12 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Pr
       )}
 
       {events.length === 0 ? (
-        <div className="card">
-          <div className="muted">{t("histEmpty")}</div>
+        <div className="card empty-box">
+          <img src="/mascot/log-empty.webp" alt="" draggable={false} />
+          <div>
+            <h3>{t("histEmptyTitle")}</h3>
+            <p className="muted">{t("histEmpty")}</p>
+          </div>
         </div>
       ) : shown.length === 0 ? (
         <div className="card">
