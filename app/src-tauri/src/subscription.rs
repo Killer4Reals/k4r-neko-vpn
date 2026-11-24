@@ -352,13 +352,23 @@ pub fn import_text(text: &str) -> Result<Vec<Profile>, String> {
 }
 
 pub fn parse(body: &str) -> Result<SubResult, String> {
+    // Всё, что пришло из подписки, помечаем её узлом: иначе при обновлении
+    // старые узлы не заменить, и список растёт с каждым запуском.
+    let mut result = parse_body(body)?;
+    for p in result.profiles.iter_mut() {
+        p.from_sub = true;
+    }
+    Ok(result)
+}
+
+fn parse_body(body: &str) -> Result<SubResult, String> {
     let text = body.trim();
 
     if text.starts_with('{') || text.starts_with('[') {
-        return parse_json(text);
+        return parse_json(text).map(drop_nameless_nodes);
     }
     if looks_like_clash(text) {
-        return parse_clash(text);
+        return parse_clash(text).map(drop_nameless_nodes);
     }
 
     // base64 body with a list of vless:// links
@@ -395,7 +405,7 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
         );
     }
 
-    Ok(SubResult {
+    Ok(drop_nameless_nodes(SubResult {
         profiles,
         warnings,
         info: None,
@@ -403,13 +413,36 @@ pub fn parse(body: &str) -> Result<SubResult, String> {
         refresh_hint: 0,
         format: "links".into(),
         ua_used: String::new(),
-    })
+    }))
 }
 
 /// YAML от Clash/Mihomo: провайдеры отдают его, когда узнают знакомый клиент,
 /// и другого списка у них может не быть вовсе.
 fn looks_like_clash(text: &str) -> bool {
     text.contains("proxies:") && !text.contains("vless://")
+}
+
+/// Убрать узлы без названия: провайдер повторяет в подписке служебную строку
+/// «Авто-выбор сервера» (или «Fastest»), и она попадает в список как сервер,
+/// который никогда не отвечает. Если в подписке есть узлы с настоящими именами
+/// (страна, город), такие строки-группы выкидываем. Если имён нет ни у кого —
+/// оставляем как есть, иначе список станет пустым.
+fn drop_nameless_nodes(mut result: SubResult) -> SubResult {
+    let has_named = result.profiles.iter().any(|p| name_score(&p.name) >= 3);
+    if !has_named {
+        return result;
+    }
+    let before = result.profiles.len();
+    result
+        .profiles
+        .retain(|p| name_score(&p.name) > 0 || p.kind == "wireguard");
+    let dropped = before - result.profiles.len();
+    if dropped > 0 {
+        result
+            .warnings
+            .push(format!("пропущено служебных строк без адреса: {dropped}"));
+    }
+    result
 }
 
 fn parse_clash(text: &str) -> Result<SubResult, String> {
@@ -1675,6 +1708,45 @@ mod tests {
         assert_eq!(r.profiles[1].cc, "de");
     }
 
+    /// Проверка на настоящем ответе провайдера: файл с телом подписки в
+    /// `K4R_BODY_FILE`. Нужен, чтобы видеть, что видит человек, без сети.
+    #[test]
+    #[ignore]
+    fn parses_real_body_from_file() {
+        let path = std::env::var("K4R_BODY_FILE").expect("нужен K4R_BODY_FILE");
+        let body = std::fs::read_to_string(path).expect("файл читается");
+        let r = parse(&body).expect("разбирается");
+        println!("серверов={} предупреждения={:?}", r.profiles.len(), r.warnings);
+        for p in &r.profiles {
+            println!("  {} ({}) host={}", p.name, p.cc, p.host);
+        }
+        assert!(!r.profiles.is_empty());
+    }
+
+    /// Служебная строка «Авто-выбор» в base64-подписке (так её отдаёт этот
+    /// провайдер для незнакомых клиентов) становится сервером, который не
+    /// отвечает. Если рядом есть узлы с настоящими именами — строку убираем.
+    #[test]
+    fn service_link_without_a_name_is_dropped() {
+        let link = |host: &str, name: &str| {
+            let q = "encryption=none&security=reality&sni=deepl.com&fp=firefox&pbk=K&sid=ab&type=grpc&serviceName=api";
+            format!("vless://11111111-2222-4333-8444-555555555555@{host}:10121?{q}#{name}")
+        };
+        let raw = format!(
+            "{}
+{}
+{}",
+            link("selectel.ru", "Auto%20select"),
+            link("fi.example.invalid", "%F0%9F%87%AB%F0%9F%87%AE%20Finland"),
+            link("nl.example.invalid", "Amsterdam"),
+        );
+        let body = base64::engine::general_purpose::STANDARD.encode(raw);
+        let r = parse(&body).expect("разбирается");
+        assert_eq!(r.profiles.len(), 2, "служебная строка ушла, два сервера остались");
+        assert!(r.profiles.iter().all(|p| !p.name.to_lowercase().contains("auto")));
+        assert_eq!(r.warnings.len(), 1);
+    }
+
     /// Группу «Авто-выбор» ставим в разбор последней, иначе она занимает место
     /// настоящего сервера и в списке висит строка, которая не отвечает.
     #[test]
@@ -1718,7 +1790,8 @@ mod tests {
             name: "X-HWID".into(),
             value: hwid,
         }];
-        let r = fetch(&url, "", &headers).expect("подписка должна загрузиться");
+        let ua = std::env::var("K4R_UA").unwrap_or_default();
+        let r = fetch(&url, &ua, &headers).expect("подписка должна загрузиться");
         let want = std::env::var("K4R_CC").unwrap_or_default();
         let p = r
             .profiles

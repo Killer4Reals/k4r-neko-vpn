@@ -381,8 +381,15 @@ export default function App() {
       .then((st) => {
         if (st.profiles.length) setProfiles(st.profiles);
         // Свежие серверы нужны сразу при запуске: провайдер мог добавить или
-        // убрать узлы, а ждать двенадцать часов до таймера незачем.
-        if (st.subs?.length || st.sub_url) setTimeout(() => void loadSubscription(), 400);
+        // убрать узлы, а ждать двенадцать часов до таймера незачем. Источники
+        // передаём явно: состояние `subs`/`subUrl` в этот момент ещё старое,
+        // и загрузка молча выходила бы с «сначала вставь ссылку».
+        const bootSources = st.subs?.length
+          ? st.subs
+          : st.sub_url
+            ? [{ url: st.sub_url, ua: st.sub_ua || DEFAULT_UA, name: "", refreshed: 0 }]
+            : [];
+        if (bootSources.length) setTimeout(() => void loadSubscription(bootSources), 400);
         if (st.sub_url) setSubUrl(st.sub_url);
         if (st.sub_ua) setSubUa(st.sub_ua);
         if (st.selected) setSelectedId(st.selected);
@@ -680,7 +687,8 @@ export default function App() {
     [conn, ksState.state, t],
   );
 
-  const loadSubscription = useCallback(async () => {
+  const loadSubscription = useCallback(
+    async (explicit?: SubSource[]) => {
     setBusy(true);
     setWarnings([]);
     if (!inTauri) {
@@ -688,11 +696,13 @@ export default function App() {
       setBusy(false);
       return;
     }
-    const sources: SubSource[] = subs.length
-      ? subs
-      : subUrl.trim()
-        ? [{ url: subUrl.trim(), ua: subUa, name: "", refreshed: 0 }]
-        : [];
+    const sources: SubSource[] = explicit?.length
+      ? explicit
+      : subs.length
+        ? subs
+        : subUrl.trim()
+          ? [{ url: subUrl.trim(), ua: subUa, name: "", refreshed: 0 }]
+          : [];
     if (!sources.length) {
       setWarnings(["Сначала вставь ссылку подписки"]);
       setBusy(false);
@@ -731,7 +741,24 @@ export default function App() {
     // Узлы без отметки `from_sub` — наследие старых версий: они пришли из подписки,
     // но отметки не имеют, поэтому тоже уходят. Свои узлы (импорт, WARP) помечены
     // явным `false` и остаются.
-    setProfiles((prev) => (unique.length ? [...prev.filter((p) => p.from_sub === false), ...unique] : prev));
+    // Разовая уборка: у узлов из старых версий отметки источника нет, поэтому
+    // отличить «свой» узел от устаревшего узла подписки нельзя. Один раз
+    // оставляем только WARP (он не из подписки) и наливаем свежий список.
+    // Ключ с версией: одна и та же уборка должна отработать ровно один раз,
+    // и повторный запуск уже не должен трогать ничего.
+    const migrated = localStorage.getItem("k4r.migrated.subNodes.v3") === "1";
+    setProfiles((prev) => {
+      if (!unique.length) return prev;
+      const kept = prev.filter((p) =>
+        migrated ? p.from_sub === false : p.kind === "wireguard",
+      );
+      // Одна и та же строка не должна попасть дважды ни при каком раскладе.
+      const seen = new Set<string>();
+      return [...kept, ...unique].filter((p) =>
+        seen.has(p.id) ? false : (seen.add(p.id), true),
+      );
+    });
+    if (unique.length) localStorage.setItem("k4r.migrated.subNodes.v3", "1");
     setWarnings(notes);
     setSubs((prev) =>
       prev.map((s) =>
@@ -744,7 +771,9 @@ export default function App() {
       setSelectedId((cur) => (unique.some((p) => p.id === cur) ? cur : unique[0].id));
     }
     setBusy(false);
-  }, [subUa, subUrl, subs]);
+    },
+    [subUa, subUrl, subs],
+  );
 
   const addSub = useCallback((url: string, ua: string, name: string) => {
     const clean = url.trim();

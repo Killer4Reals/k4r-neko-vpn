@@ -91,6 +91,9 @@ if not win:
 hwnd, title = win
 print('окно:', title)
 print_window(hwnd, os.path.join(OUT, 'pw_home.png'))
+# второй снимок через паузу: флаги и картинки в WebView догружаются не в первом кадре
+time.sleep(4)
+print_window(hwnd, os.path.join(OUT, 'pw_home2.png'))
 # закрываем аккуратно, без кликов по экрану
 user32.PostMessageW(hwnd, 0x0010, 0, 0)
 time.sleep(2)
