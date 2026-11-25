@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::subscription::Profile;
 
 /// Bumped whenever a stored file needs a one-time fix on load.
-pub const SCHEMA: u32 = 3;
+pub const SCHEMA: u32 = 4;
 
 /// Где приложение смотрит, не вышла ли новая версия. Маленький манифест в
 /// репозитории: одно поле версии и ссылка на установщик. Пусто у тех, кто
@@ -62,6 +62,9 @@ pub struct AppState {
     pub tg_port: u16,
     pub notify: bool,
     pub autostart: bool,
+    /// При автозапуске окно не всплывает поверх работы: приложение ждёт в трее
+    #[serde(default = "yes")]
+    pub start_minimized: bool,
     /// поднимать туннель сразу при запуске приложения (не только автозапуск)
     #[serde(default)]
     pub connect_on_start: bool,
@@ -158,8 +161,10 @@ impl AppState {
             sub_refresh_hours: 12,
             update_url: UPDATE_URL.into(),
             notify: true,
-            // opt-in: a portable app must not register itself behind the owner's back
-            autostart: false,
+            // Приложение просит права один раз при старте и живёт в трее:
+            // без автозапуска владелец каждый день запускает его вручную.
+            autostart: true,
+            start_minimized: true,
             connect_on_start: false,
             schema: SCHEMA,
             ..Self::default()
@@ -315,7 +320,17 @@ pub fn load(data_dir: &Path) -> AppState {
         if st.update_url.trim().is_empty() {
             st.update_url = UPDATE_URL.into();
         }
-        st.schema = SCHEMA;
+        // именно 3: следующая миграция должна выполниться тоже
+        st.schema = 3;
+    }
+    if st.schema < 4 {
+        // Автозапуск раньше был выключен «из вежливости». Приложение просит
+        // права один раз при старте и живёт в трее — без автозапуска его
+        // приходится каждый день искать вручную. Включаем один раз; если
+        // человек выключит сам, это сохранится и больше не перебивается.
+        st.autostart = true;
+        st.start_minimized = true;
+        st.schema = 4;
     }
     // Правила, которые нечего применять, не храним: пустое значение или
     // незнакомое действие — это не правило, а мусор от старой версии.

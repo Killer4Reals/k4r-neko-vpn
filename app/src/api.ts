@@ -141,6 +141,10 @@ export const api = {
   isAdmin: () => invoke<boolean>("app_is_admin"),
   relaunchAdmin: () => invoke<void>("app_relaunch_admin"),
   setStartWithWindows: (enabled: boolean) => invoke<boolean>("set_start_with_windows", { enabled }),
+  miniShow: () => invoke<void>("mini_show"),
+  miniHide: () => invoke<void>("mini_hide"),
+  quickConnect: () => invoke<void>("quick_connect"),
+  quickDisconnect: () => invoke<void>("quick_disconnect"),
   zapretDetect: () => invoke<string | null>("zapret_detect"),
   zapretPresets: (dir: string) => invoke<string[]>("zapret_presets", { dir }),
   zapretStart: (dir: string, preset: string) => invoke<ZapretStatus>("zapret_start", { dir, preset }),
@@ -259,6 +263,8 @@ export type AppState = {
   kill_switch?: boolean;
   notify?: boolean;
   autostart?: boolean;
+  /** при автозапуске окно ждёт в трее, а не всплывает поверх работы */
+  start_minimized?: boolean;
   connect_on_start?: boolean;
   auto_select?: number;
   auto_select_on_loss?: boolean;

@@ -333,6 +333,7 @@ export default function App() {
   /// the preset the owner picked must survive a restart, not snap back to the first
   const [zapretPreset, setZapretPreset] = useState("");
   const [autostart, setAutostart] = useState(false);
+  const [startMinimized, setStartMinimized] = useState(true);
   const [connectOnStart, setConnectOnStart] = useState(false);
   // Автовыбор сервера: 0 — выключено. По умолчанию выключен, чтобы не менять
   // поведение тем, кто уже настроил сервер руками.
@@ -474,6 +475,7 @@ export default function App() {
         if (Array.isArray(st.game_ports)) setGamePorts(st.game_ports.join(", "));
         if (st.hotkey) setHotkey(st.hotkey);
         if (typeof st.close_to_tray === "boolean") setCloseToTray(st.close_to_tray);
+        if (typeof st.start_minimized === "boolean") setStartMinimized(st.start_minimized);
         if (typeof st.minimize_to_tray === "boolean") setMinimizeToTray(st.minimize_to_tray);
         if (st.split_mode === "all" || st.split_mode === "only") setSplitMode(st.split_mode);
         if (st.dns_server) setDnsServer(st.dns_server);
@@ -539,6 +541,7 @@ export default function App() {
           sub_refresh_hours: subRefreshHours,
           update_url: updateUrl,
           autostart,
+          start_minimized: startMinimized,
           connect_on_start: connectOnStart,
           auto_select: autoSelect,
           auto_select_on_loss: autoSelectLoss,
@@ -554,7 +557,7 @@ export default function App() {
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, gameMode, gamePorts, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
-    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto,
+    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto, startMinimized,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -1400,6 +1403,44 @@ export default function App() {
     setToast({ title, body });
   }, [conn, notifyOn, selected, error, t]);
 
+  // Zapret не поднялся при автозапуске: говорим об этом тостом и красной
+  // плашкой, а не оставляем человека с выключенной защитой и без объяснений.
+  useEffect(() => {
+    if (!inTauri) return;
+    let alive = true;
+    let un: (() => void) | null = null;
+    (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      if (!alive) return;
+      un = await listen<string>("zapret-failed", (e) => {
+        setZapretState("error");
+        setToast({ title: t("zapretFailed"), body: e.payload });
+      });
+    })().catch(() => undefined);
+    return () => {
+      alive = false;
+      un?.();
+    };
+  }, [t]);
+
+  // Автозапуск не зарегистрировался (политика, планировщик): не молчим.
+  useEffect(() => {
+    if (!inTauri) return;
+    let alive = true;
+    let un: (() => void) | null = null;
+    (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      if (!alive) return;
+      un = await listen<string>("autostart-failed", (e) => {
+        setToast({ title: t("autostartFailed"), body: e.payload });
+      });
+    })().catch(() => undefined);
+    return () => {
+      alive = false;
+      un?.();
+    };
+  }, [t]);
+
   useEffect(() => {
     api.appVersion().then(setVer).catch(() => undefined);
   }, []);
@@ -1854,6 +1895,8 @@ export default function App() {
               setAutoSwitchSlow={setAutoSwitchSlow}
               setAutoSelectLoss={setAutoSelectLoss}
               autostart={autostart}
+              startMinimized={startMinimized}
+              setStartMinimized={setStartMinimized}
               connectOnStart={connectOnStart}
               setConnectOnStart={setConnectOnStart}
               setAutostart={setAutostart}

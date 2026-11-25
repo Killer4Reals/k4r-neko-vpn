@@ -64,27 +64,184 @@ fn resources_dir(app: &tauri::AppHandle) -> PathBuf {
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_VALUE: &str = "K4RNekoVPN";
+/// Задача планировщика: единственный способ запускать elevated-приложение
+/// при входе без окна UAC. Ключ Run оставлен запасным путём и для старых версий.
+const TASK_NAME: &str = "K4R Neko VPN";
 
-fn autostart_enabled() -> bool {
+fn autostart_task_exists() -> bool {
+    std::process::Command::new("schtasks")
+        .args(["/Query", "/TN", TASK_NAME])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn run_value_exists() -> bool {
     RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey_with_flags(RUN_KEY, KEY_READ)
         .and_then(|k| k.get_value::<String, _>(RUN_VALUE))
         .is_ok()
 }
 
-fn set_autostart(enabled: bool) -> Result<(), String> {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let key = hkcu
+fn autostart_enabled() -> bool {
+    autostart_task_exists() || run_value_exists()
+}
+
+/// Задача старого образца убивала приложение через 72 часа и не запускалась
+/// от батареи. Проверяем XML и пересоздаём задачу, если она ещё «старая».
+fn autostart_task_current() -> bool {
+    let Ok(out) = std::process::Command::new("schtasks")
+        .args(["/Query", "/TN", TASK_NAME, "/XML"])
+        .output()
+    else {
+        return false;
+    };
+    if !out.status.success() {
+        return false;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>")
+        && text.contains("<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>")
+        && text.contains("<RunLevel>HighestAvailable</RunLevel>")
+        && text.contains("--autostart")
+}
+
+fn clear_run_value() {
+    if let Ok(key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey_with_flags(RUN_KEY, KEY_WRITE) {
+        let _ = key.delete_value(RUN_VALUE);
+    }
+}
+
+fn write_run_value() -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let key = RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey_with_flags(RUN_KEY, KEY_WRITE)
         .map_err(|e| format!("реестр недоступен: {e}"))?;
-    if enabled {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        key.set_value(RUN_VALUE, &format!("\"{}\"", exe.display()))
-            .map_err(|e| format!("не удалось включить автозапуск: {e}"))
-    } else {
-        let _ = key.delete_value(RUN_VALUE);
-        Ok(())
+    key.set_value(RUN_VALUE, &format!("\"{}\" --autostart", exe.display()))
+        .map_err(|e| format!("не удалось включить автозапуск: {e}"))
+}
+
+fn schtasks(args: &[&str]) -> Result<(), String> {
+    let out = std::process::Command::new("schtasks")
+        .args(args)
+        .output()
+        .map_err(|e| format!("планировщик заданий недоступен: {e}"))?;
+    if out.status.success() {
+        return Ok(());
     }
+    let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() {
+        text = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    }
+    Err(if text.is_empty() {
+        "планировщик отказал без объяснений".into()
+    } else {
+        text
+    })
+}
+
+fn set_autostart(enabled: bool) -> Result<(), String> {
+    // Задачу планировщика нельзя создать без прав. В тестовой сборке без
+    // манифеста честно отказываем, а не пишем ключ Run от обычного пользователя.
+    if !engine::is_elevated() {
+        return Err("для автозапуска нужны права администратора".into());
+    }
+    // Один способ запуска, а не два: старый ключ Run убираем всегда.
+    clear_run_value();
+    if !enabled {
+        return if autostart_task_exists() {
+            schtasks(&["/Delete", "/TN", TASK_NAME, "/F"])
+        } else {
+            Ok(())
+        };
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    match create_task_xml(&exe) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // Планировщик может быть выключен политикой. Тогда лучше ключ Run
+            // с одним UAC при входе, чем приложение, которое не стартует.
+            write_run_value().map_err(|e2| format!("{e}; запасной автозапуск: {e2}"))
+        }
+    }
+}
+
+/// Регистрирует задачу из XML, а не набором флагов schtasks: только так
+/// можно снять «стоп через 72 часа» (по умолчанию задача убивает процесс)
+/// и «не запускать от батареи» — на ноутбуке автозапуск просто не случался бы.
+fn create_task_xml(exe: &std::path::Path) -> Result<(), String> {
+    let user = format!(
+        "{}\\{}",
+        std::env::var("USERDOMAIN").unwrap_or_default(),
+        std::env::var("USERNAME").unwrap_or_default()
+    );
+    let esc = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
+    let xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>K4R Neko VPN</Author>
+    <Description>K4R Neko VPN starts with Windows and waits in the tray</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>{user}</UserId>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{user}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
+    <UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>&quot;{}&quot;</Command>
+      <Arguments>--autostart</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"#,
+        esc(&exe.to_string_lossy()),
+        user = esc(&user)
+    );
+    let path = std::env::temp_dir().join("k4r-neko-autostart.xml");
+    let mut bytes = vec![0xFF, 0xFE];
+    for unit in xml.encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    std::fs::write(&path, bytes).map_err(|e| format!("не записал задачу: {e}"))?;
+    let path_text = path.to_string_lossy().to_string();
+    let res = schtasks(&["/Create", "/TN", TASK_NAME, "/XML", &path_text, "/F"]);
+    let _ = std::fs::remove_file(&path);
+    res
 }
 
 #[tauri::command]
@@ -1697,6 +1854,93 @@ fn zapret_stop(state: State<'_, zapret::Zapret>) -> zapret::ZapretStatus {
     zapret::stop(&state)
 }
 
+/// Дописывает причину в тот же журнал, что читает экран «Журнал»: сбой при
+/// автозапуске не должен оставаться только в консоли, которой у exe нет.
+/// Журнал самого приложения: сбои, у которых нет своего файла.
+fn note_app(dir: &std::path::Path, text: &str) {
+    let path = dir.join("logs").join("app.log");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "[{}] {text}", export_stamp());
+    }
+}
+
+fn note_zapret(dir: &std::path::Path, text: &str) {
+    let path = dir.join("logs").join("zapret.log");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(file, "[{}] автозапуск: {text}", export_stamp());
+    }
+}
+
+/// Поднимает Zapret по сохранённым настройкам — общий путь для старта
+/// приложения и для пункта в трее, чтобы причины сбоя совпадали.
+fn zapret_start_saved(app: &tauri::AppHandle) -> Result<(), String> {
+    let dir = data_dir(app)?;
+    let saved = store::load(&dir);
+    let zap_dir = if saved.zapret_dir.trim().is_empty() {
+        zapret::detect_dir()
+    } else {
+        Some(PathBuf::from(saved.zapret_dir.trim()))
+    };
+    let Some(zap_dir) = zap_dir else {
+        return Err("папка Zapret не найдена — укажите её в разделе «Защита»".into());
+    };
+    if !zapret::looks_like_zapret(&zap_dir) {
+        return Err(format!("в папке {} нет winws2.exe", zap_dir.display()));
+    }
+    if zapret::external_instance_running() {
+        return Ok(());
+    }
+    let presets = zapret::list_presets(&zap_dir);
+    let preset = if presets.iter().any(|p| p == &saved.zapret_preset) {
+        saved.zapret_preset.clone()
+    } else {
+        presets.first().cloned().unwrap_or_default()
+    };
+    if preset.is_empty() {
+        return Err("в папке Zapret нет пресетов".into());
+    }
+    let log = dir.join("logs").join("zapret.log");
+    let state = app.state::<zapret::Zapret>();
+    zapret::start(&state, &zap_dir, &preset, &log).map(|_| ())
+}
+
+/// Подключение по сохранённым настройкам одним вызовом: мини-плееру и трею
+/// не нужно тащить весь набор параметров через границу окна.
+#[tauri::command]
+async fn quick_connect(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || connect_saved(&app))
+        .await
+        .map_err(|e| format!("подключение не запустилось: {e}"))?
+}
+
+#[tauri::command]
+async fn quick_disconnect(app: tauri::AppHandle) -> Result<(), String> {
+    let st = app.state::<engine::Engine>();
+    let _ = engine::stop(&st);
+    let saved = data_dir(&app).map(|d| store::load(&d)).unwrap_or_default();
+    if saved.kill_switch {
+        let _ = wfp::disable();
+    }
+    refresh_tray(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_tray_state(app: tauri::AppHandle, state: String) -> Result<(), String> {
     let bytes: &[u8] = match state.as_str() {
@@ -1785,6 +2029,24 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     if let Ok(toggle) = MenuItem::with_id(app, "toggle", toggle_text, true, None::<&str>) {
         items.push(Box::new(toggle));
     }
+    let zapret_running = {
+        let st = app.state::<zapret::Zapret>();
+        matches!(
+            zapret::poll(&st).state,
+            zapret::ZapretState::Running | zapret::ZapretState::External
+        )
+    };
+    let zapret_text = if zapret_running {
+        "● Защита включена"
+    } else {
+        "○ Защита выключена"
+    };
+    if let Ok(zap) = MenuItem::with_id(app, "zapret", zapret_text, true, None::<&str>) {
+        items.push(Box::new(zap));
+    }
+    if let Ok(mini) = MenuItem::with_id(app, "mini", "Мини-плеер", true, None::<&str>) {
+        items.push(Box::new(mini));
+    }
     items.push(Box::new(PredefinedMenuItem::separator(app)?));
     if let Ok(head) = MenuItem::with_id(app, "srv_head", "Серверы", false, None::<&str>) {
         items.push(Box::new(head));
@@ -1840,6 +2102,33 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             if id == "quit" {
                 app.exit(0);
+                return;
+            }
+            if id == "mini" {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = mini_show(handle).await {
+                        eprintln!("мини-плеер: {e}");
+                    }
+                });
+                return;
+            }
+            // Защита из трея: то же, что тумблер в окне, но без окна.
+            if id == "zapret" {
+                let running = {
+                    let st = app.state::<zapret::Zapret>();
+                    matches!(
+                        zapret::poll(&st).state,
+                        zapret::ZapretState::Running | zapret::ZapretState::External
+                    )
+                };
+                if running {
+                    let st = app.state::<zapret::Zapret>();
+                    let _ = zapret::stop(&st);
+                } else if let Err(e) = zapret_start_saved(app) {
+                    let _ = app.emit("zapret-failed", e);
+                }
+                refresh_tray(app);
                 return;
             }
             // Быстрое включение/выключение: то же, что кнопка в окне, но без окна.
@@ -2073,8 +2362,56 @@ fn window_backdrop() -> String {
     BACKDROP.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
-static TRAY_KEY: std::sync::Mutex<(usize, String, String)> =
-    std::sync::Mutex::new((0, String::new(), String::new()));
+/// Мини-плеер: маленькое окно поверх остальных, чтобы включить или выключить
+/// туннель, не разворачивая главное. Одно окно на всё приложение — повторный
+/// вызов только показывает его.
+#[tauri::command]
+async fn mini_show(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("mini") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let w = tauri::WebviewWindowBuilder::new(
+        &app,
+        "mini",
+        tauri::WebviewUrl::App("index.html?mini=1".into()),
+    )
+    .title("K4R Neko VPN")
+    .inner_size(420.0, 160.0)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .shadow(false)
+    .build()
+    .map_err(|e| format!("мини-плеер не открылся: {e}"))?;
+    // Правый нижний угол, с отступом от края экрана: там его не закрывает
+    // панель задач и не приходится тащить мышью.
+    if let Ok(Some(mon)) = app.primary_monitor() {
+        let size = mon.size();
+        let pos = mon.position();
+        let x = pos.x + size.width as i32 - 420 - 24;
+        let y = pos.y + size.height as i32 - 160 - 72;
+        let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn mini_hide(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("mini") {
+        let _ = w.hide();
+    }
+    Ok(())
+}
+
+static TRAY_KEY: std::sync::Mutex<(usize, String, String, String)> =
+    std::sync::Mutex::new((0, String::new(), String::new(), String::new()));
 
 /// Обновляет подсказку и меню трея, не пересоздавая значок.
 fn refresh_tray(app: &tauri::AppHandle) {
@@ -2089,9 +2426,18 @@ fn refresh_tray(app: &tauri::AppHandle) {
                 let st = app.state::<engine::Engine>();
                 format!("{:?}", engine::poll(&st).state)
             };
-            (saved.profiles.len(), saved.selected.clone(), engine_state)
+            let zapret_state = {
+                let st = app.state::<zapret::Zapret>();
+                format!("{:?}", zapret::poll(&st).state)
+            };
+            (
+                saved.profiles.len(),
+                saved.selected.clone(),
+                engine_state,
+                zapret_state,
+            )
         })
-        .unwrap_or((0, String::new(), String::new()));
+        .unwrap_or((0, String::new(), String::new(), String::new()));
     let changed = {
         let mut last = TRAY_KEY.lock().unwrap();
         if *last == key {
@@ -2147,6 +2493,26 @@ pub fn run() {
                 });
             });
             build_tray(app.handle())?;
+            // Автозапуск: миграция включает его один раз, а задача в
+            // планировщике создаётся только когда её действительно нет.
+            // Делаем до первого core_info, чтобы тумблер в настройках сразу
+            // показывал правду, а не «выключено» при живой задаче.
+            if let Ok(dir) = data_dir(app.handle()) {
+                let saved = store::load(&dir);
+                // Задача есть и свежая — не трогаем. Задачи нет (или она
+                // старая, с лимитом 72 часа) — создаём заново.
+                let need = if autostart_task_exists() {
+                    !autostart_task_current()
+                } else {
+                    !autostart_enabled()
+                };
+                if saved.autostart && need {
+                    if let Err(e) = set_autostart(true) {
+                        note_app(&dir, &format!("автозапуск не включился: {e}"));
+                        let _ = app.emit("autostart-failed", e);
+                    }
+                }
+            }
             // X1: Mica на Win11, Acrylic — запасной. Окно прозрачное по конфигу,
             // поэтому подложка просвечивает, а не подменяется плоским цветом.
             #[cfg(target_os = "windows")]
@@ -2199,39 +2565,15 @@ pub fn run() {
             {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    let dir = match data_dir(&handle) {
-                        Ok(d) => d,
-                        Err(_) => return,
-                    };
-                    let saved = store::load(&dir);
-                    if !saved.zapret_auto {
+                    let Ok(dir) = data_dir(&handle) else { return };
+                    if !store::load(&dir).zapret_auto {
                         return;
                     }
-                    let zap_dir = if saved.zapret_dir.trim().is_empty() {
-                        zapret::detect_dir()
-                    } else {
-                        Some(std::path::PathBuf::from(saved.zapret_dir.trim()))
-                    };
-                    let Some(zap_dir) = zap_dir else { return };
-                    if !zapret::looks_like_zapret(&zap_dir) {
-                        return;
+                    if let Err(e) = zapret_start_saved(&handle) {
+                        note_zapret(&dir, &e);
+                        let _ = handle.emit("zapret-failed", e);
                     }
-                    // Чужой запущенный winws2 не трогаем: им управляет человек
-                    if zapret::external_instance_running() {
-                        return;
-                    }
-                    let presets = zapret::list_presets(&zap_dir);
-                    let preset = if presets.iter().any(|p| p == &saved.zapret_preset) {
-                        saved.zapret_preset.clone()
-                    } else {
-                        presets.first().cloned().unwrap_or_default()
-                    };
-                    if preset.is_empty() {
-                        return;
-                    }
-                    let log = dir.join("logs").join("zapret.log");
-                    let state = handle.state::<zapret::Zapret>();
-                    let _ = zapret::start(&state, &zap_dir, &preset, &log);
+                    refresh_tray(&handle);
                 });
             }
             // Деградация: туннель формально поднят, а данные не идут —
@@ -2311,6 +2653,32 @@ pub fn run() {
                     }
                 });
             }
+            // Запуск по задаче планировщика: окно не всплывает поверх работы.
+            // Прячем несколько раз подряд — WebView успевает показать окно
+            // уже после setup, и одного hide() мало.
+            if std::env::args().any(|a| a == "--autostart") {
+                let hide = data_dir(app.handle())
+                    .map(|d| store::load(&d).start_minimized)
+                    .unwrap_or(true);
+                if hide {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                    let handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        for _ in 0..8 {
+                            std::thread::sleep(std::time::Duration::from_millis(350));
+                            if let Some(w) = handle.get_webview_window("main") {
+                                // Если человек уже открыл окно из трея — не
+                                // отбираем его обратно.
+                                if !w.is_focused().unwrap_or(false) {
+                                    let _ = w.hide();
+                                }
+                            }
+                        }
+                    });
+                }
+            }
             watch_minimize(app.handle().clone());
             // the X button hides to tray unless the user asked for a real quit
             if let Some(win) = app.get_webview_window("main") {
@@ -2335,6 +2703,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             core_info,
             window_backdrop,
+            mini_show,
+            mini_hide,
+            quick_connect,
+            quick_disconnect,
             logs_export,
             core_latest,
             core_update,

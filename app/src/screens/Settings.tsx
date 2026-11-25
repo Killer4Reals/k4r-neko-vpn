@@ -36,6 +36,8 @@ type Props = {
   setAutoSelectLoss: (v: boolean) => void;
   autostart: boolean;
   setAutostart: (v: boolean) => void;
+  startMinimized: boolean;
+  setStartMinimized: (v: boolean) => void;
   connectOnStart: boolean;
   setConnectOnStart: (v: boolean) => void;
   dnsMode: "tunnel" | "system";
@@ -337,6 +339,18 @@ export function SettingsScreen(p: Props) {
                 }
               }
             }}
+          />
+        </div>
+        <div className="row">
+          <div className="txt">
+            <b>{t("startMinimized")}</b>
+            <span>{t("startMinimizedHint")}</span>
+          </div>
+          <button
+            role="switch" className="switch"
+            aria-checked={p.startMinimized}
+            aria-label={t("startMinimized")}
+            onClick={() => p.setStartMinimized(!p.startMinimized)}
           />
         </div>
         <div className="row">
