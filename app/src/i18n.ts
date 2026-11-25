@@ -552,6 +552,7 @@ const dict: Dict = {
   presetApply: { ru: "Применить", en: "Apply" },
   presetCurrent: { ru: "выбран", en: "current" },
   presetPlain: { ru: "профиль без пометок", en: "unmarked profile" },
+  presetsLoading: { ru: "Загружаю каталог…", en: "Loading catalog…" },
   presetNoFilter: { ru: "В этом фильтре пусто — сбрось фильтр.", en: "Nothing under this filter — clear it." },
   zapretRun: { ru: "Запустить", en: "Start" },
   zapretHalt: { ru: "Остановить", en: "Stop" },

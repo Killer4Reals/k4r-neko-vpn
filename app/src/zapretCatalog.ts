@@ -55,7 +55,7 @@ export function presetCatalog(files: string[]): PresetInfo[] {
   return files
     .filter((f) => /\.txt$/i.test(f))
     .map(describePreset)
-    .sort((a, b) => a.title.localeCompare(b.title, "ru"));
+    .sort((a, b) => a.title.localeCompare(b.title, "en", { numeric: true, sensitivity: "base" }));
 }
 
 export type PresetFilter = PresetTag | "all";

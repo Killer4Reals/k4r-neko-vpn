@@ -34,7 +34,8 @@ export function ZapretScreen({
   tgPort,
 }: Props) {
   const [dir, setDir] = useState(initialDir ?? "");
-  const [presets, setPresets] = useState<string[]>([]);
+  // null = ещё не прочитали папку: не показываем «0 пресетов» раньше времени
+  const [presets, setPresets] = useState<string[] | null>(() => (inTauri ? null : []));
   const [preset, setPreset] = useState("");
   const [status, setStatus] = useState<ZapretStatus | null>(null);
   const [error, setError] = useState("");
@@ -46,13 +47,15 @@ export function ZapretScreen({
     const saved = localStorage.getItem("k4r.zapretTag");
     return saved === "games" || saved === "video" || saved === "discord" || saved === "quic" ? saved : "all";
   });
-  const catalog = useMemo(() => presetCatalog(presets), [presets]);
+  const files = useMemo(() => presets ?? [], [presets]);
+  const catalog = useMemo(() => presetCatalog(files), [files]);
   const shown = useMemo(() => filterPresets(catalog, tag), [catalog, tag]);
 
   useEffect(() => {
     if (!inTauri) return;
     (async () => {
-      const found = initialDir ?? (await api.zapretDetect());
+      const found = initialDir || (await api.zapretDetect());
+      if (!found) setPresets([]);
       if (found) {
         setDir(found);
         const list = await api.zapretPresets(found);
@@ -132,14 +135,14 @@ export function ZapretScreen({
         <div className="guard-copy">
           <b>{stateLabel}</b>
           <span>
-            {preset || t("zapretNone")}
+            {presets === null ? t("presetsLoading") : preset || t("zapretNone")}
             {status?.pid ? ` · PID ${status.pid}` : ""}
           </span>
         </div>
         <button
           className="btn"
           style={{ width: "auto", paddingInline: 16 }}
-          disabled={busy || foreign}
+          disabled={busy || foreign || (!on && !preset)}
           onClick={toggle}
         >
           {on ? t("zapretHalt") : t("zapretRun")}
@@ -195,7 +198,7 @@ export function ZapretScreen({
             </div>
             {shown.length === 0 ? (
               <div className="muted" style={{ padding: "10px 2px" }}>
-                {t(presets.length === 0 ? "zapretNone" : "presetNoFilter")}
+                {presets === null ? t("presetsLoading") : t(presets.length === 0 ? "zapretNone" : "presetNoFilter")}
               </div>
             ) : (
               shown.map((pi) => (
@@ -240,7 +243,7 @@ export function ZapretScreen({
             <span>{dir || t("zapretNotFound")}</span>
           </div>
           <span className="tag">
-            {presets.length} {t("presetsCount")}
+            {presets === null ? "…" : `${presets.length} ${t("presetsCount")}`}
           </span>
         </div>
       </div>

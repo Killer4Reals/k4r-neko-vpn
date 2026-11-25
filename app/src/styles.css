@@ -3985,6 +3985,9 @@ html[data-mini] #root { background: transparent; }
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
+  max-height: min(46vh, 430px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .preset-tags {
@@ -3992,6 +3995,11 @@ html[data-mini] #root { background: transparent; }
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 2px 0 6px;
+  background: var(--bg-2);
 }
 
 .preset-row {
