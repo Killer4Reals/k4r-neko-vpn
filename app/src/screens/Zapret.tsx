@@ -104,6 +104,9 @@ export function ZapretScreen({
     return () => window.clearInterval(id);
   }, []);
 
+  // Сцена боя живёт по тому же признаку, что и чип статуса.
+  const fighter = status?.state === "running" || status?.state === "external";
+
   const stateLabel =
     status?.state === "running"
       ? t("zapretRunning")
@@ -115,7 +118,14 @@ export function ZapretScreen({
 
   return (
     <>
-      <FightScene active={status?.state === "running" || status?.state === "external"} hits={hits} />
+      <FightScene
+        active={fighter}
+        hits={hits}
+        label={t(fighter ? "fightStatusOn" : "fightStatusIdle")}
+        hint={t("fightHint")}
+        muteOnLabel={t("fightMuteOff")}
+        muteOffLabel={t("fightMuteOn")}
+      />
       <div className="page-head">
         <h1>{t("zapretTitle")}</h1>
         <span className="tag beta">beta</span>
@@ -129,8 +139,9 @@ export function ZapretScreen({
             <span>{t("zapretSub")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={on}
+            aria-label={t("tunnelGuard")}
             disabled={busy || foreign}
             title={foreign ? t("zapretForeignHint") : undefined}
             onClick={toggle}
@@ -165,7 +176,7 @@ export function ZapretScreen({
             <b>{t("zapretAuto")}</b>
             <span>{t("zapretAutoHint")}</span>
           </div>
-          <button className="switch" aria-checked={auto} onClick={() => setAuto(!auto)}>
+          <button role="switch" className="switch" aria-checked={auto} aria-label={t("zapretAuto")} onClick={() => setAuto(!auto)}>
             <span />
           </button>
         </div>
@@ -206,7 +217,7 @@ export function ZapretScreen({
             <dd>
               <div className="tg-row">
                 <button
-                  className="switch"
+                  role="switch" className="switch"
                   aria-checked={tgProxy}
                   onClick={() => setTgProxy(!tgProxy)}
                   aria-label={t("zpOurTg")}

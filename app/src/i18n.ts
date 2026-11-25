@@ -392,6 +392,14 @@ const dict: Dict = {
   pasteLink: { ru: "Вставь ссылку vless:// (можно несколько строк)", en: "Paste vless:// link (multiple lines allowed)" },
   checkPing: { ru: "Проверить пинг", en: "Check latency" },
   checking: { ru: "Проверяю…", en: "Checking…" },
+  fightStatusOn: { ru: "РКН в нокдауне", en: "Censor knocked down" },
+  fightStatusIdle: { ru: "РКН на страже", en: "Censor on guard" },
+  fightHint: {
+    ru: "Маскот бьёт по цензуре. Звук можно выключить.",
+    en: "The mascot fights censorship. Sound can be muted.",
+  },
+  fightMuteOn: { ru: "Выключить звук", en: "Mute sound" },
+  fightMuteOff: { ru: "Включить звук", en: "Unmute sound" },
   logsEmpty: {
     ru: "Здесь появятся записи нашего движка, когда запустишь туннель.",
     en: "Engine records appear here once you start a tunnel."

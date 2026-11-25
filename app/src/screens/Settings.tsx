@@ -210,8 +210,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("auroraHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={p.aurora}
+            aria-label={t("auroraTitle")}
             onClick={() => p.setAurora(!p.aurora)}
           >
             <span />
@@ -306,8 +307,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("connectOnStartHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={connectOnStart}
+            aria-label={t("connectOnStart")}
             onClick={() => setConnectOnStart(!connectOnStart)}
           >
             <span />
@@ -321,8 +323,9 @@ export function SettingsScreen(p: Props) {
             <b>{t("autostart")}</b>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={autostart}
+            aria-label={t("autostart")}
             onClick={async () => {
               const next = !autostart;
               setAutostart(next);
@@ -342,8 +345,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("trayHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={p.closeToTray}
+            aria-label={t("tray")}
             onClick={() => p.setCloseToTray(!p.closeToTray)}
           />
         </div>
@@ -352,7 +356,12 @@ export function SettingsScreen(p: Props) {
             <b>{t("notify")}</b>
             <span>{t("notifyHint")}</span>
           </div>
-          <button className="switch" aria-checked={p.notifyOn} onClick={() => p.setNotifyOn(!p.notifyOn)} />
+          <button
+            role="switch" className="switch"
+            aria-checked={p.notifyOn}
+            aria-label={t("notify")}
+            onClick={() => p.setNotifyOn(!p.notifyOn)}
+          />
         </div>
         <div className="row">
           <div className="txt">
@@ -384,7 +393,13 @@ export function SettingsScreen(p: Props) {
             <b>{t("killSwitch")}</b>
             <span>{t("killSwitchHint")}</span>
           </div>
-          <button className="switch" aria-checked={killSwitch} onClick={() => setKillSwitch(!killSwitch)} />
+          <button
+            role="switch"
+            className="switch"
+            aria-checked={killSwitch}
+            aria-label={t("killSwitch")}
+            onClick={() => setKillSwitch(!killSwitch)}
+          />
         </div>
         <div className="row" style={{ display: "block" }}>
           <div className="txt" style={{ maxWidth: 560 }}>
@@ -568,8 +583,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("soundHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={sound}
+            aria-label={t("soundTitle")}
             onClick={() => {
               const next = !sound;
               setSound(next);
@@ -605,8 +621,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("gameHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={p.gameMode}
+            aria-label={t("gameTitle")}
             onClick={() => p.setGameMode(!p.gameMode)}
           />
         </div>
@@ -657,8 +674,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("autoSelectLossHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={p.autoSelectLoss}
+            aria-label={t("autoSelectLoss")}
             onClick={() => p.setAutoSelectLoss(!p.autoSelectLoss)}
           />
         </div>
@@ -668,8 +686,9 @@ export function SettingsScreen(p: Props) {
             <span>{t("autoSwitchSlowHint")}</span>
           </div>
           <button
-            className="switch"
+            role="switch" className="switch"
             aria-checked={p.autoSwitchSlow}
+            aria-label={t("autoSwitchSlow")}
             onClick={() => p.setAutoSwitchSlow(!p.autoSwitchSlow)}
           />
         </div>
@@ -724,8 +743,10 @@ export function SettingsScreen(p: Props) {
             <span>{t("minimizeToTrayHint")}</span>
           </div>
           <button
+            role="switch"
             className="switch"
             aria-checked={p.minimizeToTray}
+            aria-label={t("minimizeToTray")}
             onClick={() => p.setMinimizeToTray(!p.minimizeToTray)}
           />
         </div>
@@ -734,7 +755,13 @@ export function SettingsScreen(p: Props) {
             <b>{t("ipv6")}</b>
             <span>{t("ipv6Hint")}</span>
           </div>
-          <button className="switch" aria-checked={p.blockIpv6} onClick={() => p.setBlockIpv6(!p.blockIpv6)} />
+          <button
+            role="switch"
+            className="switch"
+            aria-checked={p.blockIpv6}
+            aria-label={t("ipv6")}
+            onClick={() => p.setBlockIpv6(!p.blockIpv6)}
+          />
         </div>
       </div>
 

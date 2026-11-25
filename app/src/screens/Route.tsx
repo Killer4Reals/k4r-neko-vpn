@@ -203,7 +203,12 @@ export function RouteScreen({
             <b>{t("routeRu")}</b>
             <span>{t("routeRuHint")}</span>
           </div>
-          <button className="switch" aria-checked={ruDirect} onClick={() => setRuDirect(!ruDirect)}>
+          <button
+            role="switch" className="switch"
+            aria-checked={ruDirect}
+            aria-label={t("routeRu")}
+            onClick={() => setRuDirect(!ruDirect)}
+          >
             <span />
           </button>
         </div>
@@ -212,7 +217,12 @@ export function RouteScreen({
             <b>{t("routeAds")}</b>
             <span>{t("routeAdsHint")}</span>
           </div>
-          <button className="switch" aria-checked={blockAds} onClick={() => setBlockAds(!blockAds)}>
+          <button
+            role="switch" className="switch"
+            aria-checked={blockAds}
+            aria-label={t("routeAds")}
+            onClick={() => setBlockAds(!blockAds)}
+          >
             <span />
           </button>
         </div>
@@ -278,7 +288,7 @@ export function RouteScreen({
                 style={{ animationDelay: `${Math.min(i, 14) * 26}ms` }}
               >
                 <button
-                  className="switch"
+                  role="switch" className="switch"
                   aria-checked={r.enabled}
                   aria-label={t("routeEnable")}
                   onClick={() => patch(i, { enabled: !r.enabled })}
