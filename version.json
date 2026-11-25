@@ -2,5 +2,5 @@
   "version": "1.50.0",
   "notes": "1.50.0: Mica-подложка, меню трея со статусом и переключателем, диагностика одним zip, память узла по сети, онбординг, просадка скорости",
   "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.50.0/K4R.Neko.VPN_1.50.0_x64-setup.exe",
-  "sha256": "c4ecb3418e663369ee1be025a2f9253b138947e7de6f4e49975688321d80d1d8"
+  "sha256": "c3f2545a64ae89192abb02e9e74006225c6c5be1768a0d8a3278759b94d61c62"
 }
