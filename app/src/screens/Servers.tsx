@@ -303,7 +303,7 @@ export function ServersScreen(p: Props) {
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="sub-actions">
           <button className="btn primary" style={{ width: "auto", paddingInline: 16 }} onClick={p.onLoad} disabled={busy}>
             <RefreshIcon size={14} />
             {busy ? "…" : t("refresh")}
@@ -343,7 +343,7 @@ export function ServersScreen(p: Props) {
           </button>
           <button className="btn" style={{ width: "auto", paddingInline: 14 }} onClick={doPing} disabled={pinging}>
             <BoltIcon size={14} />
-            {pinging ? "…" : t("checkPing")}
+            {pinging ? t("checking") : t("checkPing")}
           </button>
           <button
             className="btn"

@@ -391,6 +391,7 @@ const dict: Dict = {
   importFile: { ru: "Импорт файла", en: "Import file" },
   pasteLink: { ru: "Вставь ссылку vless:// (можно несколько строк)", en: "Paste vless:// link (multiple lines allowed)" },
   checkPing: { ru: "Проверить пинг", en: "Check latency" },
+  checking: { ru: "Проверяю…", en: "Checking…" },
   logsEmpty: {
     ru: "Здесь появятся записи нашего движка, когда запустишь туннель.",
     en: "Engine records appear here once you start a tunnel."

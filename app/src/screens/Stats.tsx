@@ -88,6 +88,11 @@ export function StatsScreen({ t }: Props) {
                     style={{
                       height: `${barHeight(value, peak)}%`,
                       minHeight: value > 0 ? 3 : 2,
+                      // столбец шириной в ячейку выглядит как заливка, если
+                      // день всего один: держим полосу и центрируем её
+                      width: "100%",
+                      maxWidth: 34,
+                      justifySelf: "center",
                       background: value > 0 ? "var(--green, #39FF14)" : "rgba(136,136,136,0.25)",
                       borderRadius: 4,
                     }}
