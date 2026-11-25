@@ -72,6 +72,12 @@ function biome(lat: number): number {
  */
 function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit<Props, "style">) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  // Пинг приходит уже после первого кадра, а цикл рисования зависит только от
+  // геометрии и цели. Если читать nodes из замыкания, он навсегда запомнит
+  // пустой список — узлы не появятся до смены страны. Держим свежий список в
+  // ref, как это делает планета.
+  const nodesRef = useRef<GlobeNode[]>([]);
+  nodesRef.current = nodes ?? [];
 
   const geom = useMemo(() => {
     const list = landDots(2);
@@ -170,6 +176,11 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
           s.hold -= dt;
           s.angle += (s.goal - s.angle) * Math.min(1, dt * 3.4);
           s.angle += Math.sin(t * 0.8) * dt * 0.02;
+        } else if (target) {
+          // Выбранная страна остаётся в центре. Раньше шар после паузы
+          // возвращался к «нейтральному» наклону и уплывал, и точки узлов
+          // сбивались к кромке — выглядело так, будто они все в одном месте.
+          s.angle += (s.goal - s.angle) * Math.min(1, dt * 2.4);
         } else {
           s.angle += dt * DRIFT;
           s.goal = s.angle;
@@ -347,16 +358,22 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
       }
 
       // узлы: цвет точки = последний замер, как на планете
-      for (const n of nodes ?? []) {
+      for (const n of nodesRef.current) {
         const p = project(n, s.angle, s.tilt);
         if (p.z <= 0.02) continue;
         const x = cx + p.x * R;
         const y = cy - p.y * R;
         const tone = nodeTone(n.ms, !!n.stale && n.ms !== null);
-        ctx.globalAlpha = (tone === "dead" ? 0.6 : tone === "stale" ? 0.45 : 0.85) * Math.min(1, p.z * 1.6);
+        // тёмная подложка: цветная точка не сливается с точками суши
+        ctx.globalAlpha = 0.55 * Math.min(1, p.z * 1.6);
+        ctx.fillStyle = "#07070c";
+        ctx.beginPath();
+        ctx.arc(x, y, 4.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = (tone === "dead" ? 0.6 : tone === "stale" ? 0.45 : 0.9) * Math.min(1, p.z * 1.6);
         ctx.fillStyle = TONE_COLOR[tone];
         ctx.beginPath();
-        ctx.arc(x, y, 2.6, 0, Math.PI * 2);
+        ctx.arc(x, y, 2.8, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
       }

@@ -128,7 +128,6 @@ export function ZapretScreen({
       />
       <div className="page-head">
         <h1>{t("zapretTitle")}</h1>
-        <span className="tag beta">beta</span>
         <p>{t("zapretSub")}</p>
       </div>
 

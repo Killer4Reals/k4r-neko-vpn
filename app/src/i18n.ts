@@ -4,7 +4,6 @@ type Dict = Record<string, { ru: string; en: string }>;
 
 const dict: Dict = {
   appName: { ru: "K4R Neko VPN", en: "K4R Neko VPN" },
-  tagBeta: { ru: "beta", en: "beta" },
 
   navHome: { ru: "Подключение", en: "Connection" },
   navServers: { ru: "Серверы", en: "Servers" },
@@ -209,8 +208,8 @@ const dict: Dict = {
   },
   ob2Title: { ru: "Защита туннеля", en: "Tunnel guard" },
   ob2Body: {
-    ru: "Zapret 2 держит туннель от провайдерских блокировок. Если он упадёт — увидишь это, а не тихий обрыв.",
-    en: "Zapret 2 keeps the tunnel alive against ISP blocking. If it drops, you see it — no silent break.",
+    ru: "Zapret держит туннель от провайдерских блокировок. Если он упадёт — увидишь это, а не тихий обрыв.",
+    en: "Zapret keeps the tunnel alive against ISP blocking. If it drops, you see it — no silent break.",
   },
   ob3Title: { ru: "Ничего лишнего наружу", en: "Nothing extra leaves" },
   ob3Body: {
@@ -391,7 +390,22 @@ const dict: Dict = {
   importLink: { ru: "Импорт ссылки", en: "Import link" },
   importFile: { ru: "Импорт файла", en: "Import file" },
   pasteLink: { ru: "Вставь ссылку vless:// (можно несколько строк)", en: "Paste vless:// link (multiple lines allowed)" },
-  checkPing: { ru: "Проверить пинг", en: "Check latency" },
+  pingAll: { ru: "Пинговать все", en: "Ping all" },
+  favorites: { ru: "Избранные", en: "Favorites" },
+  favoritesHint: {
+    ru: "Отмеченные звёздочкой узлы всегда сверху; кнопка показывает только их",
+    en: "Starred nodes always stay on top; the button shows only them",
+  },
+  favoriteAdd: { ru: "В избранное", en: "Add to favorites" },
+  favoriteRemove: { ru: "Убрать из избранного", en: "Remove from favorites" },
+  favEmpty: {
+    ru: "Пока нет избранных — нажми звёздочку у нужного узла",
+    en: "No favorites yet — tap the star on a server",
+  },
+  sortBy: { ru: "Порядок", en: "Sort" },
+  sortPing: { ru: "По пингу", en: "By ping" },
+  sortName: { ru: "По названию", en: "By name" },
+  sortCountry: { ru: "По стране", en: "By country" },
   checking: { ru: "Проверяю…", en: "Checking…" },
   fightStatusOn: { ru: "РКН в нокдауне", en: "Censor knocked down" },
   fightStatusIdle: { ru: "РКН на страже", en: "Censor on guard" },
@@ -510,8 +524,8 @@ const dict: Dict = {
 
   zapretTitle: { ru: "Защита туннеля", en: "Tunnel guard" },
   zapretSub: {
-    ru: "Zapret 2 маскирует туннель от DPI, чтобы соединение не рвали",
-    en: "Zapret 2 disguises the tunnel from DPI so the connection is not cut"
+    ru: "Zapret маскирует туннель от DPI, чтобы соединение не рвали",
+    en: "Zapret disguises the tunnel from DPI so the connection is not cut"
   },
   zapretMaskHint: {
     ru: "Маскирует пакеты на уровне сети — DPI не видит туннель.",
@@ -520,8 +534,8 @@ const dict: Dict = {
   preset: { ru: "Пресет", en: "Preset" },
   zapretAuto: { ru: "Запускать вместе с приложением", en: "Start together with the app" },
   zapretAutoHint: {
-    ru: "Не нужен отдельный Zapret 2 Dev: приложение само поднимет выбранный пресет при запуске.",
-    en: "No separate Zapret 2 Dev needed: the app raises the chosen preset itself on start.",
+    ru: "Отдельный Zapret не нужен: приложение само поднимет выбранный пресет при запуске.",
+    en: "No separate Zapret needed: the app raises the chosen preset itself on start.",
   },
   zapretPath: { ru: "Папка Zapret", en: "Zapret folder" },
   autoRestart: { ru: "Перезапускать при сбое", en: "Restart on failure" },

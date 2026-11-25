@@ -8,6 +8,7 @@ import { sparkPoints, sparkTone } from "../spark";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
 import { ServerMap } from "../ServerMap";
+import { sortServers, type SortMode } from "../serverSort";
 import { classifyClip, shouldOffer } from "../clipHint";
 import { decodeSubLink, encodeSubLink } from "../subLink";
 
@@ -40,6 +41,9 @@ type Props = {
   onToggleReserve: (id: string) => void;
   /** text = конфиг, null = зарегистрировать WARP автоматически */
   onAddWireguard: (text: string | null) => Promise<void>;
+  /** id узлов, отмеченных звёздочкой */
+  favorites?: string[];
+  toggleFavorite?: (id: string) => void;
 };
 
 const shortUrl = (u: string) => {
@@ -104,12 +108,29 @@ export function ServersScreen(p: Props) {
   // Поиск по списку: у провайдеров бывает по 30–60 узлов, и «найди мне Токио»
   // глазами — это прокрутка на полминуты.
   const [query, setQuery] = useState("");
+  // «Только избранные» и порядок запоминаем: список узлов меняется, привычка
+  // смотреть сначала быстрые — нет.
+  const [favOnly, setFavOnly] = useState(false);
+  const [sort, setSort] = useState<SortMode>(() => {
+    const saved = localStorage.getItem("k4r.serverSort");
+    return saved === "name" || saved === "country" ? saved : "ping";
+  });
+  const changeSort = (v: SortMode) => {
+    setSort(v);
+    try {
+      localStorage.setItem("k4r.serverSort", v);
+    } catch {
+      /* настройка не критична */
+    }
+  };
+  const favs = p.favorites ?? [];
   const q = query.trim().toLowerCase();
-  const shown = q
+  const filtered = q
     ? servers.filter((s) =>
         [s.city, s.country, s.tag, s.cc].some((v) => (v ?? "").toLowerCase().includes(q)),
       )
     : servers;
+  const shown = sortServers(favOnly ? filtered.filter((s) => favs.includes(s.id)) : filtered, sort, favs);
   const [hwidNote, setHwidNote] = useState("");
   // Сброс HWID прямо из ошибки: не нужно искать карточку в настройках
   const resetHwid = async () => {
@@ -343,7 +364,7 @@ export function ServersScreen(p: Props) {
           </button>
           <button className="btn" style={{ width: "auto", paddingInline: 14 }} onClick={doPing} disabled={pinging}>
             <BoltIcon size={14} />
-            {pinging ? t("checking") : t("checkPing")}
+            {pinging ? t("checking") : t("pingAll")}
           </button>
           <button
             className="btn"
@@ -496,26 +517,43 @@ export function ServersScreen(p: Props) {
       )}
 
       {servers.length > 0 && (
-        <div className="card" style={{ padding: 10, marginBottom: 12 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              className="input"
-              style={{ flex: 1 }}
-              placeholder={t("searchNodes")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              spellCheck={false}
-              aria-label={t("searchNodes")}
-            />
-            {q && (
-              <button className="ghost-btn" onClick={() => setQuery("")} aria-label={t("clear")}>
-                ×
-              </button>
-            )}
-            <span className="muted" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
-              {shown.length} / {servers.length}
-            </span>
-          </div>
+        <div className="card server-tools">
+          <input
+            className="input"
+            placeholder={t("searchNodes")}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            spellCheck={false}
+            aria-label={t("searchNodes")}
+          />
+          {q && (
+            <button className="ghost-btn" onClick={() => setQuery("")} aria-label={t("clear")}>
+              ×
+            </button>
+          )}
+          <button
+            className="filter-chip"
+            data-on={favOnly}
+            aria-pressed={favOnly}
+            onClick={() => setFavOnly((v) => !v)}
+            title={t("favoritesHint")}
+          >
+            ★ {t("favorites")}
+            {favs.length > 0 && <b>{favs.length}</b>}
+          </button>
+          <select
+            className="input select sort-select"
+            value={sort}
+            onChange={(e) => changeSort(e.target.value as SortMode)}
+            aria-label={t("sortBy")}
+          >
+            <option value="ping">{t("sortPing")}</option>
+            <option value="name">{t("sortName")}</option>
+            <option value="country">{t("sortCountry")}</option>
+          </select>
+          <span className="muted count">
+            {shown.length} / {servers.length}
+          </span>
         </div>
       )}
 
@@ -528,9 +566,9 @@ export function ServersScreen(p: Props) {
         />
       )}
 
-      {servers.length > 0 && q && shown.length === 0 && (
+      {servers.length > 0 && (q || favOnly) && shown.length === 0 && (
         <div className="card" style={{ padding: 14 }}>
-          <span className="muted">{t("nothingFound")}</span>
+          <span className="muted">{favOnly && !q ? t("favEmpty") : t("nothingFound")}</span>
         </div>
       )}
 
@@ -543,8 +581,37 @@ export function ServersScreen(p: Props) {
               className="server"
               aria-current={s.id === selectedId}
               onClick={() => setSelectedId(s.id)}
-              style={{ gridTemplateColumns: "26px minmax(0,1fr) 90px 70px auto" }}
+              style={{ gridTemplateColumns: "22px 26px minmax(0,1fr) 90px 70px auto" }}
             >
+              <span
+                className="fav-star"
+                role="button"
+                tabIndex={0}
+                aria-pressed={favs.includes(s.id)}
+                aria-label={favs.includes(s.id) ? t("favoriteRemove") : t("favoriteAdd")}
+                data-on={favs.includes(s.id) ? "1" : "0"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  p.toggleFavorite?.(s.id);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    p.toggleFavorite?.(s.id);
+                  }
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                  <path
+                    d="M12 3.7l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 17l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"
+                    fill={favs.includes(s.id) ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
               <Flag cc={s.flag || s.cc} />
               <span>
                 <div className="name">{s.city}</div>

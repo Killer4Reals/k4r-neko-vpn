@@ -52,7 +52,7 @@ impl Default for Zapret {
     }
 }
 
-/// Zapret 2 Dev keeps binaries, presets and lists side by side.
+/// Zapret хранит бинарники, пресеты и списки рядом друг с другом.
 pub fn looks_like_zapret(dir: &Path) -> bool {
     dir.join("exe").join("winws2.exe").exists() || dir.join("exe").join("winws.exe").exists()
 }
@@ -146,7 +146,7 @@ pub fn start(
 ) -> Result<ZapretStatus, String> {
     if !looks_like_zapret(dir) {
         return Err(format!(
-            "в папке {} нет winws2.exe — укажи папку Zapret 2 Dev",
+            "в папке {} нет winws2.exe — укажи папку с Zapret",
             dir.display()
         ));
     }

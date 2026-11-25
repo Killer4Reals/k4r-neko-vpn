@@ -6,6 +6,7 @@ import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { SCENARIOS, type ScenarioId } from "../scenarios";
 import { Flag } from "../Flag";
+import { nameOf } from "../flags";
 import { humanBytes, leftBytes, subTiming } from "../sub";
 import { grade, providerOf, score } from "../passport";
 import { isFresh } from "../health";
@@ -396,7 +397,12 @@ export function HomeScreen(p: Props) {
             <div className="passport-cell">
               <span className="k">{t("passportCountry")}</span>
               <strong>
-                <Flag cc={selected.flag || selected.cc} size="sm" /> {selected.country}
+                <Flag cc={selected.flag || selected.cc} size="sm" />{" "}
+                {/* country — вторая строка списка; у страны с тем же именем
+                    там адрес узла. В паспорте нужен именно название страны. */}
+                {selected.country.includes(":")
+                  ? nameOf(selected.cc || selected.flag) ?? selected.country
+                  : selected.country}
               </strong>
             </div>
             <div className="passport-cell">

@@ -2,6 +2,8 @@
 // не ходит в интернет за иконками. Если страны нет в наборе — показываем
 // привычные две буквы, чтобы список не разъезжался.
 
+import { useEffect, useState } from "react";
+
 type Props = {
   /** двухбуквенный код страны, например fi */
   cc: string | null;
@@ -12,7 +14,11 @@ type Props = {
 export function Flag({ cc, size = "md", dim = false }: Props) {
   // код страны — ровно две латинские буквы; всё остальное (эмодзи, «VPN») не флаг
   const code = cc && /^[a-z]{2}$/i.test(cc) ? cc.toLowerCase() : null;
-  if (!code) {
+  // Флаг есть не у всех стран: у новых в наборе нет картинки. Битая иконка
+  // хуже глобуса, поэтому запоминаем ошибку загрузки и рисуем запасной знак.
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [code]);
+  if (!code || broken) {
     // страны не нашлось: свой значок глобуса, чтобы список не разъезжался и
     // рядом с настоящими флагами не торчала плашка с буквами
     return (
@@ -29,7 +35,14 @@ export function Flag({ cc, size = "md", dim = false }: Props) {
       {/* Без loading="lazy": иначе в окне, которое свернули или отрисовали
           через PrintWindow, флаги остаются пустыми квадратами — WebView
           считает их «вне экрана». Файлы крошечные, грузить все сразу дешевле. */}
-      <img src={`flags/${code}.svg`} alt="" draggable={false} decoding="async" loading="eager" />
+      <img
+        src={`flags/${code}.svg`}
+        alt=""
+        draggable={false}
+        decoding="async"
+        loading="eager"
+        onError={() => setBroken(true)}
+      />
     </span>
   );
 }

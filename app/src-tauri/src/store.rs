@@ -32,6 +32,9 @@ pub struct AppState {
     /// Именованные наборы программ: «Работа», «Игры», «Кино».
     #[serde(default)]
     pub split_presets: Vec<SplitPreset>,
+    /// Избранные узлы: отмеченные звёздочкой, показываются первыми.
+    #[serde(default)]
+    pub favorites: Vec<String>,
     pub zapret_dir: String,
     pub zapret_preset: String,
     /// Поднимать Zapret вместе с приложением, а не отдельной программой

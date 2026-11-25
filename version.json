@@ -1,6 +1,1 @@
-{
-  "version": "1.52.0",
-  "notes": "1.52.0: пресеты разделения программ, перетаскивание .exe в окно, «Взять из запущенных», меню пресета закрывается мимо и по Esc",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.52.0/K4R.Neko.VPN_1.52.0_x64-setup.exe",
-  "sha256": "2e77c91f23a9d793584ac321aa96672809c22a039eb10a52d59fd2af7c5aed69"
-}
+{"version":"1.53.0","notes":"1.53.0: избранные узлы и сортировка списка, 250 стран на глобусе, точки серверов больше не пропадают и не сбиваются к краю, без пометки beta","url":"https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.53.0/K4R.Neko.VPN_1.53.0_x64-setup.exe","sha256":"39175e7baebe1d0f813dc646bc8f08d9832e65d9bfce34fc8accb74b464bdcaa"}

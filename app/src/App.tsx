@@ -183,6 +183,12 @@ export default function App() {
     if (saved === "history") return "stats";
     return saved || "home";
   });
+  // Каждый экран открывается сверху: прокрутка серверов не должна встречать
+  // человека посреди списка после перехода с главной.
+  useEffect(() => {
+    const el = document.querySelector(".content");
+    if (el) el.scrollTop = 0;
+  }, [screen]);
   const [routesTab, setRoutesTab] = useState<"apps" | "rules">("apps");
   const [analyticsTab, setAnalyticsTab] = useState<"stats" | "history">("stats");
   // История событий: переживает перезапуск, 300 записей — это месяцы
@@ -227,6 +233,12 @@ export default function App() {
   const [splitDirty, setSplitDirty] = useState(false);
   /// Именованные наборы программ: «Работа», «Игры», «Кино».
   const [splitPresets, setSplitPresets] = useState<SplitPreset[]>([]);
+  /// Избранные узлы: id со звёздочкой. Живут рядом с подпиской, а не в
+  /// localStorage: при переносе настроек они должны переехать вместе с ней.
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const toggleFavorite = useCallback((id: string) => {
+    setFavorites((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
+  }, []);
   /// "only" = tunnel carries just the chosen programs (the owner's default)
   const [splitMode, setSplitMode] = useState<"only" | "all">("only");
   // правила маршрутизации: домены/адреса и пресеты списков
@@ -504,6 +516,7 @@ export default function App() {
           })),
         );
         if (Array.isArray(st.split_presets)) setSplitPresets(st.split_presets);
+        if (Array.isArray(st.favorites)) setFavorites(st.favorites.filter((x) => typeof x === "string"));
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
@@ -520,6 +533,7 @@ export default function App() {
           selected: selectedId,
           split: chosen.map((c) => ({ exe: c.exe, name: c.name, via: c.via })),
           split_presets: splitPresets,
+          favorites,
           zapret_dir: zapretDir ?? "",
           zapret_preset: zapretPreset,
           zapret_auto: zapretAuto,
@@ -561,7 +575,7 @@ export default function App() {
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, gameMode, gamePorts, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
-    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto, startMinimized, splitPresets,
+    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto, startMinimized, splitPresets, favorites,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -925,12 +939,13 @@ export default function App() {
     }
   }, []);
 
-  // refresh subscriptions twice a day, like a normal client
+  // Подписка обновляется сама с выбранным в настройках шагом. Раньше здесь
+  // стояли жёсткие 12 часов, и выбор «каждые 3 часа» ничего не менял.
   useEffect(() => {
-    if (!inTauri || !loaded) return;
-    const id = window.setInterval(() => loadSubscription(), 12 * 60 * 60 * 1000);
+    if (!inTauri || !loaded || subRefreshHours <= 0) return;
+    const id = window.setInterval(() => loadSubscription(), subRefreshHours * 60 * 60 * 1000);
     return () => window.clearInterval(id);
-  }, [loaded, loadSubscription]);
+  }, [loaded, loadSubscription, subRefreshHours]);
 
   // Туннель поднялся, а серверов нет: подписку могли не пустить напрямую
   // (домен режут по SNI), но через туннель она открывается. Одна повторная
@@ -1643,6 +1658,8 @@ export default function App() {
     },
     presets: splitPresets,
     setPresets: setSplitPresets,
+    favorites,
+    toggleFavorite,
     applyPreset: (apps: ChosenApp[]) => {
       setChosen(apps.map((a) => ({ exe: a.exe, name: a.name, via: a.via })));
       setSplitDirty(true);
@@ -1671,7 +1688,6 @@ export default function App() {
         <div className="brand">
           <img src="/mascot/glyph-on.png" alt="" />
           <span>K4R Neko VPN</span>
-          <span className="tag">{t("tagBeta")}</span>
         </div>
         <div className="spacer" />
         <button className="winbtn" aria-label="minimize" onClick={() => win?.minimize()}>

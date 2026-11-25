@@ -249,6 +249,8 @@ export type AppState = {
   selected: string;
   split: ChosenApp[];
   split_presets?: SplitPreset[];
+  /** избранные узлы: id серверов со звёздочкой */
+  favorites?: string[];
   zapret_dir: string;
   zapret_preset: string;
   zapret_auto?: boolean;

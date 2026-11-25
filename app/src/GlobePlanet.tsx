@@ -433,6 +433,11 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
         }
       } else if (s.hold > 0) {
         s.hold -= dt;
+      } else if (target) {
+        // Выбранная страна держится в центре. Раньше шар после паузы
+        // возвращался к нейтральному наклону, и точки узлов уезжали к кромке.
+        s.angle += (s.goal - s.angle) * Math.min(1, dt * 2.4);
+        s.tilt += (s.goalTilt - s.tilt) * Math.min(1, dt * 2.4);
       } else {
         s.angle += dt * DRIFT * 4.2;
         s.goal = s.angle;

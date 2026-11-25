@@ -3,11 +3,11 @@
 // а если их нет — по названию страны или города на русском и английском.
 // Сами флаги лежат рядом в public/flags и нарисованы руками людей (MIT).
 
-const known = new Set(
-  "ad ae al am ar at au az ba be bg br by ca ch cn cr cy cz de dk ee es fi fr gb ge gr hk hr hu id ie il in ir is it jp ke kg kr kz lt lu lv md mk mt mx my ng nl no nz pe ph pl pt ro rs ru se sg si sk th tr tw ua us uz vn za".split(
-    " ",
-  ),
-);
+import { COUNTRY } from "./countries";
+
+// Знаком ли код стране — решает таблица координат: она полная, поэтому не
+// приходится держать второй список из 70 кодов и забывать в нём новые страны.
+const known = new Set(Object.keys(COUNTRY));
 
 const words: [RegExp, string][] = [
   [/финлянд|хельсинк|finland|helsink/i, "fi"],
@@ -180,5 +180,16 @@ export function nameOf(cc: string): string | null {
     tj: "Таджикистан",
     kg: "Киргизия",
   };
-  return names[cc] ?? null;
+  const code = (cc ?? "").trim().toLowerCase();
+  if (names[code]) return names[code];
+  // Незнакомый код — не страна: ICU на «zz» отвечает «неизвестный регион»,
+  // а списку нужен именно null, чтобы показать адрес узла.
+  if (!(code in COUNTRY)) return null;
+  // Остальные страны и территории берём из ICU: 250 названий руками — это
+  // гарантированные опечатки, а Windows уже знает их по-русски.
+  try {
+    return new Intl.DisplayNames(["ru"], { type: "region" }).of(code.toUpperCase()) ?? null;
+  } catch {
+    return null;
+  }
 }
