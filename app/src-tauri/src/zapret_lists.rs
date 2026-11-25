@@ -51,7 +51,9 @@ fn is_domain(value: &str) -> bool {
         && !value.contains(' ')
         && !value.contains('/')
         && !value.contains(':')
-        && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
 }
 
 /// CIDR ли это: `1.2.3.0/24` или одиночный IPv4.
@@ -64,14 +66,21 @@ fn is_cidr(value: &str) -> bool {
     if octets.len() != 4 {
         return false;
     }
-    if !octets
-        .iter()
-        .all(|o| !o.is_empty() && o.len() <= 3 && o.chars().all(|c| c.is_ascii_digit()) && o.parse::<u16>().map(|n| n <= 255).unwrap_or(false))
-    {
+    if !octets.iter().all(|o| {
+        !o.is_empty()
+            && o.len() <= 3
+            && o.chars().all(|c| c.is_ascii_digit())
+            && o.parse::<u16>().map(|n| n <= 255).unwrap_or(false)
+    }) {
         return false;
     }
     match mask {
-        Some(m) => !m.is_empty() && m.len() <= 2 && m.chars().all(|c| c.is_ascii_digit()) && m.parse::<u8>().map(|n| n <= 32).unwrap_or(false),
+        Some(m) => {
+            !m.is_empty()
+                && m.len() <= 2
+                && m.chars().all(|c| c.is_ascii_digit())
+                && m.parse::<u8>().map(|n| n <= 32).unwrap_or(false)
+        }
         None => true,
     }
 }
@@ -126,7 +135,11 @@ pub fn import(dir: &str, include_ips: bool) -> Imported {
     ] {
         let mut taken = 0;
         for line in read_lines(&l.join(file)) {
-            let ok = if kind == "ip" { is_cidr(&line) } else { is_domain(&line) };
+            let ok = if kind == "ip" {
+                is_cidr(&line)
+            } else {
+                is_domain(&line)
+            };
             if !ok {
                 skipped += 1;
                 continue;
@@ -141,7 +154,11 @@ pub fn import(dir: &str, include_ips: bool) -> Imported {
     }
 
     // 2. Заблокированное — в туннель.
-    for file in ["list-general.txt", "list-google.txt", "list-general-user.txt"] {
+    for file in [
+        "list-general.txt",
+        "list-google.txt",
+        "list-general-user.txt",
+    ] {
         let mut taken = 0;
         for line in read_lines(&l.join(file)) {
             if !is_domain(&line) {

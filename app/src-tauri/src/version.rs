@@ -14,7 +14,7 @@ pub fn parts(text: &str) -> Vec<i64> {
         .trim()
         .trim_start_matches('v')
         .trim_start_matches('V')
-        .split(|c| c == '-' || c == '+' || c == ' ')
+        .split(['-', '+', ' '])
         .next()
         .unwrap_or("");
     if core.is_empty() {

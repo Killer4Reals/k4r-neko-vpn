@@ -536,7 +536,7 @@ mod tests {
             wg_mtu: 0,
             wg_reserved: Vec::new(),
             reserve: false,
-        cc: String::new(),
+            cc: String::new(),
         }
     }
 

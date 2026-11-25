@@ -61,9 +61,19 @@ pub fn detect_dir() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
     if let Ok(home) = std::env::var("USERPROFILE") {
-        candidates.push(PathBuf::from(&home).join("Documents").join("Zapret").join("Dev"));
+        candidates.push(
+            PathBuf::from(&home)
+                .join("Documents")
+                .join("Zapret")
+                .join("Dev"),
+        );
         candidates.push(PathBuf::from(&home).join("Documents").join("Zapret"));
-        candidates.push(PathBuf::from(&home).join("Downloads").join("Zapret").join("Dev"));
+        candidates.push(
+            PathBuf::from(&home)
+                .join("Downloads")
+                .join("Zapret")
+                .join("Dev"),
+        );
     }
     for drive in ["C:", "D:", "E:"] {
         candidates.push(PathBuf::from(format!("{drive}\\Zapret\\Dev")));
@@ -123,7 +133,9 @@ pub fn external_instance_running() -> bool {
     let Ok(out) = cmd.output() else {
         return false;
     };
-    String::from_utf8_lossy(&out.stdout).to_lowercase().contains("winws2")
+    String::from_utf8_lossy(&out.stdout)
+        .to_lowercase()
+        .contains("winws2")
 }
 
 pub fn start(
@@ -150,7 +162,10 @@ pub fn start(
         return Ok(status);
     }
     if !is_elevated() {
-        return Err("Zapret требует прав администратора: перезапусти приложение от имени администратора".into());
+        return Err(
+            "Zapret требует прав администратора: перезапусти приложение от имени администратора"
+                .into(),
+        );
     }
 
     let preset_path = preset_dir(dir).join(preset_name);
@@ -233,7 +248,10 @@ mod tests {
     /// Только для разработки: ищем папку Zapret в профиле текущего пользователя.
     fn owner_dir() -> PathBuf {
         let home = std::env::var("USERPROFILE").unwrap_or_default();
-        PathBuf::from(home).join("Documents").join("Zapret").join("Dev")
+        PathBuf::from(home)
+            .join("Documents")
+            .join("Zapret")
+            .join("Dev")
     }
 
     #[test]
@@ -245,7 +263,10 @@ mod tests {
         }
         let args = args_from_preset(&preset).unwrap();
         assert!(args.len() > 20, "preset looks too small: {}", args.len());
-        assert!(args.iter().any(|a| a == "--new"), "profile separator missing");
+        assert!(
+            args.iter().any(|a| a == "--new"),
+            "profile separator missing"
+        );
         assert!(args.iter().any(|a| a.starts_with("--lua-desync=")));
         assert!(args.iter().any(|a| a.starts_with("--wf-tcp-out=")));
         assert!(!args.iter().any(|a| a.starts_with('#')));
@@ -259,7 +280,11 @@ mod tests {
         }
         assert!(looks_like_zapret(&dir));
         let presets = list_presets(&dir);
-        assert!(presets.len() > 10, "expected many presets, got {}", presets.len());
+        assert!(
+            presets.len() > 10,
+            "expected many presets, got {}",
+            presets.len()
+        );
         assert!(presets.contains(&"general ALT9 1.10.3 (game filter).txt".to_string()));
     }
 

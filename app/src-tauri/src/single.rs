@@ -30,7 +30,9 @@ pub struct Single {
 /// Занять порт. `None` значит, что приложение уже запущено.
 pub fn acquire(port: u16) -> Option<Single> {
     let listener = TcpListener::bind(("127.0.0.1", port)).ok()?;
-    Some(Single { _listener: listener })
+    Some(Single {
+        _listener: listener,
+    })
 }
 
 /// Попросить уже запущенную копию показать окно.

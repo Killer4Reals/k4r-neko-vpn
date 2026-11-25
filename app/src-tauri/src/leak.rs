@@ -65,7 +65,10 @@ fn get_text(url: &str) -> Result<String, String> {
 /// что IPv6-трафик уходит из системы.
 pub fn ipv6_reaches_out() -> bool {
     use std::net::{Ipv6Addr, SocketAddr, TcpStream};
-    let target = SocketAddr::from((Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111), 443));
+    let target = SocketAddr::from((
+        Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111),
+        443,
+    ));
     TcpStream::connect_timeout(&target, std::time::Duration::from_secs(3)).is_ok()
 }
 
@@ -122,7 +125,10 @@ mod tests {
 
     #[test]
     fn trace_without_ip_is_empty_not_garbage() {
-        assert_eq!(parse_trace("fl=1\ncolo=AMS\n"), (String::new(), "AMS".into()));
+        assert_eq!(
+            parse_trace("fl=1\ncolo=AMS\n"),
+            (String::new(), "AMS".into())
+        );
     }
 
     #[test]

@@ -6,8 +6,11 @@
 
 use crate::subscription::Profile;
 
+/// Строки секции: ключ и значение, как в SimpleINI.
+type Entries = Vec<(String, String)>;
+
 /// SimpleINI: секции `[Interface]` и `[Peer]`, ключи через `=`.
-fn parse_ini(text: &str) -> (Vec<(String, String)>, Vec<(String, String)>) {
+fn parse_ini(text: &str) -> (Entries, Entries) {
     let mut iface = Vec::new();
     let mut peer = Vec::new();
     let mut section = "";
@@ -191,7 +194,7 @@ Endpoint = engage.cloudflareclient.com:2408
         assert_eq!(p.port, 2408);
         assert_eq!(p.wg_mtu, 1280);
         assert_eq!(p.wg_addresses.len(), 2);
-                assert_eq!(p.name, "WARP");
+        assert_eq!(p.name, "WARP");
         assert!(p.wg_private_key.starts_with("aGVsbG8"));
     }
 
@@ -214,10 +217,15 @@ Endpoint = engage.cloudflareclient.com:2408
     #[test]
     fn complains_about_missing_parts() {
         assert!(parse("мусор", "x").unwrap_err().contains("Interface"));
-        assert!(parse("[Interface]\nPrivateKey=k\n", "x").unwrap_err().contains("Peer"));
-        assert!(parse("[Interface]\nAddress=1.2.3.4/32\n[Peer]\nPublicKey=p\nEndpoint=h:1\n", "x")
+        assert!(parse("[Interface]\nPrivateKey=k\n", "x")
             .unwrap_err()
-            .contains("PrivateKey"));
+            .contains("Peer"));
+        assert!(parse(
+            "[Interface]\nAddress=1.2.3.4/32\n[Peer]\nPublicKey=p\nEndpoint=h:1\n",
+            "x"
+        )
+        .unwrap_err()
+        .contains("PrivateKey"));
     }
 
     #[test]

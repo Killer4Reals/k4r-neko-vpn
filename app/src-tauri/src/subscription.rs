@@ -105,7 +105,11 @@ pub fn parse_title(raw: &str) -> String {
     let raw = raw.trim();
     let decoded = raw
         .strip_prefix("base64:")
-        .and_then(|b| base64::engine::general_purpose::STANDARD.decode(b.trim()).ok())
+        .and_then(|b| {
+            base64::engine::general_purpose::STANDARD
+                .decode(b.trim())
+                .ok()
+        })
         .or_else(|| base64::engine::general_purpose::STANDARD.decode(raw).ok())
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .unwrap_or_else(|| raw.to_string());
@@ -120,7 +124,9 @@ pub fn parse_userinfo(raw: &str) -> SubInfo {
             continue;
         };
         let value = value.trim().trim_end_matches(|c: char| !c.is_ascii_digit());
-        let Ok(num) = value.parse::<u64>() else { continue };
+        let Ok(num) = value.parse::<u64>() else {
+            continue;
+        };
         match key.trim().to_ascii_lowercase().as_str() {
             "upload" => info.upload = num,
             "download" => info.download = num,
@@ -146,7 +152,8 @@ fn more_useful(current: &str, candidate: &str) -> bool {
         // «провайдер отдал Clash YAML» — наша формулировка, она ценнее не всех.
         if e.starts_with("провайдер:") {
             3
-        } else if e.starts_with("сервер ответил") || e.starts_with("сеть недоступна") {
+        } else if e.starts_with("сервер ответил") || e.starts_with("сеть недоступна")
+        {
             2
         } else if e.is_empty() {
             0
@@ -196,11 +203,7 @@ fn agent() -> ureq::Agent {
         .into()
 }
 
-pub fn fetch(
-    url: &str,
-    user_agent: &str,
-    headers: &[SubHeader],
-) -> Result<SubResult, String> {
+pub fn fetch(url: &str, user_agent: &str, headers: &[SubHeader]) -> Result<SubResult, String> {
     // Панели узнают клиента по User-Agent и чужим отвечают 502 или 403 —
     // со стороны человека это выглядит как «сервер сломался». Пробуем
     // по очереди: сначала его настройку, потом знакомых клиентов.
@@ -508,7 +511,10 @@ fn parse_clash(text: &str) -> Result<SubResult, String> {
 /// показать сервер, к которому не подключиться.
 fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
     let kind = ystr(item, "type").to_ascii_lowercase();
-    if !matches!(kind.as_str(), "vless" | "trojan" | "shadowsocks" | "ss" | "vmess") {
+    if !matches!(
+        kind.as_str(),
+        "vless" | "trojan" | "shadowsocks" | "ss" | "vmess"
+    ) {
         return None;
     }
     let host = ystr(item, "server");
@@ -516,7 +522,11 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
         return None;
     }
     // Shadowsocks в Clash пишут и как `ss`, и как `shadowsocks`
-    let kind = if kind == "ss" { "shadowsocks".to_string() } else { kind };
+    let kind = if kind == "ss" {
+        "shadowsocks".to_string()
+    } else {
+        kind
+    };
     let is_vless = kind == "vless";
     let uuid = ystr(item, "uuid");
     let password = ystr(item, "password");
@@ -571,9 +581,7 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
             a
         }
     };
-    let public_key = reality
-        .map(|r| ystr(r, "public-key"))
-        .unwrap_or_default();
+    let public_key = reality.map(|r| ystr(r, "public-key")).unwrap_or_default();
     let short_id = reality.map(|r| ystr(r, "short-id")).unwrap_or_default();
     let fingerprint = {
         let f = ystr(item, "client-fingerprint");
@@ -605,7 +613,11 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
         .unwrap_or_default();
 
     let alter_id = ynum(item, "alterId").unwrap_or(0).min(u16::MAX as u64) as u16;
-    let id_key = if uuid.is_empty() { password.clone() } else { uuid.clone() };
+    let id_key = if uuid.is_empty() {
+        password.clone()
+    } else {
+        uuid.clone()
+    };
 
     Some(Profile {
         id: format!("{host}:{port}:{id_key}"),
@@ -615,8 +627,16 @@ fn clash_profile(item: &serde_yaml_ng::Value) -> Option<Profile> {
         uuid,
         flow: ystr(item, "flow"),
         // У Trojan TLS включён всегда, у Shadowsocks его нет вовсе
-        security: if kind == "shadowsocks" { "none".to_string() } else { security },
-        network: if kind == "shadowsocks" { "tcp".to_string() } else { network },
+        security: if kind == "shadowsocks" {
+            "none".to_string()
+        } else {
+            security
+        },
+        network: if kind == "shadowsocks" {
+            "tcp".to_string()
+        } else {
+            network
+        },
         sni,
         public_key,
         short_id,
@@ -691,16 +711,15 @@ fn is_placeholder(p: &Profile) -> bool {
 /// Коды стран, которые встречаются в подписках: двухбуквенный ярлык в домене
 /// (`de.savethis.cloud`) — самый надёжный признак страны сервера.
 const KNOWN_CC: [&str; 46] = [
-    "ad", "ae", "al", "am", "ar", "at", "au", "az", "ba", "bg", "br", "by", "ca", "ch", "cn",
-    "cy", "cz", "de", "dk", "ee", "es", "fi", "fr", "gb", "ge", "gr", "hk", "hr", "hu", "id",
-    "ie", "il", "in", "ir", "is", "it", "jp", "ke", "kg", "kr", "kz", "lt", "lu", "lv", "md",
-    "mk",
+    "ad", "ae", "al", "am", "ar", "at", "au", "az", "ba", "bg", "br", "by", "ca", "ch", "cn", "cy",
+    "cz", "de", "dk", "ee", "es", "fi", "fr", "gb", "ge", "gr", "hk", "hr", "hu", "id", "ie", "il",
+    "in", "ir", "is", "it", "jp", "ke", "kg", "kr", "kz", "lt", "lu", "lv", "md", "mk",
 ];
 
 /// Хвост списка: страны, которые провайдеры отдают чаще всего.
 const KNOWN_CC_TAIL: [&str; 26] = [
-    "mt", "mx", "my", "ng", "nl", "no", "nz", "pe", "ph", "pl", "pt", "ro", "rs", "ru", "se",
-    "sg", "si", "sk", "th", "tr", "tw", "ua", "us", "uz", "vn", "za",
+    "mt", "mx", "my", "ng", "nl", "no", "nz", "pe", "ph", "pl", "pt", "ro", "rs", "ru", "se", "sg",
+    "si", "sk", "th", "tr", "tw", "ua", "us", "uz", "vn", "za",
 ];
 
 fn is_cc(s: &str) -> bool {
@@ -853,18 +872,6 @@ fn country_label(cc: &str) -> Option<String> {
     Some(name.to_string())
 }
 
-/// `de` → 🇩🇪. Строим сами: провайдер может прислать имя без флага.
-fn emoji_for(cc: &str) -> String {
-    let mut out = String::new();
-    for ch in cc.chars().take(2) {
-        let up = ch.to_ascii_uppercase();
-        if let Some(c) = char::from_u32(0x1F1E6 + (up as u32 - 'A' as u32)) {
-            out.push(c);
-        }
-    }
-    out
-}
-
 /// Насколько имя узла похоже на человеческое. Провайдер отдаёт один и тот же
 /// сервер и в группе «Авто-выбор», и отдельной строкой со страной: если взять
 /// первое вхождение, весь список называется «Авто-выбор сервера», а страна не
@@ -875,7 +882,14 @@ fn name_score(name: &str) -> u8 {
         return 3;
     }
     let generic = [
-        "авто", "auto", "fastest", "быстр", "выбор", "select", "all nodes", "глобал",
+        "авто",
+        "auto",
+        "fastest",
+        "быстр",
+        "выбор",
+        "select",
+        "all nodes",
+        "глобал",
     ];
     if generic.iter().any(|g| low.contains(g)) {
         return 0;
@@ -910,11 +924,13 @@ fn localize_name(name: &str, cc: &str) -> String {
         if token.is_empty() || token.len() > 6 {
             continue;
         }
-        let looks_like_variant = token.chars().any(|c| c.is_ascii_digit() || c.is_ascii_uppercase());
+        let looks_like_variant = token
+            .chars()
+            .any(|c| c.is_ascii_digit() || c.is_ascii_uppercase());
         // «Germany» — это страна, а не метка варианта: её заменит русская подпись
-        let is_country_word = CC_WORDS
-            .iter()
-            .any(|(word, _)| word.eq_ignore_ascii_case(token) || word.replace(' ', "") == token.to_lowercase());
+        let is_country_word = CC_WORDS.iter().any(|(word, _)| {
+            word.eq_ignore_ascii_case(token) || word.replace(' ', "") == token.to_lowercase()
+        });
         if is_country_word || token.eq_ignore_ascii_case(&label) {
             continue;
         }
@@ -1062,13 +1078,21 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
     if host.is_empty() || uuid.is_empty() {
         return None;
     }
-    let flow = ob.get("flow").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let flow = ob
+        .get("flow")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let tls = ob.get("tls");
     let reality = tls.and_then(|t| t.get("reality"));
     let security = if reality.is_some() {
         "reality"
-    } else if tls.and_then(|t| t.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false) {
+    } else if tls
+        .and_then(|t| t.get("enabled"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         "tls"
     } else {
         "none"
@@ -1121,7 +1145,11 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
         .to_string();
 
     let tag = ob.get("tag").and_then(|v| v.as_str()).unwrap_or("");
-    let name = if tag.is_empty() { host.clone() } else { tag.to_string() };
+    let name = if tag.is_empty() {
+        host.clone()
+    } else {
+        tag.to_string()
+    };
 
     Some(Profile {
         id: format!("{host}:{port}:{uuid}:{network}"),
@@ -1138,24 +1166,24 @@ fn profile_from_singbox(ob: &serde_json::Value) -> Option<Profile> {
         fingerprint,
         service_name,
         path,
-    
-            kind: String::new(),
-    
-            password: String::new(),
-    
-            method: String::new(),
-    
-            alter_id: 0,
-            wg_private_key: String::new(),
-            wg_peer_public_key: String::new(),
-            wg_preshared_key: String::new(),
-            wg_addresses: Vec::new(),
-            wg_mtu: 0,
-            wg_reserved: Vec::new(),
-            reserve: false,
+
+        kind: String::new(),
+
+        password: String::new(),
+
+        method: String::new(),
+
+        alter_id: 0,
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
         cc: String::new(),
         from_sub: true,
-        })
+    })
 }
 
 fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
@@ -1242,24 +1270,24 @@ fn profile_from_xray(ob: &serde_json::Value, remarks: &str) -> Option<Profile> {
         fingerprint,
         service_name,
         path,
-    
-            kind: String::new(),
-    
-            password: String::new(),
-    
-            method: String::new(),
-    
-            alter_id: 0,
-            wg_private_key: String::new(),
-            wg_peer_public_key: String::new(),
-            wg_preshared_key: String::new(),
-            wg_addresses: Vec::new(),
-            wg_mtu: 0,
-            wg_reserved: Vec::new(),
-            reserve: false,
+
+        kind: String::new(),
+
+        password: String::new(),
+
+        method: String::new(),
+
+        alter_id: 0,
+        wg_private_key: String::new(),
+        wg_peer_public_key: String::new(),
+        wg_preshared_key: String::new(),
+        wg_addresses: Vec::new(),
+        wg_mtu: 0,
+        wg_reserved: Vec::new(),
+        reserve: false,
         cc: String::new(),
         from_sub: true,
-        })
+    })
 }
 
 /// `trojan://пароль@host:443?sni=&type=ws&path=/#Имя`.
@@ -1276,8 +1304,14 @@ fn parse_trojan_link(link: &str) -> Result<Profile, String> {
     let name = percent_encoding::percent_decode_str(url.fragment().unwrap_or(""))
         .decode_utf8_lossy()
         .to_string();
-    let name = if name.trim().is_empty() { format!("{host}:{port}") } else { name };
-    let cc = cc_from_host(&host).or_else(|| cc_from_text(&name)).unwrap_or_default();
+    let name = if name.trim().is_empty() {
+        format!("{host}:{port}")
+    } else {
+        name
+    };
+    let cc = cc_from_host(&host)
+        .or_else(|| cc_from_text(&name))
+        .unwrap_or_default();
     Ok(Profile {
         id: format!("{host}:{port}:{password}"),
         name,
@@ -1286,11 +1320,19 @@ fn parse_trojan_link(link: &str) -> Result<Profile, String> {
         uuid: String::new(),
         flow: String::new(),
         security: "tls".to_string(),
-        network: if get("type").is_empty() { "tcp".to_string() } else { get("type") },
+        network: if get("type").is_empty() {
+            "tcp".to_string()
+        } else {
+            get("type")
+        },
         sni: get("sni"),
         public_key: String::new(),
         short_id: String::new(),
-        fingerprint: if get("fp").is_empty() { "chrome".to_string() } else { get("fp") },
+        fingerprint: if get("fp").is_empty() {
+            "chrome".to_string()
+        } else {
+            get("fp")
+        },
         service_name: get("serviceName"),
         path: get("path"),
         kind: "trojan".to_string(),
@@ -1316,7 +1358,9 @@ fn parse_ss_link(link: &str) -> Result<Profile, String> {
     let (body, name) = match rest.split_once('#') {
         Some((b, n)) => (
             b,
-            percent_encoding::percent_decode_str(n).decode_utf8_lossy().to_string(),
+            percent_encoding::percent_decode_str(n)
+                .decode_utf8_lossy()
+                .to_string(),
         ),
         None => (rest, String::new()),
     };
@@ -1349,12 +1393,21 @@ fn parse_ss_link(link: &str) -> Result<Profile, String> {
         .rsplit_once(':')
         .ok_or_else(|| "в ss-ссылке нет порта".to_string())?;
     let host = host.trim_matches(['[', ']']).to_string();
-    let port: u16 = port.trim().parse().map_err(|_| "порт не число".to_string())?;
+    let port: u16 = port
+        .trim()
+        .parse()
+        .map_err(|_| "порт не число".to_string())?;
     if host.is_empty() || method.trim().is_empty() {
         return Err("ss-ссылка неполная".into());
     }
-    let name = if name.trim().is_empty() { format!("{host}:{port}") } else { name };
-    let cc = cc_from_host(&host).or_else(|| cc_from_text(&name)).unwrap_or_default();
+    let name = if name.trim().is_empty() {
+        format!("{host}:{port}")
+    } else {
+        name
+    };
+    let cc = cc_from_host(&host)
+        .or_else(|| cc_from_text(&name))
+        .unwrap_or_default();
     Ok(Profile {
         id: format!("{host}:{port}:{password}"),
         name,
@@ -1393,7 +1446,9 @@ fn parse_vmess_link(link: &str) -> Result<Profile, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(raw)
         .or_else(|_| base64::engine::general_purpose::STANDARD.decode(raw.trim_end_matches('=')))
-        .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(raw.trim_end_matches('=')))
+        .or_else(|_| {
+            base64::engine::general_purpose::STANDARD_NO_PAD.decode(raw.trim_end_matches('='))
+        })
         .map_err(|_| "vmess-ссылка не в base64".to_string())?;
     let text = String::from_utf8(bytes).map_err(|_| "vmess-ссылка не в UTF-8".to_string())?;
     let doc: serde_json::Value =
@@ -1414,14 +1469,24 @@ fn parse_vmess_link(link: &str) -> Result<Profile, String> {
     let port: u16 = get("port").parse().unwrap_or(443);
     let net = {
         let n = get("net");
-        if n.is_empty() { "tcp".to_string() } else { n }
+        if n.is_empty() {
+            "tcp".to_string()
+        } else {
+            n
+        }
     };
     let tls_on = get("tls").eq_ignore_ascii_case("tls");
     let name = {
         let n = get("ps");
-        if n.trim().is_empty() { format!("{host}:{port}") } else { n }
+        if n.trim().is_empty() {
+            format!("{host}:{port}")
+        } else {
+            n
+        }
     };
-    let cc = cc_from_host(&host).or_else(|| cc_from_text(&name)).unwrap_or_default();
+    let cc = cc_from_host(&host)
+        .or_else(|| cc_from_text(&name))
+        .unwrap_or_default();
     Ok(Profile {
         id: format!("{host}:{port}:{uuid}"),
         name,
@@ -1429,11 +1494,19 @@ fn parse_vmess_link(link: &str) -> Result<Profile, String> {
         port,
         uuid,
         flow: String::new(),
-        security: if tls_on { "tls".to_string() } else { "none".to_string() },
+        security: if tls_on {
+            "tls".to_string()
+        } else {
+            "none".to_string()
+        },
         network: net,
         sni: {
             let s = get("sni");
-            if s.is_empty() { get("host") } else { s }
+            if s.is_empty() {
+                get("host")
+            } else {
+                s
+            }
         },
         public_key: String::new(),
         short_id: String::new(),
@@ -1651,7 +1724,10 @@ mod tests {
     #[test]
     fn subscription_title_comes_from_plain_or_base64_header() {
         // "Happ VPN (RayTun)" → providers often wrap it in base64
-        assert_eq!(parse_title("base64:SEFQUCBWUE4gKFJheVR1bik="), "HAPP VPN (RayTun)");
+        assert_eq!(
+            parse_title("base64:SEFQUCBWUE4gKFJheVR1bik="),
+            "HAPP VPN (RayTun)"
+        );
         assert_eq!(parse_title("Мой провайдер"), "Мой провайдер");
         assert_eq!(parse_title(""), "");
     }
@@ -1716,7 +1792,11 @@ mod tests {
         let path = std::env::var("K4R_BODY_FILE").expect("нужен K4R_BODY_FILE");
         let body = std::fs::read_to_string(path).expect("файл читается");
         let r = parse(&body).expect("разбирается");
-        println!("серверов={} предупреждения={:?}", r.profiles.len(), r.warnings);
+        println!(
+            "серверов={} предупреждения={:?}",
+            r.profiles.len(),
+            r.warnings
+        );
         for p in &r.profiles {
             println!("  {} ({}) host={}", p.name, p.cc, p.host);
         }
@@ -1742,8 +1822,15 @@ mod tests {
         );
         let body = base64::engine::general_purpose::STANDARD.encode(raw);
         let r = parse(&body).expect("разбирается");
-        assert_eq!(r.profiles.len(), 2, "служебная строка ушла, два сервера остались");
-        assert!(r.profiles.iter().all(|p| !p.name.to_lowercase().contains("auto")));
+        assert_eq!(
+            r.profiles.len(),
+            2,
+            "служебная строка ушла, два сервера остались"
+        );
+        assert!(r
+            .profiles
+            .iter()
+            .all(|p| !p.name.to_lowercase().contains("auto")));
         assert_eq!(r.warnings.len(), 1);
     }
 
@@ -1809,7 +1896,10 @@ mod tests {
         opts.game_mode = true;
         opts.api_port = 19099;
         opts.api_secret = "test".into();
-        opts.cache_path = std::env::temp_dir().join("k4r-rule-sets.db").display().to_string();
+        opts.cache_path = std::env::temp_dir()
+            .join("k4r-rule-sets.db")
+            .display()
+            .to_string();
         // пул: выбранный узел плюс два соседних — так проверяем urltest на живом ядре
         let pool: Vec<_> = r
             .profiles
@@ -1827,7 +1917,11 @@ mod tests {
     #[test]
     fn singbox_json_reality_becomes_a_profile() {
         let result = parse(SINGBOX_JSON).expect("конфиг sing-box должен разобраться");
-        assert_eq!(result.profiles.len(), 2, "direct пропускается, два сервера остаются");
+        assert_eq!(
+            result.profiles.len(),
+            2,
+            "direct пропускается, два сервера остаются"
+        );
         let fi = &result.profiles[0];
         assert_eq!(fi.name, "Финляндия");
         assert_eq!(fi.host, "fi1.example.invalid");
@@ -1854,7 +1948,10 @@ mod tests {
     fn singbox_json_without_servers_is_an_error() {
         let empty = r#"{ "outbounds": [ { "type": "direct", "tag": "d" } ] }"#;
         let err = parse(empty).unwrap_err();
-        assert!(err.contains("VLESS"), "ошибка должна говорить, чего не хватает: {err}");
+        assert!(
+            err.contains("VLESS"),
+            "ошибка должна говорить, чего не хватает: {err}"
+        );
     }
 
     #[test]
@@ -1863,7 +1960,6 @@ mod tests {
         let profiles = import_text(SINGBOX_JSON).expect("вставка конфига должна работать");
         assert_eq!(profiles.len(), 2);
     }
-
 }
 
 #[cfg(test)]
@@ -1879,13 +1975,27 @@ mod net_tests {
     #[test]
     #[ignore]
     fn fetches_real_subscription() {
-        let Ok(url) = std::env::var("K4R_SUB_URL") else { return };
+        let Ok(url) = std::env::var("K4R_SUB_URL") else {
+            return;
+        };
         let hwid = std::env::var("K4R_SUB_HWID").unwrap_or_else(|_| "k4r-night-smoke".into());
         let headers = vec![
-            SubHeader { name: "X-HWID".into(), value: hwid },
-            SubHeader { name: "X-Device-OS".into(), value: "Windows".into() },
-            SubHeader { name: "X-Ver-OS".into(), value: "10.0".into() },
-            SubHeader { name: "X-Ver-App".into(), value: "1.35.0".into() },
+            SubHeader {
+                name: "X-HWID".into(),
+                value: hwid,
+            },
+            SubHeader {
+                name: "X-Device-OS".into(),
+                value: "Windows".into(),
+            },
+            SubHeader {
+                name: "X-Ver-OS".into(),
+                value: "10.0".into(),
+            },
+            SubHeader {
+                name: "X-Ver-App".into(),
+                value: "1.35.0".into(),
+            },
         ];
         match fetch(&url, "", &headers) {
             Ok(r) => {
@@ -1931,7 +2041,10 @@ mod net_tests {
         // человек вписал в настройках имя известного клиента — второй раз его
         // пробовать незачем
         let chain = ua_chain("v2rayNG/1.9.0");
-        let same = chain.iter().filter(|u| u.eq_ignore_ascii_case("v2rayNG/1.9.0")).count();
+        let same = chain
+            .iter()
+            .filter(|u| u.eq_ignore_ascii_case("v2rayNG/1.9.0"))
+            .count();
         assert_eq!(same, 1);
     }
 
@@ -1945,11 +2058,23 @@ mod net_tests {
     #[test]
     fn provider_words_beat_technical_errors() {
         // «лимит устройств 5/5» объясняет больше, чем «сервер ответил 502»
-        assert!(more_useful("сервер ответил 502", "провайдер: лимит устройств 5/5"));
-        assert!(more_useful("провайдер отдал Clash YAML", "сервер ответил 502"));
+        assert!(more_useful(
+            "сервер ответил 502",
+            "провайдер: лимит устройств 5/5"
+        ));
+        assert!(more_useful(
+            "провайдер отдал Clash YAML",
+            "сервер ответил 502"
+        ));
         // и наоборот: техническая мелочь не должна затирать понятную причину
-        assert!(!more_useful("провайдер: лимит устройств", "некорректный JSON: expected value"));
-        assert!(!more_useful("провайдер: лимит устройств", "сервер ответил 502"));
+        assert!(!more_useful(
+            "провайдер: лимит устройств",
+            "некорректный JSON: expected value"
+        ));
+        assert!(!more_useful(
+            "провайдер: лимит устройств",
+            "сервер ответил 502"
+        ));
     }
 
     #[test]
@@ -1958,7 +2083,9 @@ mod net_tests {
     }
     #[test]
     fn parses_live_sample_when_provided() {
-        let Ok(path) = std::env::var("K4R_SAMPLE") else { return };
+        let Ok(path) = std::env::var("K4R_SAMPLE") else {
+            return;
+        };
         let text = std::fs::read_to_string(&path).expect("sample readable");
         let r = parse(&text).expect("sample parses");
         println!("profiles={}", r.profiles.len());
@@ -2008,7 +2135,10 @@ mod net_tests {
         assert_eq!(r.profiles[0].name, "Германия");
         assert_eq!(r.profiles[1].cc, "jp");
         assert_eq!(r.profiles[1].name, "Япония");
-        assert!(r.profiles.iter().all(|p| p.host.contains(".savethis.cloud")));
+        assert!(r
+            .profiles
+            .iter()
+            .all(|p| p.host.contains(".savethis.cloud")));
     }
 
     #[test]
@@ -2070,12 +2200,17 @@ mod net_tests {
         let url = format!("http://{addr}/sub");
 
         let err = fetch_as(&url, "v2rayNG/1.9.0", &headers).expect_err("лимит — это ошибка");
-        let msg = err.strip_prefix(FATAL).expect("отказ помечен как окончательный");
+        let msg = err
+            .strip_prefix(FATAL)
+            .expect("отказ помечен как окончательный");
         assert!(msg.contains("лимит устройств"), "сообщение: {msg}");
 
         let ok = fetch_as(&url, "v2rayNG/1.9.0", &headers).expect("обычный ответ разбирается");
         assert_eq!(ok.profiles.len(), 1);
-        assert_eq!(ok.profiles[0].cc, "de", "страна берётся из домена или флага");
+        assert_eq!(
+            ok.profiles[0].cc, "de",
+            "страна берётся из домена или флага"
+        );
 
         let request = handle.join().expect("сервер закончил");
         assert!(
@@ -2159,7 +2294,11 @@ proxies:
         assert_eq!(us.service_name, "grpcsvc");
         assert_eq!(us.cc, "us");
 
-        assert!(parsed.warnings.is_empty(), "пропускать больше нечего: {:?}", parsed.warnings);
+        assert!(
+            parsed.warnings.is_empty(),
+            "пропускать больше нечего: {:?}",
+            parsed.warnings
+        );
     }
 
     #[test]
@@ -2272,12 +2411,19 @@ proxies:
         assert_eq!(vmess.kind, "vmess");
         assert_eq!(vmess.network, "ws");
         assert_eq!(vmess.path, "/vm");
-        assert!(parsed.warnings.is_empty(), "пропускать больше нечего: {:?}", parsed.warnings);
+        assert!(
+            parsed.warnings.is_empty(),
+            "пропускать больше нечего: {:?}",
+            parsed.warnings
+        );
     }
 
     #[test]
     fn trojan_link_is_understood() {
-        let p = parse_link("trojan://pass123@de.example.net:443?sni=de.example.net&type=ws&path=%2Fws#Германия").unwrap();
+        let p = parse_link(
+            "trojan://pass123@de.example.net:443?sni=de.example.net&type=ws&path=%2Fws#Германия",
+        )
+        .unwrap();
         assert_eq!(p.kind, "trojan");
         assert_eq!(p.password, "pass123");
         assert_eq!(p.network, "ws");
@@ -2333,5 +2479,4 @@ proxies:
         let kinds: Vec<&str> = parsed.profiles.iter().map(|p| p.kind.as_str()).collect();
         assert_eq!(kinds, vec!["", "trojan", "shadowsocks"]);
     }
-
 }

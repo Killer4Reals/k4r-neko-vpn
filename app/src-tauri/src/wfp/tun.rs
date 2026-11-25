@@ -33,7 +33,7 @@ pub struct TunInfo {
 pub fn find_tun(addr: Ipv4Addr) -> Option<TunInfo> {
     let adapters = list_adapters()?;
     for a in &adapters {
-        if a.addresses.iter().any(|ip| *ip == addr) {
+        if a.addresses.contains(&addr) {
             return Some(TunInfo { luid: a.luid, addr });
         }
     }
@@ -86,12 +86,10 @@ unsafe fn parse_adapters(mut cur: *const IP_ADAPTER_ADDRESSES_LH) -> Vec<Adapter
         let mut ua = a.FirstUnicastAddress;
         while !ua.is_null() {
             let sockaddr = (*ua).Address.lpSockaddr;
-            if !sockaddr.is_null() {
-                if (*sockaddr).sa_family == AF_INET {
-                    let v4 =
-                        &*(sockaddr as *const windows_sys::Win32::Networking::WinSock::SOCKADDR_IN);
-                    addresses.push(Ipv4Addr::from(v4.sin_addr.S_un.S_addr.to_ne_bytes()));
-                }
+            if !sockaddr.is_null() && (*sockaddr).sa_family == AF_INET {
+                let v4 =
+                    &*(sockaddr as *const windows_sys::Win32::Networking::WinSock::SOCKADDR_IN);
+                addresses.push(Ipv4Addr::from(v4.sin_addr.S_un.S_addr.to_ne_bytes()));
             }
             ua = (*ua).Next;
         }
@@ -199,7 +197,7 @@ impl NotifyHandle {
         let mut handle: *mut std::ffi::c_void = std::ptr::null_mut();
         let rc = unsafe {
             NotifyIpInterfaceChange(
-                AF_UNSPEC as u16,
+                AF_UNSPEC,
                 Some(on_interface_change),
                 std::ptr::null(),
                 false,

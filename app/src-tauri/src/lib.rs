@@ -5,16 +5,16 @@ pub mod engine;
 pub mod health;
 pub mod leak;
 pub mod netwatch;
+#[cfg(windows)]
+pub mod orchestrator;
 pub mod probe;
 pub mod single;
 pub mod store;
-pub mod warp;
-pub mod wgconf;
 pub mod subscription;
 pub mod version;
-#[cfg(windows)]
-pub mod orchestrator;
+pub mod warp;
 pub mod wfp;
+pub mod wgconf;
 pub mod zapret;
 pub mod zapret_lists;
 
@@ -589,7 +589,13 @@ fn export_text(
 fn export_name(name: &str) -> String {
     let safe: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if safe.is_empty() {
         "export".to_string()
@@ -1011,7 +1017,7 @@ fn kill_switch_set(app: tauri::AppHandle, on: bool) -> Result<wfp::Status, Strin
     let saved = store::load(&data_dir(&app)?);
     let opts = wfp_opts(&app, &saved);
     wfp::enable(opts).map_err(|e| {
-        let _ = engine::write_log_header(
+        engine::write_log_header(
             &data_dir(&app)
                 .unwrap_or_default()
                 .join("logs")
@@ -1022,6 +1028,9 @@ fn kill_switch_set(app: tauri::AppHandle, on: bool) -> Result<wfp::Status, Strin
     })
 }
 
+// Восемь аргументов — договор с интерфейсом: поле `args` у `invoke`
+// перечисляет их по именам, и обёртка в структуру его бы изменила.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 fn engine_start(
     app: tauri::AppHandle,
@@ -2012,8 +2021,10 @@ fn write_logs_zip(
             wrote += 1;
         }
     }
-    zw.start_file("summary.txt", opts).map_err(|e| e.to_string())?;
-    zw.write_all(summary.as_bytes()).map_err(|e| e.to_string())?;
+    zw.start_file("summary.txt", opts)
+        .map_err(|e| e.to_string())?;
+    zw.write_all(summary.as_bytes())
+        .map_err(|e| e.to_string())?;
     zw.finish().map_err(|e| e.to_string())?;
     Ok(wrote)
 }
@@ -2062,7 +2073,8 @@ fn window_backdrop() -> String {
     BACKDROP.lock().map(|s| s.clone()).unwrap_or_default()
 }
 
-static TRAY_KEY: std::sync::Mutex<(usize, String, String)> = std::sync::Mutex::new((0, String::new(), String::new()));
+static TRAY_KEY: std::sync::Mutex<(usize, String, String)> =
+    std::sync::Mutex::new((0, String::new(), String::new()));
 
 /// Обновляет подсказку и меню трея, не пересоздавая значок.
 fn refresh_tray(app: &tauri::AppHandle) {
@@ -2296,8 +2308,10 @@ pub fn run() {
             if let Some(win) = app.get_webview_window("main") {
                 let target = win.clone();
                 let handle = app.handle().clone();
-                win.on_window_event(move |event| match event {
-                    tauri::WindowEvent::CloseRequested { api, .. } => {
+                win.on_window_event(move |event| {
+                    // Windows does not reliably report the minimise as a window
+                    // event, so the watcher below does the real work.
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         let to_tray = data_dir(&handle)
                             .map(|d| store::load(&d).close_to_tray)
                             .unwrap_or(true);
@@ -2306,9 +2320,6 @@ pub fn run() {
                             let _ = target.hide();
                         }
                     }
-                    // Windows does not reliably report the minimise as a window
-                    // event, so the watcher below does the real work.
-                    _ => {}
                 });
             }
             Ok(())
@@ -2410,11 +2421,19 @@ mod logs_tests {
         assert_eq!(n, 1);
         let file = std::fs::File::open(&out).unwrap();
         let mut ar = zip::ZipArchive::new(file).unwrap();
-        let names: Vec<String> = (0..ar.len()).map(|i| ar.by_index(i).unwrap().name().to_string()).collect();
-        assert_eq!(names, vec!["engine.log".to_string(), "summary.txt".to_string()]);
+        let names: Vec<String> = (0..ar.len())
+            .map(|i| ar.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["engine.log".to_string(), "summary.txt".to_string()]
+        );
         let mut body = String::new();
         use std::io::Read;
-        ar.by_name("engine.log").unwrap().read_to_string(&mut body).unwrap();
+        ar.by_name("engine.log")
+            .unwrap()
+            .read_to_string(&mut body)
+            .unwrap();
         assert_eq!(body, "строка журнала");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -2435,9 +2454,16 @@ mod logs_tests {
         let mut ar = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
         let mut tail = String::new();
         use std::io::Read;
-        ar.by_name("engine.log").unwrap().read_to_string(&mut tail).unwrap();
+        ar.by_name("engine.log")
+            .unwrap()
+            .read_to_string(&mut tail)
+            .unwrap();
         assert!(tail.len() <= 4 * 1024 * 1024);
-        assert!(tail.starts_with("2026-11-25 INFO"), "начало: {:?}", &tail[..20.min(tail.len())]);
+        assert!(
+            tail.starts_with("2026-11-25 INFO"),
+            "начало: {:?}",
+            &tail[..20.min(tail.len())]
+        );
         assert!(!tail.contains("\u{FFFD}"));
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -2558,7 +2584,8 @@ mod export_tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("k4r-export-{}-{}-{}", tag, std::process::id(), n));
+        let dir =
+            std::env::temp_dir().join(format!("k4r-export-{}-{}-{}", tag, std::process::id(), n));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -2573,14 +2600,20 @@ mod export_tests {
             "k4r-history-1700000000.csv"
         );
         let back = std::fs::read_to_string(&path).unwrap();
-        assert!(back.starts_with('\u{FEFF}'), "BOM потерялся — Excel съест кириллицу");
+        assert!(
+            back.starts_with('\u{FEFF}'),
+            "BOM потерялся — Excel съест кириллицу"
+        );
         assert!(back.contains("Подключение"));
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
     fn dangerous_names_cannot_escape_the_folder() {
-        assert_eq!(export_name("../../windows/system32"), "------windows-system32");
+        assert_eq!(
+            export_name("../../windows/system32"),
+            "------windows-system32"
+        );
         assert_eq!(export_name("my history"), "my-history");
         assert_eq!(export_name(""), "export");
         // кириллица в имени файла не остаётся: иначе часть архиваторов ломается

@@ -40,7 +40,7 @@ impl Keeper {
         let engine = FilterEngineBuilder::default()
             .dynamic()
             .open()
-            .map_err(|e| friendly(e))?;
+            .map_err(friendly)?;
         let sublayer = Guid::from_u128(SUBLAYER_GUID);
 
         let mut keeper = Self {
@@ -58,24 +58,24 @@ impl Keeper {
 
     fn setup_sublayer(&mut self) -> Result<(), String> {
         let guid = self.sublayer;
-        let transaction = Transaction::new(&mut self.engine).map_err(|e| friendly(e))?;
+        let transaction = Transaction::new(&mut self.engine).map_err(friendly)?;
         SubLayerBuilder::default()
             .name(filters::SUBLAYER_NAME)
             .weight(filters::SUBLAYER_WEIGHT)
             .guid(guid)
             .add(&transaction)
-            .map_err(|e| friendly(e))?;
-        transaction.commit().map_err(|e| friendly(e))
+            .map_err(friendly)?;
+        transaction.commit().map_err(friendly)
     }
 
     fn add_blocks(&mut self) -> Result<(), String> {
         let sublayer = self.sublayer;
-        let transaction = Transaction::new(&mut self.engine).map_err(|e| friendly(e))?;
+        let transaction = Transaction::new(&mut self.engine).map_err(friendly)?;
         let mut ids = Vec::new();
         for rule in filters::block_rules() {
             ids.push(add_rule(&transaction, sublayer, &rule)?);
         }
-        transaction.commit().map_err(|e| friendly(e))?;
+        transaction.commit().map_err(friendly)?;
         self.blocks = ids;
         Ok(())
     }
@@ -85,7 +85,7 @@ impl Keeper {
         let plan = filters::startup_plan(opts);
         let sublayer = self.sublayer;
         let luid = self.tun_luid;
-        let transaction = Transaction::new(&mut self.engine).map_err(|e| friendly(e))?;
+        let transaction = Transaction::new(&mut self.engine).map_err(friendly)?;
 
         for id in self.permits.drain(..) {
             let _ = wfp::delete_filter(&transaction, id);
@@ -103,7 +103,7 @@ impl Keeper {
             self.permits.push(add_rule(&transaction, sublayer, rule)?);
             added += 1;
         }
-        transaction.commit().map_err(|e| friendly(e))?;
+        transaction.commit().map_err(friendly)?;
 
         // Транзакция прошла — но защита не должна зависеть от веры: проверяем,
         // что BLOCK на месте. Пропал — кричим и ставим заново немедленно.
@@ -121,7 +121,7 @@ impl Keeper {
             return Ok(());
         }
         let sublayer = self.sublayer;
-        let transaction = Transaction::new(&mut self.engine).map_err(|e| friendly(e))?;
+        let transaction = Transaction::new(&mut self.engine).map_err(friendly)?;
         for id in self.tun.drain(..) {
             let _ = wfp::delete_filter(&transaction, id);
         }
@@ -130,7 +130,7 @@ impl Keeper {
                 self.tun.push(add_rule(&transaction, sublayer, &rule)?);
             }
         }
-        transaction.commit().map_err(|e| friendly(e))?;
+        transaction.commit().map_err(friendly)?;
         match luid {
             Some(l) => log_line(&format!("TUN LUID {l} обнаружен, правило #6 добавлено")),
             None => log_line("TUN LUID исчез, правило #6 снято"),
@@ -197,7 +197,7 @@ fn add_rule(transaction: &Transaction<'_>, sublayer: Guid, rule: &RuleSpec) -> R
             None => log_line("не смог собрать условие фильтра — пропускаю прав��ло"),
         }
     }
-    builder.add(transaction).map_err(|e| friendly(e))
+    builder.add(transaction).map_err(friendly)
 }
 
 fn to_condition(cond: &Cond) -> Option<wfp::Condition> {
@@ -315,7 +315,7 @@ impl Snapshot {
 /// Читает текущее состояние нашего sublayer'а.
 pub fn snapshot() -> Result<Snapshot, String> {
     let mut engine = FilterEngineBuilder::default().open().map_err(friendly)?;
-    let mut transaction = Transaction::new(&mut engine).map_err(friendly)?;
+    let transaction = Transaction::new(&mut engine).map_err(friendly)?;
     let mut out = Snapshot {
         sublayer: false,
         total: 0,

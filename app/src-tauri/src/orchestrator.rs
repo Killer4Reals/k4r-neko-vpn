@@ -97,7 +97,11 @@ pub fn rows(book: &Book) -> Vec<Row> {
             quarantined: e.quarantine_until > at,
         })
         .collect();
-    list.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    list.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     list
 }
 
@@ -146,15 +150,35 @@ mod tests {
 
     #[test]
     fn success_beats_failures() {
-        let good = Entry { ok: 9, fail: 1, latency_ms: 50, ..Default::default() };
-        let bad = Entry { ok: 1, fail: 9, latency_ms: 400, ..Default::default() };
+        let good = Entry {
+            ok: 9,
+            fail: 1,
+            latency_ms: 50,
+            ..Default::default()
+        };
+        let bad = Entry {
+            ok: 1,
+            fail: 9,
+            latency_ms: 400,
+            ..Default::default()
+        };
         assert!(score(&good) > score(&bad));
     }
 
     #[test]
     fn latency_matters() {
-        let fast = Entry { ok: 5, fail: 0, latency_ms: 20, ..Default::default() };
-        let slow = Entry { ok: 5, fail: 0, latency_ms: 900, ..Default::default() };
+        let fast = Entry {
+            ok: 5,
+            fail: 0,
+            latency_ms: 20,
+            ..Default::default()
+        };
+        let slow = Entry {
+            ok: 5,
+            fail: 0,
+            latency_ms: 900,
+            ..Default::default()
+        };
         assert!(score(&fast) > score(&slow));
     }
 

@@ -139,16 +139,7 @@ pub fn task_install() {
     let tr = format!("\"{}\" --wfp-helper", exe.display());
     let out = std::process::Command::new("schtasks")
         .args([
-            "/create",
-            "/f",
-            "/tn",
-            TASK_NAME,
-            "/tr",
-            &tr,
-            "/sc",
-            "onlogon",
-            "/rl",
-            "highest",
+            "/create", "/f", "/tn", TASK_NAME, "/tr", &tr, "/sc", "onlogon", "/rl", "highest",
         ])
         .output();
     match out {
@@ -269,14 +260,7 @@ fn in_job_object() -> bool {
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
     let mut yes = 0;
     // SAFETY: спрашиваем про текущий процесс, нулевой job — только чтение.
-    unsafe {
-        IsProcessInJob(
-            GetCurrentProcess(),
-            std::ptr::null_mut(),
-            &mut yes,
-        ) != 0
-            && yes != 0
-    }
+    unsafe { IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut yes) != 0 && yes != 0 }
 }
 
 /// Запускает helper. Права наследуются от приложения: движку TUN они и так нужны.
@@ -307,7 +291,11 @@ fn spawn_helper() -> Result<(), String> {
         apply::log_line(&format!(
             "helper: job-объект = {}, breakaway = {}",
             if in_job { "да" } else { "нет" },
-            if in_job { "запрошен" } else { "не нужен" }
+            if in_job {
+                "запрошен"
+            } else {
+                "не нужен"
+            }
         ));
     }
     let child = cmd.spawn().map_err(|e| match e.raw_os_error() {
@@ -357,7 +345,9 @@ where
                 WANTED.store(false, Ordering::SeqCst);
                 // Причина — конкретная (UAC отклонён, spawn failed, нет доступа),
                 // а не generic «сбой»: человеку нужно знать, что чинить.
-                set_lost(format!("Защита снята: helper не перезапустился ({e}). Интернет открыт"));
+                set_lost(format!(
+                    "Защита снята: helper не перезапустился ({e}). Интернет открыт"
+                ));
                 apply::log_line(&format!("CRITICAL helper не перезапустился: {e}"));
                 emit(Event::Lost(e));
             }

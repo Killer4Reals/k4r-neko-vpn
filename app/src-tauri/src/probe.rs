@@ -40,10 +40,7 @@ pub fn ping_all(profiles: &[Profile]) -> Vec<PingResult> {
             ms: ping(&host, port, 1),
         }));
     }
-    handles
-        .into_iter()
-        .filter_map(|h| h.join().ok())
-        .collect()
+    handles.into_iter().filter_map(|h| h.join().ok()).collect()
 }
 
 #[cfg(test)]

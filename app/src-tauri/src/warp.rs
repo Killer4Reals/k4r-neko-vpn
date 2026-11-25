@@ -5,8 +5,8 @@
 //! регистрирует анонимное устройство по открытому API и собирает профиль.
 //! Никакого аккаунта Cloudflare для этого не нужно.
 
-use base64::Engine;
 use crate::subscription::Profile;
+use base64::Engine;
 
 /// Версии API, которые пробуем по очереди: Cloudflare меняет их без анонса.
 const API_VERSIONS: &[&str] = &["v0a2158", "v0a1922", "v0i1902141722"];
@@ -33,7 +33,10 @@ pub fn keypair() -> (String, String) {
     }
     let secret = x25519_dalek::StaticSecret::from(seed);
     let public = x25519_dalek::PublicKey::from(&secret);
-    (b64(secret.to_bytes().as_slice()), b64(public.as_bytes().as_slice()))
+    (
+        b64(secret.to_bytes().as_slice()),
+        b64(public.as_bytes().as_slice()),
+    )
 }
 
 #[derive(Debug, Default, Clone)]
@@ -111,7 +114,11 @@ pub fn to_profile(keys: (&str, &str), reg: &Registered, id: &str) -> Profile {
     Profile {
         id: id.to_string(),
         name: "WARP".into(),
-        host: ENDPOINT.split(':').next().unwrap_or("engage.cloudflareclient.com").to_string(),
+        host: ENDPOINT
+            .split(':')
+            .next()
+            .unwrap_or("engage.cloudflareclient.com")
+            .to_string(),
         port: 2408,
         uuid: String::new(),
         flow: String::new(),

@@ -255,7 +255,11 @@ fn trojan_outbound(profile: &Profile) -> Value {
             "fingerprint": if profile.fingerprint.is_empty() { "chrome" } else { &profile.fingerprint },
         }
     });
-    let sni = if profile.sni.is_empty() { &profile.host } else { &profile.sni };
+    let sni = if profile.sni.is_empty() {
+        &profile.host
+    } else {
+        &profile.sni
+    };
     tls["server_name"] = json!(sni);
     let mut outbound = json!({
         "type": "trojan",
@@ -267,7 +271,11 @@ fn trojan_outbound(profile: &Profile) -> Value {
     });
     match profile.network.as_str() {
         "ws" => {
-            let path = if profile.path.is_empty() { "/" } else { &profile.path };
+            let path = if profile.path.is_empty() {
+                "/"
+            } else {
+                &profile.path
+            };
             outbound["transport"] = json!({ "type": "ws", "path": path });
         }
         "grpc" => {
@@ -317,7 +325,11 @@ fn vmess_outbound(profile: &Profile) -> Value {
     }
     match profile.network.as_str() {
         "ws" => {
-            let path = if profile.path.is_empty() { "/" } else { &profile.path };
+            let path = if profile.path.is_empty() {
+                "/"
+            } else {
+                &profile.path
+            };
             outbound["transport"] = json!({ "type": "ws", "path": path });
         }
         "grpc" => {
@@ -391,7 +403,7 @@ fn vless_outbound(profile: &Profile) -> Value {
 
 fn build_with_outbound(
     outbound: Value,
-    profile: &Profile,
+    _profile: &Profile,
     excluded: &[String],
     opts: &NetOptions,
 ) -> Value {
@@ -1169,10 +1181,10 @@ fn wait_tunnel_ready(log_path: &Path, from: u64, timeout: std::time::Duration) -
         if let Ok(mut f) = std::fs::File::open(log_path) {
             if f.seek(SeekFrom::Start(from)).is_ok() {
                 let mut text = String::new();
-                if f.read_to_string(&mut text).is_ok() {
-                    if crate::store::strip_ansi(&text).contains("started at tun") {
-                        return true;
-                    }
+                if f.read_to_string(&mut text).is_ok()
+                    && crate::store::strip_ansi(&text).contains("started at tun")
+                {
+                    return true;
                 }
             }
         }
@@ -1262,7 +1274,7 @@ mod tests {
             wg_mtu: 0,
             wg_reserved: Vec::new(),
             reserve: false,
-        cc: String::new(),
+            cc: String::new(),
         }
     }
 
@@ -1597,7 +1609,10 @@ mod tests {
             ..NetOptions::default()
         };
         let cfg = build_config(&sample(), &[], &opts);
-        assert_eq!(cfg["experimental"]["cache_file"]["path"], "C:/data/rule-sets.db");
+        assert_eq!(
+            cfg["experimental"]["cache_file"]["path"],
+            "C:/data/rule-sets.db"
+        );
         assert_eq!(
             cfg["experimental"]["clash_api"]["external_controller"],
             "127.0.0.1:9999"
