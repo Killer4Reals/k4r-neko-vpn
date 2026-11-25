@@ -88,6 +88,11 @@ sing-box, аккуратный интерфейс на React и маскот, к
 `VpnService`, разрешение на VPN, постоянное уведомление — родные API Android,
 поэтому здесь нет ни WebView, ни прослойки JNI.
 
+<p align="center">
+  <img src="docs/screens/android_splash_1_35.png" alt="Заставка Android: маскот спит на облаке, полоса загрузки" width="280">
+  <br><sub>Заставка: маскот спит на облаке — кадр с живого Android 14</sub>
+</p>
+
 <table>
   <tr>
     <td width="33%"><img src="docs/screens/android_home.webp" alt="Главная на Android"></td>
