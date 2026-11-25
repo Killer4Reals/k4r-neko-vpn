@@ -1,6 +1,6 @@
 {
-  "version": "1.51.0",
-  "notes": "1.51.0: автозапуск через планировщик и старт в трее, мини-плеер 420×160, «Защита» и «Мини-плеер» в меню трея, честный сбой автозапуска Zapret",
-  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.51.0/K4R.Neko.VPN_1.51.0_x64-setup.exe",
-  "sha256": "a9d38561e772ecf59c6e491086dac03eaa0e5a2763472e4f339e2707f052bcda"
+  "version": "1.52.0",
+  "notes": "1.52.0: пресеты разделения программ, перетаскивание .exe в окно, «Взять из запущенных», меню пресета закрывается мимо и по Esc",
+  "url": "https://github.com/Killer4Reals/k4r-neko-vpn/releases/download/v1.52.0/K4R.Neko.VPN_1.52.0_x64-setup.exe",
+  "sha256": "2e77c91f23a9d793584ac321aa96672809c22a039eb10a52d59fd2af7c5aed69"
 }

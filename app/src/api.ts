@@ -202,6 +202,9 @@ export type InstalledApp = { exe: string; name: string; path: string; running: b
 /// A program the owner routed explicitly: through the tunnel or straight out.
 export type ChosenApp = { exe: string; name: string; via: boolean };
 
+/** Сохранённый набор программ для разделения: «Работа», «Игры», «Кино». */
+export type SplitPreset = { id: string; name: string; apps: ChosenApp[] };
+
 export type SubInfo = {
   upload: number;
   download: number;
@@ -245,6 +248,7 @@ export type AppState = {
   subs?: SubSource[];
   selected: string;
   split: ChosenApp[];
+  split_presets?: SplitPreset[];
   zapret_dir: string;
   zapret_preset: string;
   zapret_auto?: boolean;

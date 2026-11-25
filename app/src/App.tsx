@@ -4,7 +4,7 @@ import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
-import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
+import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule, SplitPreset } from "./api";
 import { isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 import { isDegraded, pushRate } from "./degrade";
 import { lastAliveAt, poolDead, slowSwitchTarget } from "./health";
@@ -225,6 +225,8 @@ export default function App() {
   }, []);
   /// routes changed while the tunnel is up: engine reads them only on start
   const [splitDirty, setSplitDirty] = useState(false);
+  /// Именованные наборы программ: «Работа», «Игры», «Кино».
+  const [splitPresets, setSplitPresets] = useState<SplitPreset[]>([]);
   /// "only" = tunnel carries just the chosen programs (the owner's default)
   const [splitMode, setSplitMode] = useState<"only" | "all">("only");
   // правила маршрутизации: домены/адреса и пресеты списков
@@ -501,6 +503,7 @@ export default function App() {
             via: s.via,
           })),
         );
+        if (Array.isArray(st.split_presets)) setSplitPresets(st.split_presets);
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
@@ -516,6 +519,7 @@ export default function App() {
           sub_ua: subUa,
           selected: selectedId,
           split: chosen.map((c) => ({ exe: c.exe, name: c.name, via: c.via })),
+          split_presets: splitPresets,
           zapret_dir: zapretDir ?? "",
           zapret_preset: zapretPreset,
           zapret_auto: zapretAuto,
@@ -557,7 +561,7 @@ export default function App() {
     loaded, profiles, subUrl, subUa, selectedId, chosen, zapretDir,
     subs, dnsMode, blockIpv6, gameMode, gamePorts, hotkey, closeToTray, minimizeToTray, notifyOn, killSwitch,
     deviceId, splitMode, dnsServer, subRefreshHours, updateUrl, autostart, connectOnStart,
-    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto, startMinimized,
+    zapretPreset, tgProxy, rules, routeRu, routeAds, zapretAuto, startMinimized, splitPresets,
   ]);
 
   // Tray icon follows the tunnel state.
@@ -1527,6 +1531,7 @@ export default function App() {
             name: f.name || f.exe.replace(/\.exe$/i, ""),
             exe: f.exe,
             via: false,
+            running: f.running,
           })),
         );
       })
@@ -1634,6 +1639,12 @@ export default function App() {
     mode: splitMode,
     setMode: (m: "only" | "all") => {
       setSplitMode(m);
+      setSplitDirty(true);
+    },
+    presets: splitPresets,
+    setPresets: setSplitPresets,
+    applyPreset: (apps: ChosenApp[]) => {
+      setChosen(apps.map((a) => ({ exe: a.exe, name: a.name, via: a.via })));
       setSplitDirty(true);
     },
   };

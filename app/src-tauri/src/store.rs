@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::subscription::Profile;
 
 /// Bumped whenever a stored file needs a one-time fix on load.
-pub const SCHEMA: u32 = 4;
+pub const SCHEMA: u32 = 5;
 
 /// Где приложение смотрит, не вышла ли новая версия. Маленький манифест в
 /// репозитории: одно поле версии и ссылка на установщик. Пусто у тех, кто
@@ -29,6 +29,9 @@ pub struct AppState {
     pub subs: Vec<SubSource>,
     pub selected: String,
     pub split: Vec<SplitEntry>,
+    /// Именованные наборы программ: «Работа», «Игры», «Кино».
+    #[serde(default)]
+    pub split_presets: Vec<SplitPreset>,
     pub zapret_dir: String,
     pub zapret_preset: String,
     /// Поднимать Zapret вместе с приложением, а не отдельной программой
@@ -172,7 +175,20 @@ impl AppState {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+/// Набор программ под одно занятие: игра, стрим, работа.
+///
+/// Хранится отдельно от `split`, чтобы применить его одним нажатием и
+/// вернуться к прежнему списку. `id` — короткий случайный ключ, чтобы
+/// переименование не ломало ссылки.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct SplitPreset {
+    pub id: String,
+    pub name: String,
+    pub apps: Vec<SplitEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct SplitEntry {
     /// file name the engine matches, e.g. "discord.exe"
@@ -331,6 +347,12 @@ pub fn load(data_dir: &Path) -> AppState {
         st.autostart = true;
         st.start_minimized = true;
         st.schema = 4;
+    }
+    if st.schema < 5 {
+        // Пресеты без имени или без программ — это обломки, а не выбор.
+        st.split_presets
+            .retain(|p| !p.name.trim().is_empty() && !p.apps.is_empty());
+        st.schema = 5;
     }
     // Правила, которые нечего применять, не храним: пустое значение или
     // незнакомое действие — это не правило, а мусор от старой версии.
@@ -738,5 +760,27 @@ mod tests {
         assert!(!should_autoconnect(true, 0, false));
         // уже подключено — второй раз не начинаем
         assert!(!should_autoconnect(true, 5, true));
+    }
+
+    #[test]
+    fn split_presets_survive_roundtrip() {
+        let mut st = AppState::default();
+        st.split_presets.push(SplitPreset {
+            id: "p1".into(),
+            name: "Работа".into(),
+            apps: vec![SplitEntry {
+                exe: "discord.exe".into(),
+                name: "Discord".into(),
+                via: true,
+            }],
+        });
+        let json = serde_json::to_string(&st).unwrap();
+        let back: AppState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.split_presets.len(), 1);
+        assert_eq!(back.split_presets[0].name, "Работа");
+        assert_eq!(back.split_presets[0].apps[0].exe, "discord.exe");
+        // старые файлы без поля читаются как пустой список, а не падают
+        let legacy: AppState = serde_json::from_str("{}").unwrap();
+        assert!(legacy.split_presets.is_empty());
     }
 }

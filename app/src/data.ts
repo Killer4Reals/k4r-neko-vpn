@@ -26,7 +26,7 @@ export const servers: Server[] = [
   { id: "us1", cc: "US", flag: "", city: "Нью-Йорк", country: "США", tag: "VLESS", lat: 143, quality: "bad" },
 ];
 
-export type AppEntry = { id: string; name: string; exe: string; via: boolean };
+export type AppEntry = { id: string; name: string; exe: string; via: boolean; running?: boolean };
 
 export const apps: AppEntry[] = [
   { id: "discord", name: "Discord", exe: "Discord.exe", via: true },
