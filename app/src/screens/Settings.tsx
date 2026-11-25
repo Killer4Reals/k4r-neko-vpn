@@ -10,6 +10,9 @@ type Props = {
   t: (k: string) => string;
   lang: Lang;
   setLang: (l: Lang) => void;
+  /** живой фон: включается тумблером, состояние живёт в localStorage */
+  aurora: boolean;
+  setAurora: (v: boolean) => void;
   killSwitch: boolean;
   setKillSwitch: (v: boolean) => void;
   /** состояние ОС-блокировки (WFP helper) */
@@ -195,6 +198,24 @@ export function SettingsScreen(p: Props) {
               }}
             />
           ))}
+        </div>
+      </div>
+
+      {/* Аврора: фон дышит вместе с туннелем, но это лишняя работа для
+          видеокарты — поэтому тумблер, а не всегда включено */}
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div className="row">
+          <div className="txt">
+            <b>{t("auroraTitle")}</b>
+            <span>{t("auroraHint")}</span>
+          </div>
+          <button
+            className="switch"
+            aria-checked={p.aurora}
+            onClick={() => p.setAurora(!p.aurora)}
+          >
+            <span />
+          </button>
         </div>
       </div>
 

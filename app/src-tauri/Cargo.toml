@@ -1,6 +1,6 @@
 [package]
 name = "k4r-neko-vpn"
-version = "1.47.5"
+version = "1.50.0"
 description = "K4R Neko VPN"
 authors = ["K4R"]
 edition = "2021"
@@ -15,6 +15,8 @@ tauri-build = { version = "2", features = [] }
 [target.'cfg(windows)'.dependencies]
 # WFP kill-switch: Mullvad'овская обёртка (MIT/Apache-2.0), dynamic-сессии из коробки
 wfp = "0.3"
+# Mica/Acrylic на Win11: окно перестаёт быть плоским прямоугольником
+window-vibrancy = "0.8"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_IpHelper",
@@ -45,6 +47,8 @@ percent-encoding = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
 rusqlite = { version = "0.43.0", features = ["bundled"] }
+# X2: диагностика одним архивом для поддержки
+zip = { version = "8", default-features = false, features = ["deflate"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 getrandom = "0.2"
 

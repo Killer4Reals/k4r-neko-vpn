@@ -57,6 +57,44 @@
   gap: 10px;
 }
 
+/* весь пул молчит: не «ошибка запуска», а диагноз с двумя выходами */
+.dead-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px 9px 14px;
+  border: 1px solid rgba(255, 122, 133, 0.34);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255, 122, 133, 0.1), rgba(255, 122, 133, 0.04));
+}
+
+.dead-copy strong {
+  display: block;
+  font-size: 13px;
+  color: var(--danger-text);
+}
+
+.dead-copy p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--txt-2);
+}
+
+.dead-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .dead-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* an error line adds height: give the mascot room by shrinking the orb */
 .hero:has(.hero-error) {
   gap: clamp(6px, 1vh, 10px);
@@ -2661,7 +2699,7 @@ input {
 
 
 /* Живая кривая скорости на главной: тишина в покое, движение в работе. */
-.spark {
+.node-spark {
   width: 100%;
   height: 56px;
   display: block;
@@ -2738,4 +2776,769 @@ html[data-accent="ice"] {
   color: var(--green);
   opacity: 0.85;
   margin-left: 2px;
+}
+/* Заставка: 1.2 с на старте. Дальше уходит сама — горячие клавиши и трей
+   работают с первого кадра, ждать её не нужно. */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  background: radial-gradient(120% 90% at 50% 28%, var(--bg-2), var(--bg-0) 72%);
+  animation: splash-out 0.3s ease 0.9s forwards;
+}
+
+.splash-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+}
+
+.splash-mark img {
+  width: 92px;
+  height: 92px;
+  filter: drop-shadow(0 0 22px rgba(57, 255, 20, 0.35));
+  animation: splash-breathe 1.6s ease-in-out infinite;
+}
+
+.splash-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--green-line);
+  border-radius: 50%;
+  animation: splash-ping 1.2s ease-out infinite;
+}
+
+.splash-name {
+  color: var(--txt);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.splash-bar {
+  width: 148px;
+  height: 2px;
+  overflow: hidden;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.splash-bar i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+  animation: splash-run 1s ease-in-out infinite;
+}
+
+@keyframes splash-out {
+  to { opacity: 0; visibility: hidden; }
+}
+
+@keyframes splash-breathe {
+  50% { transform: scale(1.04); }
+}
+
+@keyframes splash-ping {
+  from { transform: scale(0.72); opacity: 0.8; }
+  to { transform: scale(1.15); opacity: 0; }
+}
+
+@keyframes splash-run {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash { animation-duration: 0.01ms; animation-delay: 0s; }
+  .splash-mark img, .splash-ring, .splash-bar i { animation: none; }
+}
+
+/* Обрыв: красная вспышка вокруг шара — видно боковым зрением, а не только
+   строкой под кнопкой. */
+.globe-btn[data-state="error"]::after, .globe-btn[data-state="guard"]::after {
+  content: "";
+  position: absolute;
+  inset: -14%;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 122, 133, 0.35), transparent 62%);
+  animation: globe-flash 0.9s ease-out 1;
+}
+
+@keyframes globe-flash {
+  0% { opacity: 0; transform: scale(0.9); }
+  18% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+
+
+/* След пакетов по кольцу подключения: короткие штрихи бегут по кругу. */
+.globe-progress .pg-packets {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 1.6 9;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  animation: packets-run 2.4s linear infinite;
+}
+
+.globe-progress[data-state="connecting"] .pg-packets,
+.globe-progress[data-state="connected"] .pg-packets {
+  opacity: 0.75;
+}
+
+@keyframes packets-run {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -106; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .globe-progress .pg-packets { animation: none; opacity: 0; }
+}
+
+/* Живой фон: canvas под содержимым, клики идут сквозь него. Заставку не
+   трогаем — она сама поверх всего. */
+.shell > .aurora {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.shell > *:not(.aurora):not(.splash) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Спарклайн задержки: линия без заливки, цвет — по последнему замеру. */
+.spark {
+  flex: 0 0 auto;
+  overflow: visible;
+  margin-right: 2px;
+}
+
+.node-spark polyline {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.node-spark[data-tone="warn"] polyline {
+  stroke: #f5c542;
+}
+
+.node-spark[data-tone="bad"] polyline {
+  stroke: var(--red, #ff4d5e);
+}
+
+.node-spark[data-tone="none"] polyline {
+  stroke: var(--txt-3);
+}
+
+/* Паспорт выхода: четыре клетки и оценка. Цвет рамки — по градации. */
+.passport {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+
+.passport[data-grade="A"] {
+  border-color: rgba(57, 255, 20, 0.35);
+}
+
+.passport[data-grade="B"] {
+  border-color: rgba(77, 217, 255, 0.3);
+}
+
+.passport[data-grade="C"] {
+  border-color: rgba(245, 197, 66, 0.32);
+}
+
+.passport[data-grade="D"] {
+  border-color: rgba(255, 77, 94, 0.38);
+}
+
+.passport-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.passport-head .k {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  flex: 1;
+}
+
+.passport-score {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--txt);
+}
+
+.passport-score small {
+  font-size: 10px;
+  color: var(--txt-3);
+  font-weight: 500;
+}
+
+.passport-score b {
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg-3);
+  color: var(--green);
+}
+
+.passport[data-grade="C"] .passport-score b {
+  color: #f5c542;
+}
+
+.passport[data-grade="D"] .passport-score b {
+  color: var(--red, #ff4d5e);
+}
+
+.passport-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+
+.passport-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.passport-cell .k {
+  font-size: 9.5px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--txt-3);
+}
+
+.passport-cell strong {
+  font-size: 12px;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.passport-cell .ghost-btn {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 0;
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .passport-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Турбина скорости: дуга 270°, метка пика и стрелка «сейчас». */
+.turbine {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.turbine svg {
+  width: 132px;
+  height: 132px;
+}
+
+.turbine-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.turbine-fill {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(57, 255, 20, 0.45));
+}
+
+.turbine-peak {
+  stroke: var(--txt-3);
+  stroke-width: 1.4;
+}
+
+.turbine-needle {
+  stroke: var(--txt);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.turbine-hub {
+  fill: var(--txt);
+}
+
+.turbine-now {
+  fill: var(--txt);
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.turbine-unit {
+  fill: var(--txt-3);
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.turbine-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: -6px;
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.turbine-legend b {
+  color: var(--txt-2);
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+/* Кольца статистики: три доли в ряд, цифра внутри. */
+.rings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 10px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: var(--bg-2);
+}
+
+.ring svg {
+  width: 96px;
+  height: 96px;
+}
+
+.ring-track,
+.ring-fill {
+  fill: none;
+  stroke-width: 5;
+}
+
+.ring-track {
+  stroke: var(--line);
+}
+
+.ring-fill {
+  stroke: var(--green);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 5px rgba(57, 255, 20, 0.35));
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.ring:nth-child(2) .ring-fill {
+  stroke: #4dd9ff;
+  filter: drop-shadow(0 0 5px rgba(77, 217, 255, 0.35));
+}
+
+.ring:nth-child(3) .ring-fill {
+  stroke: #b46bff;
+  filter: drop-shadow(0 0 5px rgba(180, 107, 255, 0.35));
+}
+
+.ring-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.ring-text b {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--txt);
+}
+
+.ring-text span {
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
+  color: var(--txt-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-fill {
+    transition: none;
+  }
+}
+
+/* Онбординг: три карточки маскота поверх интерфейса, спокойно и без стрелок-указок. */
+.onboard {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(8, 10, 12, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.onboard-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, 100%);
+  padding: 24px 22px 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--bg-2);
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.onboard-pose {
+  width: 132px;
+  height: 132px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 18px rgba(180, 107, 255, 0.35));
+}
+
+.onboard-card h2 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--txt);
+}
+
+.onboard-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--txt-2);
+}
+
+.onboard-dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.onboard-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.onboard-dots span[data-on="true"] {
+  background: var(--green);
+  box-shadow: 0 0 6px rgba(57, 255, 20, 0.6);
+}
+
+.onboard-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.onboard .btn.primary {
+  width: auto;
+  padding-inline: 22px;
+}
+
+/* Маскот живой: дышит и моргает, реагирует на состояние. Арт статичный,
+   поэтому «моргание» — короткое сжатие по вертикали раз в пять секунд. */
+.globe-mascot img {
+  transform-origin: 50% 92%;
+  animation: mascot-life 5.6s ease-in-out infinite;
+  transition: filter 0.35s ease;
+}
+
+.globe-mascot[data-state="connecting"] img {
+  animation: mascot-try 1.4s ease-in-out infinite;
+}
+
+.globe-mascot[data-state="connected"] img {
+  animation: mascot-joy 2.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 10px rgba(57, 255, 20, 0.5));
+}
+
+.globe-mascot[data-state="error"] img {
+  animation: mascot-shy 4s ease-in-out infinite;
+  filter: grayscale(0.35) brightness(0.8);
+}
+
+@keyframes mascot-life {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  45% {
+    transform: scale(1.03, 1.045) translateY(-1px);
+  }
+  62% {
+    transform: scale(1.03, 1.045) translateY(-1px);
+  }
+  66% {
+    transform: scale(1.05, 0.95);
+  }
+  70% {
+    transform: scale(1.03, 1.045) translateY(-1px);
+  }
+}
+
+@keyframes mascot-try {
+  0%,
+  100% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2.5deg);
+  }
+}
+
+@keyframes mascot-joy {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  30% {
+    transform: translateY(-3px) rotate(-2deg) scale(1.02);
+  }
+  55% {
+    transform: translateY(0) rotate(1.5deg);
+  }
+}
+
+@keyframes mascot-shy {
+  0%,
+  100% {
+    transform: scale(0.97) translateY(1px);
+  }
+  50% {
+    transform: scale(0.95) translateY(2px) rotate(-1.5deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .globe-mascot img {
+    animation: none;
+  }
+}
+
+/* Маршрут как схема метро: ветки, станции, живой пунктир в туннель. */
+.metro {
+  margin-bottom: 14px;
+  padding: 8px 12px 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--bg-2);
+}
+
+.metro svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.metro-trunk,
+.metro-lane,
+.metro-exit,
+.metro-guard {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.metro-trunk {
+  stroke: var(--line);
+  stroke-width: 6;
+}
+
+.metro-lane {
+  stroke: var(--line);
+  stroke-width: 6;
+  transition: stroke 0.4s ease;
+}
+
+.metro [data-tone="proxy"] .metro-lane {
+  stroke: var(--green);
+}
+
+.metro [data-tone="proxy"] .metro-lane[data-live="true"] {
+  stroke-dasharray: 2 9;
+  animation: metro-flow 1.1s linear infinite;
+}
+
+.metro [data-tone="direct"] .metro-lane {
+  stroke: #4dd9ff;
+}
+
+.metro [data-tone="block"] .metro-lane {
+  stroke: #ff5d7a;
+}
+
+.metro-node,
+.metro-you {
+  fill: var(--bg);
+  stroke: var(--line);
+  stroke-width: 3;
+}
+
+.metro [data-tone="proxy"] .metro-node {
+  stroke: var(--green);
+}
+
+.metro [data-tone="direct"] .metro-node {
+  stroke: #4dd9ff;
+}
+
+.metro [data-tone="block"] .metro-node {
+  stroke: #ff5d7a;
+}
+
+.metro-you {
+  stroke: var(--txt);
+  fill: var(--bg-3);
+}
+
+.metro-count {
+  fill: var(--txt);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.metro-label,
+.metro-you-label,
+.metro-exit-label,
+.metro-guard-label {
+  fill: var(--txt-3);
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+.metro-exit {
+  stroke: var(--line);
+  stroke-width: 6;
+  stroke-dasharray: 2 9;
+}
+
+.metro-exit-node {
+  fill: var(--bg-3);
+  stroke: var(--line);
+  stroke-width: 3;
+}
+
+.metro [data-tone="ok"] .metro-exit,
+.metro [data-tone="ok"] .metro-exit-node {
+  stroke: var(--green);
+}
+
+.metro [data-tone="bad"] .metro-exit,
+.metro [data-tone="bad"] .metro-exit-node {
+  stroke: #ff5d7a;
+}
+
+.metro [data-tone="ok"] .metro-exit-label {
+  fill: var(--txt);
+}
+
+.metro-guard {
+  stroke: var(--green);
+  stroke-width: 2;
+  stroke-dasharray: 2 7;
+  opacity: 0.6;
+}
+
+@keyframes metro-flow {
+  to {
+    stroke-dashoffset: -11;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metro-lane[data-live="true"] {
+    animation: none;
+  }
+}
+
+/* Подсказка из буфера: спокойная полоса над полем подписки. */
+.clip-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--bg-2);
+  font-size: 12.5px;
+  color: var(--txt-2);
+}
+
+.clip-hint .btn {
+  padding-block: 5px;
+  font-size: 12px;
+}
+
+/* X1: Mica/Acrylic под окном. Фон остаётся тёмным, но перестаёт быть глухим
+   прямоугольником — видно, что окно живёт на рабочем столе, а не поверх него. */
+/* Подложка живёт под окном; тело и оболочка должны её пропускать, иначе Mica
+   просто не видно: .shell раньше заливался плотным var(--bg-1). */
+html[data-backdrop] body {
+  background: transparent;
+}
+
+html[data-backdrop] .shell {
+  background:
+    radial-gradient(900px 500px at 22% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+    radial-gradient(700px 460px at 88% 108%, rgba(57, 255, 20, 0.08), transparent 62%),
+    rgba(9, 11, 17, 0.86);
+}
+
+html[data-backdrop="acrylic"] .shell {
+  background:
+    radial-gradient(900px 500px at 22% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+    radial-gradient(700px 460px at 88% 108%, rgba(57, 255, 20, 0.08), transparent 62%),
+    rgba(9, 11, 17, 0.78);
 }

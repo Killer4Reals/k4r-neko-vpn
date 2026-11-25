@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { barHeight, human, totals, windowOf, type DayTraffic } from "../stats";
+import { Rings } from "../Rings";
+import { ringPct } from "../ringMath";
 
 type Props = { t: (k: string) => string };
 
@@ -24,6 +26,14 @@ export function StatsScreen({ t }: Props) {
   const sum = useMemo(() => totals(view), [view]);
   const peak = Math.max(1, ...view.map((d) => d.down + d.up));
   const hasData = sum.total > 0;
+  // Кольца: доли принятого и отправленного считаем от общего, активные дни —
+  // от выбранного окна. Ноль в знаменателе даёт пустое кольцо, а не NaN.
+  const activeDays = view.filter((d) => d.down + d.up > 0).length;
+  const ringItems = [
+    { key: "down", label: t("ringDown"), pct: ringPct(sum.down, sum.total), text: human(sum.down) },
+    { key: "up", label: t("ringUp"), pct: ringPct(sum.up, sum.total), text: human(sum.up) },
+    { key: "days", label: t("ringDays"), pct: ringPct(activeDays, span), text: activeDays + "/" + span },
+  ];
 
   return (
     <>
@@ -31,6 +41,8 @@ export function StatsScreen({ t }: Props) {
         <h1>{t("statsTitle")}</h1>
         <p>{t("statsSub")}</p>
       </div>
+
+      <Rings items={ringItems} />
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="seg" style={{ display: "flex", gap: 8, marginBottom: 12 }}>

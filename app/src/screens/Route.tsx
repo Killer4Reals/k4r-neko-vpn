@@ -2,6 +2,8 @@ import { useState } from "react";
 import { api } from "../api";
 import type { RouteRule, ZapretScan } from "../api";
 import { mergeRules } from "../rulesMerge";
+import { MetroMap } from "../MetroMap";
+import { exitLabel, metroCounts } from "../metroMath";
 
 type Props = {
   t: (k: string) => string;
@@ -13,6 +15,11 @@ type Props = {
   setBlockAds: (v: boolean) => void;
   connected: boolean;
   onReconnect: () => void;
+  /** Куда ведёт туннель: город выбранного узла. */
+  city?: string;
+  country?: string;
+  /** Защита туннеля включена — на схеме это отдельная ветка. */
+  guard?: boolean;
 };
 
 const KINDS: RouteRule["kind"][] = ["suffix", "domain", "keyword", "ip"];
@@ -47,7 +54,11 @@ export function RouteScreen({
   setBlockAds,
   connected,
   onReconnect,
+  city = "",
+  country = "",
+  guard = false,
 }: Props) {
+  const counts = metroCounts(rules);
   const [kind, setKind] = useState<RouteRule["kind"]>("suffix");
   const [action, setAction] = useState<RouteRule["action"]>("direct");
   const [value, setValue] = useState("");
@@ -99,6 +110,14 @@ export function RouteScreen({
         <h1>{t("routeTitle")}</h1>
         <p>{t("routeSub")}</p>
       </div>
+
+      <MetroMap
+        t={t}
+        counts={counts}
+        exit={exitLabel(city, country)}
+        connected={connected}
+        guard={guard}
+      />
 
       <div className="card" style={{ marginBottom: 14 }}>
         <div className="row" style={{ display: "block" }}>

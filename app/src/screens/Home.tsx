@@ -7,6 +7,9 @@ import { BoltIcon, RefreshIcon } from "../icons";
 import { SCENARIOS, type ScenarioId } from "../scenarios";
 import { Flag } from "../Flag";
 import { humanBytes, leftBytes, subTiming } from "../sub";
+import { grade, providerOf, score } from "../passport";
+import { isFresh } from "../health";
+import { Turbine } from "../Turbine";
 
 type Props = {
   t: (k: string) => string;
@@ -47,6 +50,12 @@ type Props = {
   scenario: ScenarioId | null;
   onScenario: (id: ScenarioId) => void;
   error: string;
+  /** все узлы измерены, свежо, и ни один не ответил */
+  dead: { dead: number; total: number } | null;
+  /** когда последний раз кто-то отвечал, мс эпохи; 0 — не было */
+  lastAliveAt: number;
+  onCheckNodes: () => void;
+  nodesBusy: boolean;
   /** срок подписки, unix-секунды; 0 — провайдер не сказал */
   subExpire: number;
   /** лимит трафика в байтах; 0 — без лимита */
@@ -76,6 +85,13 @@ const fmt = (bytesPerSec: number) => {
 
 export function HomeScreen(p: Props) {
   const { t, conn, toggleConnection, selected, servers, selectedId, setSelectedId } = p;
+
+  // Паспорт выхода: одна оценка вместо трёх графиков. Свежесть замера важна:
+  // «40 мс» недельной давности — это не 40 мс.
+  const passMs = typeof p.lat[selected.id] === "number" ? p.lat[selected.id] : null;
+  const passFresh = isFresh(p.latAt?.[selected.id]);
+  const passScore = score(passMs, selected.quality, passFresh);
+  const passGrade = grade(passScore);
 
   // Узлы на планете: без открытия списка видно, кто ответил, кто тормозит, а
   // кто молчит. Замер старше 12 минут считаем старым — он не врёт, но устарел.
@@ -118,6 +134,11 @@ export function HomeScreen(p: Props) {
   const m = guarded ? GUARD : mascot[conn];
   const mm = String(Math.floor(uptime / 60)).padStart(2, "0");
   const ss = String(uptime % 60).padStart(2, "0");
+  // Время последнего живого ответа: без него «все мертвы» звучит как паника,
+  // а с ним — как факт, который можно проверить.
+  const deadAgo = p.lastAliveAt
+    ? new Date(p.lastAliveAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : t("deadNever");
 
   // Глобус подстраивается под ширину блока: в узком окне шар меньше, а кнопка
   // уезжает под него, чтобы шар и маскот больше не наезжали друг на друга.
@@ -225,6 +246,9 @@ export function HomeScreen(p: Props) {
                 strokeDasharray={CIRC}
                 strokeDashoffset={CIRC * (1 - fill)}
               />
+              {/* Пакеты по кольцу: видно, что соединение живое, а не «крутится
+                  спиннер». Показываем только на подключении и на связи. */}
+              <circle className="pg-packets" cx="50" cy="50" r="49" />
             </svg>
             <Globe
               size={globeSize}
@@ -238,7 +262,7 @@ export function HomeScreen(p: Props) {
           {/* Подпись под шаром объясняет, что нажатие делает; маскот рядом,
               а не поверх планеты */}
           <div className="orb-hint" data-state={view}>
-            <span className="globe-mascot" aria-hidden>
+            <span className="globe-mascot" aria-hidden data-state={view}>
               <img src={m} alt="" draggable={false} />
             </span>
             <span className="hint-text">{t(hintKey)}</span>
@@ -251,6 +275,27 @@ export function HomeScreen(p: Props) {
             <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
           </div>
         </div>
+
+        {p.dead && conn !== "connected" && p.realCount > 0 && (
+          <div className="dead-banner" role="status">
+            <div className="dead-copy">
+              <strong>{t("deadTitle")}</strong>
+              <p>
+                {t("deadText")
+                  .replace("{n}", String(p.dead.total))
+                  .replace("{ago}", deadAgo)}
+              </p>
+            </div>
+            <div className="dead-actions">
+              <button className="ghost-btn" onClick={p.onCheckNodes} disabled={p.nodesBusy}>
+                {p.nodesBusy ? "…" : t("deadRetry")}
+              </button>
+              <button className="ghost-btn" onClick={p.onRefreshServers}>
+                {t("deadRefreshSub")}
+              </button>
+            </div>
+          </div>
+        )}
 
         {p.error && <div className="hero-error">{p.error}</div>}
 
@@ -270,6 +315,7 @@ export function HomeScreen(p: Props) {
           ))}
         </div>
 
+        <Turbine data={p.trail} t={t} />
         <Sparkline data={p.trail} />
 
         <div className="stats">
@@ -293,12 +339,40 @@ export function HomeScreen(p: Props) {
           </div>
         </div>
 
-        <div className="server-line ip-line">
-          <span className="k">{t("myIp")}</span>
-          <strong className="ip">{p.ip || "—"}</strong>
-          <button className="ghost-btn" onClick={p.onCheckIp} disabled={p.ipBusy} title={t("myIpHint")}>
-            {p.ipBusy ? "…" : t("ipCheck")}
-          </button>
+        {/* Паспорт выхода: то, что интернет знает о тебе прямо сейчас, и
+            насколько этому выходу можно верить */}
+        <div className="passport" data-grade={passGrade}>
+          <div className="passport-head">
+            <span className="k">{t("passportTitle")}</span>
+            <span className="passport-score" title={t("passportScoreHint")}>
+              {passScore}
+              <small>/100</small>
+              <b>{passGrade}</b>
+            </span>
+          </div>
+          <div className="passport-grid">
+            <div className="passport-cell">
+              <span className="k">{t("passportIp")}</span>
+              <strong className="ip">{p.ip || "—"}</strong>
+              <button className="ghost-btn" onClick={p.onCheckIp} disabled={p.ipBusy} title={t("myIpHint")}>
+                {p.ipBusy ? "…" : t("ipCheck")}
+              </button>
+            </div>
+            <div className="passport-cell">
+              <span className="k">{t("passportCountry")}</span>
+              <strong>
+                <Flag cc={selected.flag || selected.cc} size="sm" /> {selected.country}
+              </strong>
+            </div>
+            <div className="passport-cell">
+              <span className="k">{t("passportProvider")}</span>
+              <strong>{providerOf(selected.host)}</strong>
+            </div>
+            <div className="passport-cell">
+              <span className="k">{t("passportProto")}</span>
+              <strong>{selected.tag}</strong>
+            </div>
+          </div>
         </div>
 
         <SubLine expire={p.subExpire} total={p.subTotal} used={p.subUsed} t={t} />

@@ -620,50 +620,6 @@ fn write_export(
     Ok(path)
 }
 
-/// One readable file the user can hand over when something breaks.
-#[tauri::command]
-fn export_log(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = data_dir(&app)?;
-    let out_dir = dir.join("exports");
-    std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let path = out_dir.join(format!("k4r-log-{stamp}.txt"));
-    let mut text = String::new();
-    text.push_str(
-        "K4R Neko VPN — журнал для поддержки
-",
-    );
-    text.push_str(&format!(
-        "версия: {}
-",
-        env!("CARGO_PKG_VERSION")
-    ));
-    text.push_str(&format!(
-        "админ: {}
-",
-        engine::is_elevated()
-    ));
-    text.push_str(
-        "
---- engine.log ---
-",
-    );
-    text.push_str(&store::tail(&dir, "engine", 400));
-    text.push_str(
-        "
-
---- zapret.log ---
-",
-    );
-    text.push_str(&store::tail(&dir, "zapret", 200));
-    // never include the subscription url or ids here
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
-    Ok(path.display().to_string())
-}
-
 #[tauri::command]
 fn set_start_with_windows(enabled: bool) -> Result<bool, String> {
     set_autostart(enabled)?;
@@ -1802,6 +1758,25 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
     let saved = data_dir(app).map(|d| store::load(&d)).unwrap_or_default();
     let mut items: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = Vec::new();
+    // Первая строка — правда о туннеле, вторая — одно действие. Из трея человек
+    // не должен гадать, включено ли, и искать это в окне.
+    let engine_state = {
+        let st = app.state::<engine::Engine>();
+        engine::poll(&st).state
+    };
+    let (status_text, toggle_text) = match engine_state {
+        engine::EngineState::Running => ("● Подключено", "Отключить"),
+        engine::EngineState::Starting => ("◌ Подключаюсь", "Отключить"),
+        engine::EngineState::Error => ("⚠ Ошибка", "Подключить"),
+        engine::EngineState::Idle => ("○ Выключено", "Подключить"),
+    };
+    if let Ok(status) = MenuItem::with_id(app, "status", status_text, false, None::<&str>) {
+        items.push(Box::new(status));
+    }
+    if let Ok(toggle) = MenuItem::with_id(app, "toggle", toggle_text, true, None::<&str>) {
+        items.push(Box::new(toggle));
+    }
+    items.push(Box::new(PredefinedMenuItem::separator(app)?));
     if let Ok(head) = MenuItem::with_id(app, "srv_head", "Серверы", false, None::<&str>) {
         items.push(Box::new(head));
     }
@@ -1856,6 +1831,31 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             if id == "quit" {
                 app.exit(0);
+                return;
+            }
+            // Быстрое включение/выключение: то же, что кнопка в окне, но без окна.
+            if id == "toggle" {
+                let running = {
+                    let st = app.state::<engine::Engine>();
+                    let engine_state = engine::poll(&st).state;
+                    engine_state == engine::EngineState::Running
+                        || engine_state == engine::EngineState::Starting
+                };
+                let result = if running {
+                    let st = app.state::<engine::Engine>();
+                    let _ = engine::stop(&st);
+                    let saved = data_dir(app).map(|d| store::load(&d)).unwrap_or_default();
+                    if saved.kill_switch {
+                        let _ = wfp::disable();
+                    }
+                    Ok(())
+                } else {
+                    connect_saved(app)
+                };
+                if let Err(e) = result {
+                    eprintln!("туннель из трея не переключился: {e}");
+                }
+                refresh_tray(app);
                 return;
             }
             // «● Сервер» из меню: выбрать его и поднять туннель
@@ -1963,7 +1963,106 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
 
 /// Что в меню трея сейчас: сколько серверов и какой выбран. Меню пересобираем
 /// только когда это меняется — иначе оно дёргалось бы на каждом сохранении.
-static TRAY_KEY: std::sync::Mutex<(usize, String)> = std::sync::Mutex::new((0, String::new()));
+/// Какая подложка реально включилась: mica / acrylic / none (Win10).
+static BACKDROP: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// В архив идут только журналы из своей папки: настройки и подписка — нет,
+/// в них секреты, а для разбора хватает логов движка и защиты.
+fn log_entry(name: &str) -> bool {
+    matches!(name, "engine.log" | "zapret.log" | "app.log" | "core.log")
+}
+
+/// Собирает архив из папки журналов: только известные имена, последние 4 МБ
+/// каждого файла. Возвращает число вошедших журналов.
+fn write_logs_zip(
+    logs: &std::path::Path,
+    out: &std::path::Path,
+    summary: &str,
+) -> Result<usize, String> {
+    use std::io::Write;
+    let file = std::fs::File::create(out).map_err(|e| e.to_string())?;
+    let mut zw = zip::ZipWriter::new(file);
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    let mut wrote = 0usize;
+    if let Ok(entries) = std::fs::read_dir(logs) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !log_entry(&name) || !entry.path().is_file() {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(entry.path()) else {
+                continue;
+            };
+            // Хвост может начаться посреди строки и посреди символа: сдвигаем
+            // до ближайшего перевода строки, чтобы в архиве был читаемый текст.
+            let slice = if bytes.len() > 4 * 1024 * 1024 {
+                let start = bytes.len() - 4 * 1024 * 1024;
+                let start = bytes[start..]
+                    .iter()
+                    .position(|b| *b == b'\n')
+                    .map(|i| start + i + 1)
+                    .unwrap_or(start);
+                &bytes[start..]
+            } else {
+                &bytes[..]
+            };
+            zw.start_file(&name, opts).map_err(|e| e.to_string())?;
+            zw.write_all(slice).map_err(|e| e.to_string())?;
+            wrote += 1;
+        }
+    }
+    zw.start_file("summary.txt", opts).map_err(|e| e.to_string())?;
+    zw.write_all(summary.as_bytes()).map_err(|e| e.to_string())?;
+    zw.finish().map_err(|e| e.to_string())?;
+    Ok(wrote)
+}
+
+/// Диагностика одним zip: логи + короткая сводка. Куда сохранить — Downloads,
+/// если его нет, папка данных приложения.
+#[tauri::command]
+fn logs_export(app: tauri::AppHandle) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+    let logs = dir.join("logs");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let out_dir = app
+        .path()
+        .download_dir()
+        .ok()
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(|| dir.clone());
+    let out = out_dir.join(format!("k4r-logs-{stamp}.zip"));
+
+    let saved = data_dir(&app).map(|d| store::load(&d)).unwrap_or_default();
+    let state = {
+        let st = app.state::<engine::Engine>();
+        format!("{:?}", engine::poll(&st).state)
+    };
+    let summary = format!(
+        "K4R Neko VPN {}\nOS: {} {}\nengine: {}\nservers: {}\nkilled_switch: {}\nzapret: {}\n",
+        app.package_info().version,
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        state,
+        saved.profiles.len(),
+        saved.kill_switch,
+        if saved.zapret_auto { "auto" } else { "manual" },
+    );
+    // Число журналов пишем после сборки: сводка уже в архиве.
+    let summary_for_zip = summary.clone();
+    write_logs_zip(&logs, &out, &summary_for_zip)?;
+    Ok(out.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn window_backdrop() -> String {
+    BACKDROP.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+static TRAY_KEY: std::sync::Mutex<(usize, String, String)> = std::sync::Mutex::new((0, String::new(), String::new()));
 
 /// Обновляет подсказку и меню трея, не пересоздавая значок.
 fn refresh_tray(app: &tauri::AppHandle) {
@@ -1974,9 +2073,13 @@ fn refresh_tray(app: &tauri::AppHandle) {
     let key = data_dir(app)
         .map(|d| {
             let saved = store::load(&d);
-            (saved.profiles.len(), saved.selected.clone())
+            let engine_state = {
+                let st = app.state::<engine::Engine>();
+                format!("{:?}", engine::poll(&st).state)
+            };
+            (saved.profiles.len(), saved.selected.clone(), engine_state)
         })
-        .unwrap_or((0, String::new()));
+        .unwrap_or((0, String::new(), String::new()));
     let changed = {
         let mut last = TRAY_KEY.lock().unwrap();
         if *last == key {
@@ -2024,6 +2127,24 @@ pub fn run() {
                 });
             });
             build_tray(app.handle())?;
+            // X1: Mica на Win11, Acrylic — запасной. Окно прозрачное по конфигу,
+            // поэтому подложка просвечивает, а не подменяется плоским цветом.
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(win) = app.get_webview_window("main") {
+                    let kind = if window_vibrancy::apply_mica(&win, None).is_ok() {
+                        "mica"
+                    } else if window_vibrancy::apply_acrylic(&win, Some((7, 8, 12, 170))).is_ok() {
+                        "acrylic"
+                    } else {
+                        "none"
+                    };
+                    eprintln!("подложка окна: {kind}");
+                    if let Ok(mut slot) = BACKDROP.lock() {
+                        *slot = kind.to_string();
+                    }
+                }
+            }
             // Если защита уже стояла (helper пережил прошлый запуск) — обновляем
             // её параметры под текущие настройки, а не оставляем старые.
             {
@@ -2194,6 +2315,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             core_info,
+            window_backdrop,
+            logs_export,
             core_latest,
             core_update,
             core_reset,
@@ -2247,7 +2370,6 @@ pub fn run() {
             zapret_status,
             set_tray_state,
             apps_scan,
-            export_log,
             export_text
         ])
         .build(tauri::generate_context!())
@@ -2261,6 +2383,75 @@ pub fn run() {
                 let _ = zapret::stop(&zapret);
             }
         });
+}
+
+#[cfg(test)]
+mod logs_tests {
+    use super::{log_entry, write_logs_zip};
+
+    #[test]
+    fn takes_only_known_logs() {
+        assert!(log_entry("engine.log"));
+        assert!(log_entry("zapret.log"));
+        assert!(!log_entry("store.json"));
+        assert!(!log_entry("engine.log.bak"));
+        assert!(!log_entry("../engine.log"));
+    }
+
+    #[test]
+    fn zip_holds_only_logs_and_reads_back() {
+        let base = std::env::temp_dir().join(format!("k4r-zip-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("engine.log"), "строка журнала").unwrap();
+        std::fs::write(base.join("store.json"), "секрет подписки").unwrap();
+        let out = base.join("out.zip");
+        let n = write_logs_zip(&base, &out, "сводка").unwrap();
+        assert_eq!(n, 1);
+        let file = std::fs::File::open(&out).unwrap();
+        let mut ar = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..ar.len()).map(|i| ar.by_index(i).unwrap().name().to_string()).collect();
+        assert_eq!(names, vec!["engine.log".to_string(), "summary.txt".to_string()]);
+        let mut body = String::new();
+        use std::io::Read;
+        ar.by_name("engine.log").unwrap().read_to_string(&mut body).unwrap();
+        assert_eq!(body, "строка журнала");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn large_tail_starts_on_a_line_boundary() {
+        let base = std::env::temp_dir().join(format!("k4r-zip-big-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        let line = "2026-11-25 INFO строка журнала целиком\n";
+        let mut body = String::with_capacity(4_300_000);
+        while body.len() < 4 * 1024 * 1024 + 7 {
+            body.push_str(line);
+        }
+        std::fs::write(base.join("engine.log"), &body).unwrap();
+        let out = base.join("big.zip");
+        write_logs_zip(&base, &out, "сводка").unwrap();
+        let mut ar = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+        let mut tail = String::new();
+        use std::io::Read;
+        ar.by_name("engine.log").unwrap().read_to_string(&mut tail).unwrap();
+        assert!(tail.len() <= 4 * 1024 * 1024);
+        assert!(tail.starts_with("2026-11-25 INFO"), "начало: {:?}", &tail[..20.min(tail.len())]);
+        assert!(!tail.contains("\u{FFFD}"));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn missing_log_dir_is_empty_archive_not_error() {
+        let base = std::env::temp_dir().join(format!("k4r-zip-empty-{}", std::process::id()));
+        let out = base.join("out.zip");
+        std::fs::create_dir_all(&base).unwrap();
+        let n = write_logs_zip(&base.join("nope"), &out, "сводка").unwrap();
+        assert_eq!(n, 0);
+        assert!(out.is_file());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
 
 #[cfg(test)]

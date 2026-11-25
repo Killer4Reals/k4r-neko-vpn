@@ -6,15 +6,24 @@ import { servers as demoCatalog, type AppEntry, type ConnState, type Server } fr
 import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule } from "./api";
 import { isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
-import { slowSwitchTarget } from "./health";
+import { isDegraded, pushRate } from "./degrade";
+import { lastAliveAt, poolDead, slowSwitchTarget } from "./health";
 import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
 import { HistoryScreen } from "./screens/History";
 import { activeScenario, changedKeys, scenarioById, type ScenarioId, type ScenarioSettings } from "./scenarios";
 import { buildReport } from "./selfcheck";
 import { pairKey, quarantinedIds } from "./orchestrator";
 import { probeOnce } from "./probe";
+import { Splash } from "./Splash";
+import { Onboarding, shouldOnboard } from "./Onboarding";
+import { Aurora } from "./Aurora";
+import { readAurora, writeAurora, type AuroraPhase } from "./auroraLogic";
+import { pushSpark, type Sparks } from "./spark";
+import { splashDelay } from "./splashTiming";
+import { WATCHDOG_START, watchdogStep, type WatchdogState } from "./watchdog";
 import { describe as describeSubError } from "./subError";
 import { describe as describeSrsError } from "./srsError";
+import { NET_KEY, recall, remember, type NetMap } from "./netMemory";
 import type { SubInfo, SubSource } from "./api";
 import { api, inTauri, type Profile } from "./api";
 import {
@@ -167,6 +176,19 @@ export default function App() {
   const [catalog, setCatalog] = useState<AppEntry[]>([]);
   const [chosen, setChosen] = useState<ChosenApp[]>([]);
   const [scanning, setScanning] = useState(inTauri);
+  // X1: окно спрашивает у Rust, включилась ли подложка. Нет подложки — фон
+  // остаётся прежним, поэтому Win10 ничего не теряет.
+  useEffect(() => {
+    if (!inTauri) return;
+    api
+      .windowBackdrop()
+      .then((kind) => {
+        if (kind === "mica" || kind === "acrylic") {
+          document.documentElement.dataset.backdrop = kind;
+        }
+      })
+      .catch(() => undefined);
+  }, []);
   /// routes changed while the tunnel is up: engine reads them only on start
   const [splitDirty, setSplitDirty] = useState(false);
   /// "only" = tunnel carries just the chosen programs (the owner's default)
@@ -176,6 +198,11 @@ export default function App() {
   const [routeRu, setRouteRu] = useState(false);
   const [routeAds, setRouteAds] = useState(false);
   const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
+  // Заставка висит поверх первого кадра 1.2 с: ничего не блокирует, окно уже живое.
+  const [splash, setSplash] = useState(true);
+  const [onboard, setOnboard] = useState(shouldOnboard);
+  // Живой фон включается в настройках; по умолчанию — да, как и просили.
+  const [auroraOn, setAuroraOn] = useState(readAurora);
   // Автообновление: тихо проверяем версию и показываем баннер, если вышла новая.
   const [upd, setUpd] = useState<{ version: string; url: string } | null>(null);
   const [updBusy, setUpdBusy] = useState(false);
@@ -188,6 +215,13 @@ export default function App() {
     document.documentElement.dataset.accent = saved;
   }, []);
 
+  // Заставка: при «уменьшить движение» не мигает, а просто коротко ждёт.
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+    const id = window.setTimeout(() => setSplash(false), splashDelay(reduce));
+    return () => window.clearTimeout(id);
+  }, []);
+
   const [traffic, setTraffic] = useState({ down: 0, up: 0 });
   // след скорости для живой кривой на главной: последние сорок секунд
   const [trail, setTrail] = useState<number[]>([]);
@@ -197,6 +231,10 @@ export default function App() {
   // накопленное с последней записи в статистику, байты
   const statsPending = useRef({ down: 0, up: 0 });
   const prevTotals = useRef<{ down: number; up: number } | null>(null);
+  // X3: секундные скорости за последние полминуты и защита от частых переключений.
+  const rateHist = useRef<number[]>([]);
+  const lastDegrade = useRef(0);
+  const autoTickRef = useRef<((force?: boolean) => void) | null>(null);
   const [ip, setIp] = useState("");
   const [ipBusy, setIpBusy] = useState(false);
 
@@ -216,6 +254,9 @@ export default function App() {
   const [error, setError] = useState(initial.get("error") ?? "");
   const [busy, setBusy] = useState(false);
   const [lat, setLat] = useState<Record<string, number | null>>({});
+  // История замеров на узел: спарклайн показывает не «сейчас», а динамику.
+  const [sparks, setSparks] = useState<Sparks>({});
+  const [nodesBusy, setNodesBusy] = useState(false);
   /// id -> когда последний раз мерили. Без этого «живой» узел не отличить от
   /// того, что отвечал час назад.
   const [latAt, setLatAt] = useState<Record<string, number>>(() => {
@@ -269,7 +310,7 @@ export default function App() {
   const [autoHistory, setAutoHistory] = useState<string[]>([]);
   // Оркестратор: счётчики «сервер + транспорт» и состояние проб.
   const [orch, setOrch] = useState<OrchRow[]>([]);
-  const probeFail = useRef(0);
+  const wd = useRef<WatchdogState>(WATCHDOG_START);
   const [subUrl, setSubUrl] = useState(DEFAULT_SUB);
   const [subUa, setSubUa] = useState(DEFAULT_UA);
   const [subs, setSubs] = useState<SubSource[]>([]);
@@ -322,6 +363,7 @@ export default function App() {
       quality: "good" as const,
       reserve: p.reserve ?? false,
       kind: p.kind,
+      host: p.host,
       };
     });
   }, [profiles, lat]);
@@ -524,6 +566,7 @@ export default function App() {
     if (conn !== "connected") {
       setTraffic({ down: 0, up: 0 });
       setTrail([]);
+      rateHist.current = [];
       return;
     }
     let alive = true;
@@ -534,6 +577,16 @@ export default function App() {
           if (!alive) return;
           setTraffic({ down: t.down, up: t.up });
           setTrail((prev) => [...prev.slice(-39), t.down]);
+          // X3: узел может быть быстрым по пингу и мёртвым по скорости.
+          rateHist.current = pushRate(rateHist.current, t.down);
+          if (autoSwitchSlow && isDegraded(rateHist.current)) {
+            const now = Date.now();
+            if (now - lastDegrade.current > 10 * 60 * 1000) {
+              lastDegrade.current = now;
+              rateHist.current = [];
+              autoTickRef.current?.(true);
+            }
+          }
           // копим прирост суммарных счётчиков: down/up — это байты в секунду,
           // для «сколько за день» они не годятся
           if (prevTotals.current) {
@@ -551,7 +604,7 @@ export default function App() {
       alive = false;
       window.clearInterval(id);
     };
-  }, [conn]);
+  }, [conn, autoSwitchSlow]);
 
   // раз в минуту сбрасываем накопленное в дневную статистику
   useEffect(() => {
@@ -605,11 +658,44 @@ export default function App() {
     [conn, ksState.state, t],
   );
 
-  const startTunnel = useCallback(async () => {
+  const readNetMap = useCallback((): NetMap => {
+    try {
+      return JSON.parse(localStorage.getItem(NET_KEY) || "{}") as NetMap;
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const writeNetMap = useCallback((map: NetMap) => {
+    try {
+      localStorage.setItem(NET_KEY, JSON.stringify(map));
+    } catch {
+      /* приватный режим — память просто не сохранится */
+    }
+  }, []);
+
+  const startTunnel = useCallback(async (onlyId?: string) => {
     setError("");
     setConn("connecting");
     prevTotals.current = null;
-    const profile = profiles.find((p) => p.id === selectedId);
+    // onlyId — «поднимай именно этот узел»: после переключения состояние ещё не
+    // успело перерисоваться, и без него туннель возвращался на старый сервер.
+    let targetId = onlyId ?? selectedId;
+    // Память по сети: домашний узел не должен выбираться заново в кафе.
+    if (inTauri) {
+      try {
+        const st = await api.engineStatus();
+        const key = st.gateway ?? "";
+        if (key) {
+          const saved = recall(readNetMap(), key);
+          if (!onlyId && saved && profiles.some((p) => p.id === saved)) targetId = saved;
+          writeNetMap(remember(readNetMap(), key, targetId));
+        }
+      } catch {
+        /* без шлюза память просто не включается — туннель важнее */
+      }
+    }
+    const profile = profiles.find((p) => p.id === targetId);
 
     if (inTauri) {
       if (!profile) {
@@ -641,7 +727,7 @@ export default function App() {
 
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setConn("connected"), 1500);
-  }, [chosen, profiles, selectedId, dnsMode]);
+  }, [chosen, profiles, selectedId, dnsMode, readNetMap, writeNetMap]);
 
   const toggleConnection = useCallback(() => {
     if (busy) return;
@@ -661,11 +747,11 @@ export default function App() {
   };
 
   /** New routes need a fresh tunnel: the engine reads the list on start only. */
-  const reconnectTunnel = useCallback(async () => {
+  const reconnectTunnel = useCallback(async (onlyId?: string) => {
     setSplitDirty(false);
     // переподключение не должно открывать интернет: блокировку не снимаем
     await stopTunnel(false);
-    await startTunnel();
+    await startTunnel(onlyId);
   }, [stopTunnel, startTunnel]);
 
   // Срок и остаток берём у действующей подписки: у разных подписок они разные
@@ -847,6 +933,7 @@ export default function App() {
       const now = Date.now();
       for (const r of res) stamp[r.id] = now;
       setLat(next);
+      setSparks((prev) => res.reduce((acc, r) => pushSpark(acc, r.id, r.ms), prev));
       setLatAt(stamp);
       try {
         localStorage.setItem("k4r.latAt", JSON.stringify(stamp));
@@ -859,6 +946,23 @@ export default function App() {
       return undefined;
     }
   }, [profiles]);
+
+  // «Все молчат» — отдельный диагноз, а не ошибка движка. Показываем только на
+  // полном и свежем замере: неполный список не даёт права объявлять провайдера
+  // мёртвым, а старый замер — это «давно не спрашивали».
+  const dead = useMemo(
+    () => poolDead(profiles.map((p) => p.id), lat, latAt),
+    [profiles, lat, latAt],
+  );
+  const lastOk = useMemo(() => lastAliveAt(lat, latAt), [lat, latAt]);
+  const checkNodes = useCallback(async () => {
+    setNodesBusy(true);
+    try {
+      await measurePing();
+    } finally {
+      setNodesBusy(false);
+    }
+  }, [measurePing]);
 
   // A server that does not answer must be visible as such, not discovered by a
   // failed connection. Runs once per server list, in the background.
@@ -946,7 +1050,7 @@ export default function App() {
         record("switch", selectedId, target);
       }
       try {
-        await reconnectTunnel();
+        await reconnectTunnel(target);
       } finally {
         window.setTimeout(() => {
           switching.current = false;
@@ -955,6 +1059,15 @@ export default function App() {
     },
     [conn, lat, measurePing, orch, profiles, reconnectTunnel, record, selectedId, t],
   );
+
+  // Просадка скорости приходит из секундного опроса, а переключение живёт здесь:
+  // ссылка разрывает круг зависимостей, не создавая второй таймер.
+  useEffect(() => {
+    autoTickRef.current = (force) => void autoTick(force);
+    return () => {
+      autoTickRef.current = null;
+    };
+  }, [autoTick]);
 
   /**
    * Замер всех узлов → самый быстрый. Один и тот же путь для игрового режима
@@ -1045,35 +1158,56 @@ export default function App() {
    * поднято, а трафик молча выкидывается провайдером (silent drop).
    */
   const probeTunnel = useCallback(async () => {
-    if (!inTauri || conn !== "connected") return;
+    if (!inTauri || conn !== "connected") {
+      wd.current = WATCHDOG_START;
+      return;
+    }
     const current = profiles.find((p) => p.id === selectedId);
     if (!current) return;
-    const key = pairKey(current);
     const res = await probeOnce();
+    // Ядро могло умереть, а галочка «connected» осталась: без этой проверки
+    // сторож честно ждал бы второй пробы, хотя трафика нет вовсе.
+    let coreAlive = true;
+    try {
+      coreAlive = (await api.engineStatus()).state === "running";
+    } catch {
+      coreAlive = true; // статус не спросили — это не приговор движку
+    }
+    const next = watchdogStep({ connected: true, coreAlive, probeOk: res.ok, state: wd.current });
+    wd.current = next.state;
     if (res.ok) {
-      probeFail.current = 0;
-      const rows = await api.orchestratorRecord(key, true, res.ms).catch(() => undefined);
+      const rows = await api.orchestratorRecord(pairKey(current), true, res.ms).catch(() => undefined);
       if (rows) setOrch(rows);
       return;
     }
-    probeFail.current += 1;
-    if (probeFail.current < 2) return;
-    const rows = await api.orchestratorRecord(key, false, 0).catch(() => undefined);
-    if (rows) setOrch(rows);
-    probeFail.current = 0;
-    setToast({ title: t("autoSelect"), body: t("orchDead") });
-    // Один сервер — только переподключение; несколько — выбираем живой.
-    if (profiles.length > 1) {
-      void autoTick(true);
-    } else {
-      void reconnectTunnel().catch(() => undefined);
+    if (next.action === "wait") return;
+    if (next.action === "giveup") {
+      wd.current = WATCHDOG_START;
+      setError(t("wdGaveUp"));
+      await stopTunnel();
+      return;
     }
-  }, [autoTick, conn, profiles, reconnectTunnel, selectedId, t]);
+    const rows = await api.orchestratorRecord(pairKey(current), false, 0).catch(() => undefined);
+    if (rows) setOrch(rows);
+    setToast({ title: t("autoSelect"), body: t("orchDead") });
+    // «На другой узел»: текущий уже под подозрением, берём лучший из остальных.
+    const others = profiles
+      .filter((p) => p.id !== selectedId && typeof lat[p.id] === "number")
+      .sort((a, b) => (lat[a.id] ?? Number.MAX_SAFE_INTEGER) - (lat[b.id] ?? Number.MAX_SAFE_INTEGER));
+    const target = others[0] ?? profiles.find((p) => p.id !== selectedId);
+    if (!target) {
+      await reconnectTunnel();
+      return;
+    }
+    setSelectedId(target.id);
+    record("switch", selectedId, target.id);
+    await reconnectTunnel(target.id);
+  }, [conn, lat, profiles, reconnectTunnel, record, selectedId, stopTunnel, t]);
 
   // Пока туннель поднят — раз в 15 секунд проверяем, что интернет реально идёт.
   useEffect(() => {
     if (!inTauri || conn !== "connected") {
-      probeFail.current = 0;
+      wd.current = WATCHDOG_START;
       return;
     }
     const id = window.setInterval(() => void probeTunnel(), 15_000);
@@ -1409,6 +1543,8 @@ export default function App() {
     lat,
     /// id -> когда мерили (мс эпохи)
     latAt,
+    /// id -> история замеров для спарклайна
+    sparks,
     toggleConnection,
     selected,
     servers: viewServers,
@@ -1429,8 +1565,24 @@ export default function App() {
     },
   };
 
+  // Аврора: состояние важнее трафика. Кольцо блокировки — только когда
+  // туннель выключен, иначе «защита» красила бы фон при каждом обрыве.
+  const auroraPhase: AuroraPhase =
+    conn === "connected"
+      ? "connected"
+      : conn === "connecting"
+        ? "connecting"
+        : conn === "error"
+          ? "error"
+          : killSwitch && ksState.state === "on"
+            ? "guard"
+            : "idle";
+
   return (
     <div className="shell">
+      {splash && <Splash />}
+      {!splash && onboard && <Onboarding t={t} onDone={() => setOnboard(false)} />}
+      {auroraOn && <Aurora phase={auroraPhase} down={traffic.down} up={traffic.up} />}
       <header className="titlebar" data-tauri-drag-region>
         <div className="brand">
           <img src="/mascot/glyph-on.png" alt="" />
@@ -1530,6 +1682,10 @@ export default function App() {
                 })[0];
                 if (best) setSelectedId(best.id);
               }}
+              dead={dead}
+              lastAliveAt={lastOk}
+              onCheckNodes={checkNodes}
+              nodesBusy={nodesBusy}
               realCount={profiles.length}
               scenario={scenarioId}
               onScenario={applyScenario}
@@ -1598,6 +1754,9 @@ export default function App() {
               setBlockAds={setRouteAds}
               connected={conn === "connected"}
               onReconnect={reconnectTunnel}
+              city={selected.city}
+              country={selected.country}
+              guard={zapretState === "running"}
             />
           )}
           {screen === "zapret" && (
@@ -1621,6 +1780,11 @@ export default function App() {
               t={t}
               lang={lang}
               setLang={setLang}
+              aurora={auroraOn}
+              setAurora={(v) => {
+                setAuroraOn(v);
+                writeAurora(v);
+              }}
               selfCheck={selfCheck}
               killSwitch={killSwitch}
               setKillSwitch={setKillSwitchNow}

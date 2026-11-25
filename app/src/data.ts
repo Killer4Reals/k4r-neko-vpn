@@ -13,6 +13,8 @@ export type Server = {
   reserve?: boolean;
   /** "wireguard" — профиль WireGuard/WARP. */
   kind?: string;
+  /** адрес узла: по нему показываем провайдера в паспорте выхода */
+  host?: string;
 };
 
 export const servers: Server[] = [

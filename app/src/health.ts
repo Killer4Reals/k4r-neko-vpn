@@ -84,3 +84,39 @@ export function aliveCount(
   }
   return { alive, total };
 }
+
+/**
+ * Весь пул молчит. Возвращаем счётчик только когда измерены ВСЕ узлы, замеры
+ * свежие и ни один не ответил. Иначе это «ещё не мерили» или «мерили давно», а
+ * не приговор провайдеру — пугать человека таким нельзя.
+ */
+export function poolDead(
+  ids: string[],
+  measured: Record<string, number | null>,
+  at: Record<string, number> = {},
+  now = Date.now(),
+): { dead: number; total: number } | null {
+  if (ids.length === 0) return null;
+  let total = 0;
+  let dead = 0;
+  for (const id of ids) {
+    if (!(id in measured)) return null;
+    if (!isFresh(at[id], now)) return null;
+    total += 1;
+    if (measured[id] === null) dead += 1;
+  }
+  if (total === 0 || dead !== total) return null;
+  return { dead, total };
+}
+
+/** Когда последний раз хоть один узел реально ответил (0 — не было ни разу). */
+export function lastAliveAt(
+  measured: Record<string, number | null>,
+  at: Record<string, number> = {},
+): number {
+  let last = 0;
+  for (const [id, ms] of Object.entries(measured)) {
+    if (typeof ms === "number" && (at[id] ?? 0) > last) last = at[id] ?? 0;
+  }
+  return last;
+}

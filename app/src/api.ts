@@ -78,6 +78,8 @@ export type EngineStatus = {
   message: string;
   server: string;
   pid: number;
+  /** Шлюз текущей сети: по нему помним выбранный узел. */
+  gateway?: string;
 };
 
 export type Traffic = { down: number; up: number; total_down: number; total_up: number };
@@ -147,6 +149,8 @@ export const api = {
   setTrayState: (state: string) => invoke<void>("set_tray_state", { state }),
   profilesImport: (text: string) => invoke<Profile[]>("profiles_import", { text }),
   appVersion: () => invoke<string>("app_version"),
+  /** mica / acrylic / none — какая подложка окна включилась (Win11 и старше). */
+  windowBackdrop: () => invoke<string>("window_backdrop"),
   myIp: () => invoke<string>("my_ip"),
   stateExport: () => invoke<string>("state_export"),
   stateImport: (text: string) => invoke<void>("state_import", { text }),
@@ -184,7 +188,7 @@ export const api = {
   installId: () => invoke<string>("install_id"),
   installIdReset: () => invoke<string>("install_id_reset"),
   appsScan: () => invoke<InstalledApp[]>("apps_scan"),
-  exportLog: () => invoke<string>("export_log"),
+  exportLog: () => invoke<string>("logs_export"),
   exportText: (name: string, text: string, ext = "csv") =>
     invoke<string>("export_text", { name, text, ext }),
 };

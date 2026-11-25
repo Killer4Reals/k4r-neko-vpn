@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { FRESH_MS, SLOW_MARGIN_MS, aliveCount, isFresh, nodeTone, slowSwitchTarget } from "./health";
+import {
+  FRESH_MS,
+  SLOW_MARGIN_MS,
+  aliveCount,
+  isFresh,
+  lastAliveAt,
+  nodeTone,
+  poolDead,
+  slowSwitchTarget,
+} from "./health";
 
 describe("свежесть замера", () => {
   it("свежий — пока не прошло 12 минут", () => {
@@ -70,5 +79,44 @@ describe("счётчик живых", () => {
 
   it("неизмеренные не выглядят мёртвыми", () => {
     expect(aliveCount(["x"], {})).toEqual({ alive: 0, total: 0 });
+  });
+});
+describe("весь пул молчит", () => {
+  const now = 2_000_000;
+  const fresh = { a: now - 1_000, b: now - 1_000, c: now - 1_000 };
+  const dead = { a: null, b: null, c: null };
+
+  it("все измерены, свежо, никто не ответил — диагноз есть", () => {
+    expect(poolDead(["a", "b", "c"], dead, fresh, now)).toEqual({ dead: 3, total: 3 });
+  });
+
+  it("хоть один живой — это не «все мертвы»", () => {
+    expect(poolDead(["a", "b", "c"], { ...dead, b: 90 }, fresh, now)).toBeNull();
+  });
+
+  it("старый замер — не повод объявлять провайдера мёртвым", () => {
+    const old = { a: now - FRESH_MS - 1, b: now, c: now };
+    expect(poolDead(["a", "b", "c"], dead, old, now)).toBeNull();
+  });
+
+  it("не всех померили — молчим, а не пугаем", () => {
+    expect(poolDead(["a", "b", "c"], { a: null, b: null }, fresh, now)).toBeNull();
+    expect(poolDead(["x"], {}, {}, now)).toBeNull();
+  });
+
+  it("пустой список — не диагноз", () => {
+    expect(poolDead([], dead, fresh, now)).toBeNull();
+  });
+});
+
+describe("последний живой ответ", () => {
+  it("берёт самый свежий из ответивших", () => {
+    expect(
+      lastAliveAt({ a: 40, b: 80, c: null }, { a: 1000, b: 2000, c: 3000 }),
+    ).toBe(2000);
+  });
+
+  it("все молчат — нуля хватает", () => {
+    expect(lastAliveAt({ a: null }, { a: 5000 })).toBe(0);
   });
 });

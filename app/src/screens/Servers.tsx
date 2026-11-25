@@ -4,9 +4,12 @@ import type { SubInfo, SubSource } from "../api";
 import { QrSheet } from "../Qr";
 import { api } from "../api";
 import { aliveCount, isFresh } from "../health";
+import { sparkPoints, sparkTone } from "../spark";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { Flag } from "../Flag";
 import { ServerMap } from "../ServerMap";
+import { classifyClip, shouldOffer } from "../clipHint";
+import { decodeSubLink, encodeSubLink } from "../subLink";
 
 
 
@@ -19,6 +22,8 @@ type Props = {
   lat: Record<string, number | null>;
   /** id -> когда мерили, чтобы отличать свежий замер от старого */
   latAt?: Record<string, number>;
+  /** id -> последние замеры: линия динамики рядом с цифрой */
+  sparks?: Record<string, (number | null)[]>;
   subUrl: string;
   subUa: string;
   setSubUrl: (v: string) => void;
@@ -91,6 +96,11 @@ export function ServersScreen(p: Props) {
   const [showImport, setShowImport] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  // Перенос на телефон: подписка + выбранный узел в одной ссылке.
+  const [showTransfer, setShowTransfer] = useState(false);
+  // Буфер обмена: предлагаем вставить, но никогда не подставляем молча.
+  const [clipText, setClipText] = useState("");
+  const [clipDismissed, setClipDismissed] = useState(false);
   // Поиск по списку: у провайдеров бывает по 30–60 узлов, и «найди мне Токио»
   // глазами — это прокрутка на полминуты.
   const [query, setQuery] = useState("");
@@ -115,6 +125,35 @@ export function ServersScreen(p: Props) {
     }
   };
   const [speed, setSpeed] = useState<{ mbytes_per_second: number; bytes: number } | null>(null);
+
+  // Буфер читаем только по нажатию: иначе Windows показывает запрос доступа
+  // к буферу при каждом входе на экран — выглядит как слежка.
+  const readClip = async () => {
+    try {
+      const text = await navigator.clipboard?.readText();
+      if (!text) return;
+      setClipText(text);
+      setClipDismissed(false);
+    } catch {
+      /* доступа нет — молчим, человек нажмёт ещё раз */
+    }
+  };
+
+  /** Вставить из буфера: перенос разворачиваем в адрес и узел. */
+  const applyClip = () => {
+    const kind = classifyClip(clipText);
+    if (kind === "transfer") {
+      const link = decodeSubLink(clipText);
+      if (link) {
+        p.setSubUrl(link.u);
+        if (link.ua) p.setSubUa(link.ua);
+        if (link.id) setSelectedId(link.id);
+      }
+    } else if (kind === "sub") {
+      p.setSubUrl(clipText.trim());
+    }
+    setClipDismissed(true);
+  };
   const [speedBusy, setSpeedBusy] = useState(false);
   const [speedNote, setSpeedNote] = useState("");
   const [wgOpen, setWgOpen] = useState(false);
@@ -153,16 +192,37 @@ export function ServersScreen(p: Props) {
         <p>{t("serversSub")}</p>
       </div>
 
+      {!clipDismissed && shouldOffer(classifyClip(clipText), clipText, p.subUrl) && (
+        <div className="clip-hint">
+          <span className="grow">{t("clipHint")}</span>
+          <button className="btn" style={{ width: "auto", paddingInline: 12 }} onClick={applyClip}>
+            {t("clipPaste")}
+          </button>
+          <button className="ghost-btn" onClick={() => setClipDismissed(true)}>
+            {t("clipNo")}
+          </button>
+        </div>
+      )}
+
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
           <div className="field">
             <label>{t("subUrl")}</label>
-            <input
-              className="input"
-              value={p.subUrl}
-              onChange={(e) => p.setSubUrl(e.target.value)}
-              spellCheck={false}
-            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="input"
+                value={p.subUrl}
+                onChange={(e) => p.setSubUrl(e.target.value)}
+                spellCheck={false}
+              />
+              <button
+                className="ghost-btn"
+                style={{ whiteSpace: "nowrap" }}
+                onClick={() => void readClip()}
+              >
+                {t("clipRead")}
+              </button>
+            </div>
           </div>
           <div className="field">
             <label>{t("subHeaders")}</label>
@@ -203,6 +263,18 @@ export function ServersScreen(p: Props) {
             t={t}
             value={p.subUrl}
             onCopy={() => navigator.clipboard?.writeText(p.subUrl).catch(() => undefined)}
+          />
+        )}
+
+        {showTransfer && (
+          <QrSheet
+            t={t}
+            value={p.subUrl.trim() ? encodeSubLink({ u: p.subUrl, ua: p.subUa, id: selectedId }) : ""}
+            onCopy={() => {
+              if (!p.subUrl.trim()) return;
+              const link = encodeSubLink({ u: p.subUrl, ua: p.subUa, id: selectedId });
+              navigator.clipboard?.writeText(link).catch(() => undefined);
+            }}
           />
         )}
 
@@ -250,6 +322,14 @@ export function ServersScreen(p: Props) {
             data-on={showQr}
           >
             {t("qrTitle")}
+          </button>
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            onClick={() => setShowTransfer((v) => !v)}
+            data-on={showTransfer}
+          >
+            {t("transferBtn")}
           </button>
           <button
             className="btn"
@@ -501,6 +581,22 @@ export function ServersScreen(p: Props) {
                       <i />
                       <i />
                     </span>
+                    {(() => {
+                      const hist = p.sparks?.[s.id] ?? [];
+                      const pts = sparkPoints(hist, 40, 12);
+                      return pts ? (
+                        <svg
+                          className="node-spark"
+                          width="40"
+                          height="12"
+                          viewBox="0 0 40 12"
+                          data-tone={sparkTone(hist[hist.length - 1])}
+                          aria-hidden="true"
+                        >
+                          <polyline points={pts} />
+                        </svg>
+                      ) : null;
+                    })()}
                     {p.lat[s.id] ?? (s.lat === 0 ? "—" : s.lat)}
                   </>
                 )}
