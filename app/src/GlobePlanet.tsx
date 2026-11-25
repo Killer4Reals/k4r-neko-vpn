@@ -402,11 +402,28 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     gl.viewport(0, 0, canvas.width, canvas.height);
 
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const live = { current: true };
+    let onScreen = true;
+    const updateLive = () => {
+      live.current = onScreen && !document.hidden;
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      updateLive();
+    });
+    io.observe(canvas);
+    const onVis = () => updateLive();
+    document.addEventListener("visibilitychange", onVis);
+    updateLive();
     let raf = 0;
     let last = performance.now();
     let t = 0;
 
     const frame = (now: number) => {
+      if (!live.current) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
       const dt = Math.min(64, now - last) / 1000;
       last = now;
       t += dt;
@@ -735,6 +752,8 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf);
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVis);
       if (vbo) gl.deleteBuffer(vbo);
       if (ubo) gl.deleteBuffer(ubo);
       if (ibo) gl.deleteBuffer(ibo);

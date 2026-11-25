@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, inTauri, type ZapretStatus } from "../api";
-import { FightScene } from "../FightScene";
+import { filterPresets, presetCatalog, PRESET_TAGS, type PresetFilter } from "../zapretCatalog";
 
 type Props = {
   t: (k: string) => string;
@@ -39,8 +39,15 @@ export function ZapretScreen({
   const [status, setStatus] = useState<ZapretStatus | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [hits, setHits] = useState(0);
   const [zp, setZp] = useState<ZapSettings | null>(null);
+  // Каталог: тот же список файлов, но с тегами и фильтрами, без чужого сайта.
+  const [catOpen, setCatOpen] = useState(false);
+  const [tag, setTag] = useState<PresetFilter>(() => {
+    const saved = localStorage.getItem("k4r.zapretTag");
+    return saved === "games" || saved === "video" || saved === "discord" || saved === "quic" ? saved : "all";
+  });
+  const catalog = useMemo(() => presetCatalog(presets), [presets]);
+  const shown = useMemo(() => filterPresets(catalog, tag), [catalog, tag]);
 
   useEffect(() => {
     if (!inTauri) return;
@@ -83,8 +90,6 @@ export function ZapretScreen({
       if (status?.state === "running") {
         setStatus(await api.zapretStop());
       } else {
-        // каждое включение — новый удар по РКН
-        setHits((n) => n + 1);
         const st = await api.zapretStart(dir, preset);
         setStatus(st);
         if (st.state === "external") setError(st.message);
@@ -104,9 +109,6 @@ export function ZapretScreen({
     return () => window.clearInterval(id);
   }, []);
 
-  // Сцена боя живёт по тому же признаку, что и чип статуса.
-  const fighter = status?.state === "running" || status?.state === "external";
-
   const stateLabel =
     status?.state === "running"
       ? t("zapretRunning")
@@ -118,17 +120,30 @@ export function ZapretScreen({
 
   return (
     <>
-      <FightScene
-        active={fighter}
-        hits={hits}
-        label={t(fighter ? "fightStatusOn" : "fightStatusIdle")}
-        hint={t("fightHint")}
-        muteOnLabel={t("fightMuteOff")}
-        muteOffLabel={t("fightMuteOn")}
-      />
       <div className="page-head">
         <h1>{t("zapretTitle")}</h1>
         <p>{t("zapretSub")}</p>
+      </div>
+
+      {/* Полоса состояния: вместо сцены боя — то, что реально важно:
+          работает ли защита, какой пресет и что за процесс. */}
+      <div className={`guard-strip${on ? " on" : ""}`}>
+        <span className="guard-led" aria-hidden />
+        <div className="guard-copy">
+          <b>{stateLabel}</b>
+          <span>
+            {preset || t("zapretNone")}
+            {status?.pid ? ` · PID ${status.pid}` : ""}
+          </span>
+        </div>
+        <button
+          className="btn"
+          style={{ width: "auto", paddingInline: 16 }}
+          disabled={busy || foreign}
+          onClick={toggle}
+        >
+          {on ? t("zapretHalt") : t("zapretRun")}
+        </button>
       </div>
 
       <div className="card" style={{ marginBottom: 14 }}>
@@ -150,25 +165,64 @@ export function ZapretScreen({
         <div className="row">
           <div className="txt">
             <b>{t("preset")}</b>
-            <span>{preset || "—"}</span>
+            <span className="mono">{preset || t("zapretNone")}</span>
           </div>
-          <select
-            className="input"
-            style={{ width: 320 }}
-            value={preset}
-            onChange={(e) => {
-              setPreset(e.target.value);
-              onPreset(e.target.value);
-            }}
+          <button
+            className="btn"
+            style={{ width: "auto", paddingInline: 14 }}
+            onClick={() => setCatOpen((v) => !v)}
           >
-            {presets.length === 0 && <option value="">{t("zapretNone")}</option>}
-            {presets.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            {catOpen ? t("presetClose") : t("presetOpen")}
+          </button>
         </div>
+
+        {catOpen && (
+          <div className="preset-cat">
+            <div className="preset-tags">
+              {(["all", ...PRESET_TAGS] as PresetFilter[]).map((f) => (
+                <button
+                  key={f}
+                  className="filter-chip"
+                  data-on={tag === f}
+                  onClick={() => {
+                    setTag(f);
+                    localStorage.setItem("k4r.zapretTag", f);
+                  }}
+                >
+                  {t(f === "all" ? "presetAll" : `presetTag_${f}`)}
+                </button>
+              ))}
+            </div>
+            {shown.length === 0 ? (
+              <div className="muted" style={{ padding: "10px 2px" }}>
+                {t(presets.length === 0 ? "zapretNone" : "presetNoFilter")}
+              </div>
+            ) : (
+              shown.map((pi) => (
+                <div key={pi.file} className={`preset-row${pi.file === preset ? " on" : ""}`}>
+                  <div className="preset-copy">
+                    <b>{pi.title}</b>
+                    <span>{pi.methods.length ? pi.methods.join(" + ") : t("presetPlain")}</span>
+                  </div>
+                  {pi.file === preset ? (
+                    <span className="tag">{t("presetCurrent")}</span>
+                  ) : (
+                    <button
+                      className="btn"
+                      style={{ width: "auto", paddingInline: 12 }}
+                      onClick={() => {
+                        setPreset(pi.file);
+                        onPreset(pi.file);
+                      }}
+                    >
+                      {t("presetApply")}
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         <div className="row">
           <div className="txt">

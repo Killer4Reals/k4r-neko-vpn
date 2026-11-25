@@ -165,6 +165,109 @@ export function availability(
   return out.sort((x, y) => x.pct - y.pct);
 }
 
+export type SlotTone = "ok" | "warn" | "bad" | "none";
+
+export type HealthSlot = {
+  /** Начало отрезка: по нему строится подсказка «27.11, 06:00». */
+  at: number;
+  tone: SlotTone;
+  /** Процент времени в строю; null — данных за отрезок нет. */
+  pct: number | null;
+  downs: number;
+};
+
+export type NodeWeek = {
+  id: string;
+  pct: number;
+  downs: number;
+  /** Неделя по отрезкам: 7 дней × 4 отрезка по 6 часов. */
+  slots: HealthSlot[];
+};
+
+/**
+ * Неделя узла полосками: 28 отрезков по 6 часов.
+ *
+ * Зачем: общий процент «98%» скрывает, что узел лежал всю ночь среды. Полоски
+ * показывают когда. Серый отрезок — данных нет: узел ещё не появлялся в истории,
+ * и врать «100%» про время до первого события нельзя.
+ */
+export function availabilityWeek(
+  list: HistoryEvent[],
+  now: number,
+  days = 7,
+  slotsPerDay = 4,
+): NodeWeek[] {
+  const day = 86_400_000;
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  const slotMs = day / Math.max(1, slotsPerDay);
+  const slotCount = Math.max(1, days * slotsPerDay);
+  // Отрезки привязаны к локальным 00/06/12/18, а последний — текущий,
+  // поэтому неделя всегда ровно 28 клеток, без «хвоста» из будущего.
+  const current = midnight.getTime() + Math.floor((now - midnight.getTime()) / slotMs) * slotMs;
+  const start = current - (slotCount - 1) * slotMs;
+
+  const byNode = new Map<string, HistoryEvent[]>();
+  for (const ev of list) {
+    if (ev.kind !== "nodeDown" && ev.kind !== "nodeUp") continue;
+    if (!ev.a || ev.at < start) continue;
+    const arr = byNode.get(ev.a) ?? [];
+    arr.push(ev);
+    byNode.set(ev.a, arr);
+  }
+
+  const out: NodeWeek[] = [];
+  for (const [id, events] of byNode) {
+    const sorted = [...events].sort((x, y) => x.at - y.at);
+    const firstAt = sorted[0].at;
+    const intervals: [number, number][] = [];
+    let downSince: number | null = null;
+    let downs = 0;
+    for (const ev of sorted) {
+      if (ev.kind === "nodeDown") {
+        downs += 1;
+        if (downSince === null) downSince = ev.at;
+      } else if (downSince !== null) {
+        intervals.push([downSince, ev.at]);
+        downSince = null;
+      }
+    }
+    if (downSince !== null) intervals.push([downSince, now]);
+
+    const slots: HealthSlot[] = [];
+    let downMs = 0;
+    for (let i = 0; i < slotCount; i++) {
+      const from = start + i * slotMs;
+      const to = Math.min(now, from + slotMs);
+      const len = Math.max(1, to - from);
+      let overlap = 0;
+      let slotDowns = 0;
+      for (const [a, b] of intervals) {
+        overlap += Math.max(0, Math.min(b, to) - Math.max(a, from));
+      }
+      for (const ev of sorted) {
+        if (ev.kind === "nodeDown" && ev.at >= from && ev.at < to) slotDowns += 1;
+      }
+      downMs += overlap;
+      if (to <= firstAt) {
+        slots.push({ at: from, tone: "none", pct: null, downs: 0 });
+      } else {
+        const pct = Math.max(0, Math.min(100, Math.round(100 * (1 - overlap / len))));
+        slots.push({
+          at: from,
+          tone: pct >= 98 ? "ok" : pct >= 90 ? "warn" : "bad",
+          pct,
+          downs: slotDowns,
+        });
+      }
+    }
+    const span = Math.max(60_000, now - Math.max(start, firstAt));
+    const pct = Math.max(0, Math.min(100, Math.round(100 * (1 - Math.min(1, downMs / span)))));
+    out.push({ id, pct, downs, slots });
+  }
+  return out.sort((x, y) => x.pct - y.pct);
+}
+
 /** Ключ подписи для i18n: вид события → текст. */
 export function labelKey(kind: HistoryKind): string {
   switch (kind) {

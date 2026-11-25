@@ -1,6 +1,6 @@
-//! Разбор обычного WireGuard-конфига (`*.conf`), в том числе от WARP.
+//! Разбор обычного WireGuard-конфига (`*.conf`).
 //!
-//! Зачем: WARP и любые WireGuard-серверы — это готовый резервный канал.
+//! Зачем: WireGuard-сервер — это готовый резервный канал.
 //! Пользователь вставляет текст конфига, мы превращаем его в профиль, а
 //! sing-box поднимает обычный WireGuard-аутбаунд.
 
@@ -72,7 +72,7 @@ fn addresses(value: &str) -> Vec<String> {
         .collect()
 }
 
-/// `reserved` в конфиге WARP иногда приходит как base64 из трёх байт.
+/// `reserved` в конфиге иногда приходит как base64 из трёх байт.
 fn reserved_from_base64(value: &str) -> Vec<u8> {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = Vec::new();
@@ -132,7 +132,7 @@ pub fn parse(text: &str, id: &str) -> Result<Profile, String> {
             reserved_from_base64(&raw)
         }
     };
-    // WARP-адреса всегда /32 и /128: без них ядро не поднимется.
+    // Адреса туннеля всегда /32 и /128: без них ядро не поднимется.
     let name = if host.contains("cloudflare") || !reserved.is_empty() {
         "WARP".to_string()
     } else {

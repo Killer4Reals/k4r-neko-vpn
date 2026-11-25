@@ -291,6 +291,8 @@ const dict: Dict = {
   servers: { ru: "Серверы", en: "Servers" },
   searchNodes: { ru: "Поиск по городу, стране или протоколу", en: "Search by city, country or protocol" },
   nothingFound: { ru: "Ничего не нашлось — попробуй другое слово", en: "Nothing found — try another word" },
+  searchEmptyTitle: { ru: "Ничего не нашлось", en: "Nothing found" },
+  searchEmptyHint: { ru: "Другое слово или сброс фильтра — и список вернётся.", en: "Try another word or clear the filter and the list comes back." },
   clear: { ru: "Очистить", en: "Clear" },
   serversCount: { ru: "из подписки", en: "from the subscription" },
   serversDemo: {
@@ -398,6 +400,7 @@ const dict: Dict = {
   },
   favoriteAdd: { ru: "В избранное", en: "Add to favorites" },
   favoriteRemove: { ru: "Убрать из избранного", en: "Remove from favorites" },
+  favEmptyTitle: { ru: "В избранном пусто", en: "No favorites yet" },
   favEmpty: {
     ru: "Пока нет избранных — нажми звёздочку у нужного узла",
     en: "No favorites yet — tap the star on a server",
@@ -407,14 +410,6 @@ const dict: Dict = {
   sortName: { ru: "По названию", en: "By name" },
   sortCountry: { ru: "По стране", en: "By country" },
   checking: { ru: "Проверяю…", en: "Checking…" },
-  fightStatusOn: { ru: "РКН в нокдауне", en: "Censor knocked down" },
-  fightStatusIdle: { ru: "РКН на страже", en: "Censor on guard" },
-  fightHint: {
-    ru: "Маскот бьёт по цензуре. Звук можно выключить.",
-    en: "The mascot fights censorship. Sound can be muted.",
-  },
-  fightMuteOn: { ru: "Выключить звук", en: "Mute sound" },
-  fightMuteOff: { ru: "Включить звук", en: "Unmute sound" },
   logsEmpty: {
     ru: "Здесь появятся записи нашего движка, когда запустишь туннель.",
     en: "Engine records appear here once you start a tunnel."
@@ -524,8 +519,8 @@ const dict: Dict = {
 
   zapretTitle: { ru: "Защита туннеля", en: "Tunnel guard" },
   zapretSub: {
-    ru: "Zapret маскирует туннель от DPI, чтобы соединение не рвали",
-    en: "Zapret disguises the tunnel from DPI so the connection is not cut"
+    ru: "Zapret — обход блокировок без VPN. Пресеты лежат в папке Zapret: выбирай в каталоге и запускай.",
+    en: "Zapret bypasses blocks without a VPN. Presets live in the Zapret folder: pick one in the catalog and start.",
   },
   zapretMaskHint: {
     ru: "Маскирует пакеты на уровне сети — DPI не видит туннель.",
@@ -547,8 +542,27 @@ const dict: Dict = {
   zapretRunning: { ru: "пресет активен", en: "preset is active" },
   zapretExternal: { ru: "работает отдельная копия Zapret", en: "another Zapret instance is running" },
   zapretStopped: { ru: "остановился", en: "stopped" },
+  presetOpen: { ru: "Каталог пресетов", en: "Preset catalog" },
+  presetClose: { ru: "Свернуть каталог", en: "Hide catalog" },
+  presetAll: { ru: "Все", en: "All" },
+  presetTag_games: { ru: "Игры", en: "Games" },
+  presetTag_video: { ru: "Видео", en: "Video" },
+  presetTag_discord: { ru: "Discord", en: "Discord" },
+  presetTag_quic: { ru: "QUIC", en: "QUIC" },
+  presetApply: { ru: "Применить", en: "Apply" },
+  presetCurrent: { ru: "выбран", en: "current" },
+  presetPlain: { ru: "профиль без пометок", en: "unmarked profile" },
+  presetNoFilter: { ru: "В этом фильтре пусто — сбрось фильтр.", en: "Nothing under this filter — clear it." },
+  zapretRun: { ru: "Запустить", en: "Start" },
+  zapretHalt: { ru: "Остановить", en: "Stop" },
 
   settingsTitle: { ru: "Настройки", en: "Settings" },
+  setTabGeneral: { ru: "Общее", en: "General" },
+  setTabNetwork: { ru: "Сеть", en: "Network" },
+  setTabLook: { ru: "Оформление", en: "Appearance" },
+  setTabData: { ru: "Данные", en: "Data" },
+  setSearch: { ru: "Поиск по настройкам", en: "Search settings" },
+  setNoHits: { ru: "Другое слово — или сбрось поиск, настройки на месте.", en: "Try another word — or clear the search, everything is still there." },
   language: { ru: "Язык", en: "Language" },
   connectOnStart: { ru: "Подключаться при запуске", en: "Connect on launch" },
   autoSelect: { ru: "Автовыбор сервера", en: "Automatic server choice" },
@@ -628,7 +642,8 @@ const dict: Dict = {
   histDownOne: { ru: "сбой", en: "failure" },
   histDownFew: { ru: "сбоя", en: "failures" },
   histDownMany: { ru: "сбоев", en: "failures" },
-  histAvailabilityHint: { ru: "Считается по сбоям: чем ниже полоска, тем чаще узел пропадал. Такой лучше не выбирать.", en: "Computed from failures: the shorter the bar, the more often the node dropped. Better avoid it." },
+  histAvailabilityHint: { ru: "Каждый отрезок — 6 часов. Зелёный — узел был в строю, жёлтый — были сбои, красный — лежал, серый — данных нет. Считается по событиям.", en: "Each segment is 6 hours. Green — up, yellow — some failures, red — down, gray — no data. Computed from events." },
+  histNoData: { ru: "нет данных", en: "no data" },
   histClear: { ru: "Очистить историю", en: "Clear history" },
   histSave: { ru: "Сохранить в файл", en: "Save to file" },
   histFilterAll: { ru: "Все", en: "All" },
@@ -644,8 +659,8 @@ const dict: Dict = {
     en: "The big button turns the VPN on and off. The globe shows where your traffic exits; it turns when you switch servers.",
   },
   hintServers: {
-    ru: "Здесь серверы: пинг, скорость и метка «резерв». Резервный включается, только если основные не работают. Кнопка «Включить WARP» добавит бесплатный запасной канал.",
-    en: "Servers live here: ping, speed and a reserve mark. Reserve is used only when the main ones fail. The WARP button adds a free fallback.",
+    ru: "Здесь серверы: пинг, скорость и метка «резерв». Резервный включается, только если основные не работают. Свой WireGuard-сервер можно добавить из .conf.",
+    en: "Servers live here: ping, speed and a reserve mark. Reserve is used only when the main ones fail. You can add your own WireGuard server from a .conf file.",
   },
   hintSplit: {
     ru: "Выбери, какие программы идут через VPN, а какие напрямую. Игры обычно лучше пускать мимо туннеля — так меньше задержка.",
@@ -656,8 +671,8 @@ const dict: Dict = {
     en: "Rules: what goes through the tunnel, what goes direct, what is blocked. You can import Zapret lists — the folder is read-only.",
   },
   hintZapret: {
-    ru: "Zapret — обход блокировок без VPN. Выбери пресет и нажми запуск: маскот покажет, что бывает с РКН. Звук можно выключить справа снизу.",
-    en: "Zapret bypasses blocks without a VPN. Pick a preset and start it: the mascot shows what happens to the censor. Sound can be muted at the bottom right.",
+    ru: "Zapret — обход блокировок без VPN. В каталоге есть теги «Игры», «Видео», Discord и QUIC: выбери пресет, нажми «Применить» и запусти защиту.",
+    en: "Zapret bypasses blocks without a VPN. The catalog tags Games, Video, Discord and QUIC: pick a preset, hit Apply and start protection.",
   },
   hintStats: {
     ru: "Сколько прошло через туннель по дням. Столбики — по 7 или 30 дней; данные никуда не уходят.",
@@ -698,19 +713,13 @@ const dict: Dict = {
   leakExit: { ru: "Адрес выхода", en: "Exit address" },
   leakDns: { ru: "Отвечающий DNS", en: "Answering DNS" },
   leakDnsWarn: { ru: "если это адрес провайдера — DNS идёт мимо VPN", en: "if this is your provider's address, DNS goes outside the VPN" },
-  wgTitle: { ru: "Добавить WireGuard / WARP", en: "Add WireGuard / WARP" },
+  wgTitle: { ru: "Добавить WireGuard", en: "Add WireGuard" },
   wgHint: {
-    ru: "Вставь текст конфига .conf (WARP или обычный WireGuard-сервер). Он станет отдельным сервером в списке.",
-    en: "Paste a .conf file text (WARP or any WireGuard server). It becomes a separate server.",
+    ru: "Вставь текст конфига .conf — сервер станет отдельным в списке.",
+    en: "Paste a .conf file text — the server becomes a separate entry in the list.",
   },
   wgPaste: { ru: "Вставь сюда конфиг", en: "Paste the config here" },
   wgAdd: { ru: "Добавить", en: "Add" },
-  warpButton: { ru: "Включить WARP", en: "Turn on WARP" },
-  warpHint: {
-    ru: "Бесплатный WARP от Cloudflare без аккаунта: приложение само зарегистрирует устройство. Добавится как резервный сервер.",
-    en: "Free Cloudflare WARP without an account: the app registers a device itself and adds it as a reserve server.",
-  },
-  warpBusy: { ru: "Регистрирую WARP…", en: "Registering WARP…" },
   wgCancel: { ru: "Отмена", en: "Cancel" },
   wgReserve: { ru: "резерв", en: "reserve" },
   wgReserveHint: {
@@ -828,6 +837,7 @@ const dict: Dict = {
   routeNeedValue: { ru: "Впиши домен или адрес", en: "Type a domain or address" },
   routeBadIp: { ru: "Адрес с опечаткой: нужен вид 5.255.255.0/24", en: "Bad address: expected like 5.255.255.0/24" },
   routeDup: { ru: "Такое правило уже есть", en: "This rule already exists" },
+  routeEmptyTitle: { ru: "Правил пока нет", en: "No rules yet" },
   routeEmpty: { ru: "Правил пока нет — трафик идёт по общим настройкам.", en: "No rules yet — traffic follows the general settings." },
   routeDelete: { ru: "Удалить", en: "Delete" },
   routeUp: { ru: "Выше", en: "Move up" },

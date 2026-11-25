@@ -126,7 +126,6 @@ export const api = {
   killSwitchSet: (on: boolean) => invoke<KillSwitchStatus>("kill_switch_set", { on }),
   killSwitchSelfcheck: () => invoke<KsCheck[]>("kill_switch_selfcheck"),
   wireguardAdd: (text: string) => invoke<Profile>("wireguard_add", { text }),
-  warpRegister: () => invoke<Profile>("warp_register"),
   zapretScan: (dir: string) => invoke<ZapretScan>("zapret_scan", { dir }),
   zapretImport: (dir: string, includeIps: boolean) =>
     invoke<{ rules: RouteRule[]; skipped: number }>("zapret_import", { dir, includeIps }),

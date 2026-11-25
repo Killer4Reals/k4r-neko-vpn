@@ -143,7 +143,7 @@ impl Default for NetOptions {
 }
 
 /// Builds a sing-box config: TUN in, VLESS out, split tunneling by process name.
-/// Аутбаунд WireGuard: WARP и любые WG-серверы подключаются так же, как VLESS.
+/// Аутбаунд WireGuard: любые WG-серверы подключаются так же, как VLESS.
 fn wireguard_outbound(profile: &Profile) -> Value {
     let mut out = json!({
         "type": "wireguard",
@@ -163,7 +163,7 @@ fn wireguard_outbound(profile: &Profile) -> Value {
         out["pre_shared_key"] = json!(profile.wg_preshared_key);
     }
     if profile.wg_reserved.len() == 3 {
-        // WARP: три байта, которые Cloudflare ждёт в заголовке.
+        // необязательные reserved-байты из конфига WireGuard
         out["reserved"] = json!(profile.wg_reserved);
     }
     out

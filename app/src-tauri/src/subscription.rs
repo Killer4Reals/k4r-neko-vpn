@@ -28,7 +28,7 @@ pub struct Profile {
     /// WebSocket path.
     #[serde(default)]
     pub path: String,
-    /// "wireguard" — WireGuard (в том числе WARP), "trojan", "shadowsocks",
+    /// "wireguard" — WireGuard, "trojan", "shadowsocks",
     /// "vmess", "hysteria2" — соответствующие протоколы, пусто — VLESS.
     #[serde(default)]
     pub kind: String,
@@ -52,7 +52,7 @@ pub struct Profile {
     pub wg_addresses: Vec<String>,
     #[serde(default)]
     pub wg_mtu: u16,
-    /// WARP требует три байта reserved; у обычного WireGuard их нет.
+    /// Три байта reserved есть только у части WireGuard-конфигов.
     #[serde(default)]
     pub wg_reserved: Vec<u8>,
     /// Резервный сервер: включается, только когда основные не работают.
@@ -64,7 +64,7 @@ pub struct Profile {
     pub cc: String,
     /// Узел пришёл из подписки. Такие узлы заменяются при каждом обновлении:
     /// провайдер убрал сервер — он должен исчезнуть и у нас. Свои узлы
-    /// (импорт по ссылке, WARP) не трогаем никогда.
+    /// (импорт по ссылке) не трогаем никогда.
     #[serde(default)]
     pub from_sub: bool,
 }

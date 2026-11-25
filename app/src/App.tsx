@@ -420,9 +420,8 @@ export default function App() {
     setProfiles((list) => list.map((p) => (p.id === id ? { ...p, reserve: !p.reserve } : p)));
   }, []);
 
-  const addWireguard = useCallback(async (text: string | null) => {
-    // null = «зарегистрируй бесплатный WARP сам»
-    const profile = text === null ? await api.warpRegister() : await api.wireguardAdd(text);
+  const addWireguard = useCallback(async (text: string) => {
+    const profile = await api.wireguardAdd(text);
     setProfiles((list) => [...list, profile]);
     setSelectedId(profile.id);
   }, []);
@@ -468,7 +467,15 @@ export default function App() {
     api
       .stateLoad()
       .then((st) => {
-        if (st.profiles.length) setProfiles(st.profiles);
+        if (st.profiles.length) {
+          // WARP больше не часть приложения: старые профили, зарегистрированные
+          // автоматически, убираем, чтобы в списке не висели мёртвые строки.
+          const kept = st.profiles.filter((p) => !p.id.startsWith("warp-"));
+          setProfiles(kept);
+          if (kept.length !== st.profiles.length) {
+            setFavorites((ids) => ids.filter((id) => kept.some((p) => p.id === id)));
+          }
+        }
         // Свежие серверы нужны сразу при запуске: провайдер мог добавить или
         // убрать узлы, а ждать двенадцать часов до таймера незачем. Источники
         // передаём явно: состояние `subs`/`subUrl` в этот момент ещё старое,
@@ -876,13 +883,13 @@ export default function App() {
     const seen = new Set<string>();
     const unique = merged.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
     // Узлы из подписки заменяем целиком: провайдер убрал сервер — он должен уйти
-    // и у нас. Свои узлы (импорт по ссылке, WARP) остаются всегда.
+    // и у нас. Свои узлы (импорт по ссылке и WireGuard) остаются всегда.
     // Узлы без отметки `from_sub` — наследие старых версий: они пришли из подписки,
-    // но отметки не имеют, поэтому тоже уходят. Свои узлы (импорт, WARP) помечены
+    // но отметки не имеют, поэтому тоже уходят. Свои узлы (импорт, WireGuard) помечены
     // явным `false` и остаются.
     // Разовая уборка: у узлов из старых версий отметки источника нет, поэтому
     // отличить «свой» узел от устаревшего узла подписки нельзя. Один раз
-    // оставляем только WARP (он не из подписки) и наливаем свежий список.
+    // оставляем только свои узлы (они не из подписки) и наливаем свежий список.
     // Ключ с версией: одна и та же уборка должна отработать ровно один раз,
     // и повторный запуск уже не должен трогать ничего.
     const migrated = localStorage.getItem("k4r.migrated.subNodes.v3") === "1";

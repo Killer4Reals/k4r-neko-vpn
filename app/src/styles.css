@@ -1090,6 +1090,8 @@ input {
   flex: 0 1 auto;
 }
 
+/* Длинный список: строки вне экрана не раскладываются, пока не понадобятся.
+   Это снимает основную часть работы при прокрутке. */
 .server-list {
   overflow-y: auto;
   padding: 6px;
@@ -1098,7 +1100,11 @@ input {
   gap: 2px;
 }
 
+/* Строка вне экрана не раскладывается, пока не понадобится: длинный
+   список не тормозит прокрутку. */
 .server {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
@@ -1130,12 +1136,73 @@ input {
   font-size: 11px;
   color: var(--txt-3);
   margin-top: 1px;
-  /* адрес WARP-сервера длиннее колонки: обрезаем, а не наезжаем на
-     красное «не отвечает» */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Настройки: четыре вкладки и поиск по всем сразу. */
+.settings-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0 10px;
+  margin-bottom: 4px;
+  background: var(--bg);
+}
+
+.settings-tab {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.settings-tab:hover {
+  color: var(--txt);
+  border-color: var(--txt-3);
+}
+
+.settings-tab[data-on="true"] {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 55%, transparent);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.settings-search {
+  width: 210px;
+  margin-left: auto;
+}
+
+.settings-body > .card[data-tab] {
+  display: none;
+}
+
+.settings-body[data-tab="general"] > .card[data-tab="general"],
+.settings-body[data-tab="network"] > .card[data-tab="network"],
+.settings-body[data-tab="look"] > .card[data-tab="look"],
+.settings-body[data-tab="data"] > .card[data-tab="data"] {
+  display: block;
+}
+
+.settings-body[data-searching="1"] > .card[data-tab] {
+  display: block;
+}
+
+.settings-body > .card[data-hidden="1"],
+.settings-body .row[data-hidden="1"] {
+  display: none !important;
+}
+
 .server .lat {
   flex: 0 0 auto;
   font-family: var(--mono);
@@ -2187,170 +2254,56 @@ select.input {
   z-index: 1;
 }
 
-/* ---------- бой с РКН ---------- */
-/* Сцена боя: цельная нарисованная картинка. Поверх неё — только эффекты,
-   иначе получались бы два мультика: и спрайты, и картинка одновременно. */
-.fight {
-  /* Сцена боя — не баннер на пол-экрана, а узкая полоса: постер слева,
-     подпись справа. Картинка в своих пропорциях, поэтому головы и ботинки
-     целы, а экран «Защиты» больше не начинается с чужого мультика. */
-  position: relative;
+/* ---------- защита туннеля: полоса состояния ---------- */
+.guard-strip {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 14px;
-  padding: 10px 12px 10px 10px;
+  padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(57, 255, 20, 0.14);
-  background: linear-gradient(90deg, rgba(57, 255, 20, 0.06), rgba(10, 7, 16, 0.55));
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-2) 70%, transparent);
 }
 
-.fight-art {
-  position: relative;
-  flex: 0 0 clamp(200px, 36%, 340px);
-  aspect-ratio: 1024 / 339;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #0a0710 url("/fx/rkn-bg.png") center / cover no-repeat;
+.guard-strip.on {
+  border-color: color-mix(in srgb, var(--green) 38%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--green) 9%, transparent), transparent 70%);
 }
 
-.fight-copy {
+.guard-led {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--txt-3);
+}
+
+.guard-strip.on .guard-led {
+  background: var(--green);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--green) 70%, transparent);
+}
+
+.guard-copy {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   min-width: 0;
+  flex: 1;
 }
 
-/* Спокойное состояние чуть темнее: удар должен быть заметен */
-.fight-idle .fight-art::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(8, 6, 12, 0.16);
-  pointer-events: none;
-  transition: opacity 260ms ease-out;
-}
-
-.fight-hit {
-  animation: fight-shake 240ms ease-out;
-}
-
-.fight-flash {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 46% 46%, rgba(255, 255, 255, 0.92), rgba(57, 255, 20, 0.45) 24%, transparent 58%);
-  pointer-events: none;
-  animation: fight-flash 240ms ease-out;
-  z-index: 1;
-}
-
-/* Бумажки: разлетаются от точки удара в разные стороны */
-.fight-papers {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.fight-papers span {
-  position: absolute;
-  left: 47%;
-  top: 46%;
-  width: 14px;
-  height: 10px;
-  border-radius: 2px;
-  background: #f4f6ff;
-  opacity: 0;
-  box-shadow: 0 0 6px rgba(180, 220, 255, 0.55);
-  animation: fight-paper 620ms ease-out forwards;
-  animation-delay: calc(var(--i) * 18ms);
-}
-
-.fight-papers span:nth-child(3n) {
-  width: 10px;
-  height: 13px;
-  background: #e7ecff;
-}
-
-.fight-papers span:nth-child(3n + 1) {
-  background: #fdfdff;
-}
-
-@keyframes fight-paper {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.5) rotate(0deg);
-  }
-  15% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(calc(-50% + var(--dx, 60px)), calc(-50% + var(--dy, -40px))) scale(1) rotate(var(--rot, 160deg));
-  }
-}
-
-/* Направление разлёта: по кругу, но неровно — как настоящие бумажки */
-.fight-papers span:nth-child(1) { --dx: -110px; --dy: -46px; --rot: -180deg; }
-.fight-papers span:nth-child(2) { --dx: -86px; --dy: 34px; --rot: 120deg; }
-.fight-papers span:nth-child(3) { --dx: -44px; --dy: -58px; --rot: -240deg; }
-.fight-papers span:nth-child(4) { --dx: 92px; --dy: -52px; --rot: 210deg; }
-.fight-papers span:nth-child(5) { --dx: 116px; --dy: 22px; --rot: -150deg; }
-.fight-papers span:nth-child(6) { --dx: 40px; --dy: 52px; --rot: 260deg; }
-.fight-papers span:nth-child(7) { --dx: -128px; --dy: 8px; --rot: 170deg; }
-.fight-papers span:nth-child(8) { --dx: 132px; --dy: -18px; --rot: -200deg; }
-.fight-papers span:nth-child(9) { --dx: -20px; --dy: 62px; --rot: 140deg; }
-.fight-papers span:nth-child(10) { --dx: 66px; --dy: 44px; --rot: -260deg; }
-
-@media (prefers-reduced-motion: reduce) {
-  .fight-papers span,
-  .fight-hit,
-  .fight-flash {
-    animation: none;
-  }
-}
-
-.fight-status {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--txt);
-}
-
-.fight-hint {
-  font-size: 11.5px;
-  line-height: 1.35;
-  color: var(--txt-3);
-}
-
-.fight-mute {
-  margin-left: auto;
-  flex: 0 0 auto;
-  background: rgba(10, 7, 16, 0.72);
-  border: 1px solid rgba(57, 255, 20, 0.24);
-  border-radius: 10px;
-  padding: 2px 8px;
+.guard-copy b {
   font-size: 13px;
-  cursor: pointer;
   color: var(--txt);
 }
 
-@keyframes fight-bob {
-  0%, 100% { transform: translateY(0) rotate(-1deg); }
-  50% { transform: translateY(-4px) rotate(1deg); }
-}
-
-@keyframes fight-shake {
-  0% { transform: translate(0, 0); }
-  30% { transform: translate(-5px, 2px); }
-  60% { transform: translate(4px, -2px); }
-  100% { transform: translate(0, 0); }
-}
-
-@keyframes fight-flash {
-  from { opacity: 0.95; }
-  to { opacity: 0; }
+.guard-copy span {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--txt-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---------- помощник-маскот ---------- */
@@ -2813,6 +2766,29 @@ select.input {
 .hist-uptime-bar .ok { background: var(--green); }
 .hist-uptime-bar .warn { background: #ffd666; }
 .hist-uptime-bar .bad { background: var(--danger); }
+
+/* Неделя полосками: 28 отрезков по 6 часов. */
+.hist-week {
+  display: grid;
+  grid-template-columns: repeat(28, minmax(0, 1fr));
+  gap: 2px;
+  min-width: 0;
+}
+
+.hist-cell {
+  height: 10px;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+
+.hist-cell.ok { background: var(--green); }
+.hist-cell.warn { background: #ffd666; }
+.hist-cell.bad { background: var(--danger); }
+.hist-cell.none { background: var(--bg-3); opacity: .55; }
+
+@media (max-width: 560px) {
+  .hist-week { grid-template-columns: repeat(14, minmax(0, 1fr)); }
+}
 
 .hist-uptime-pct {
   font-family: var(--mono);
@@ -3679,6 +3655,46 @@ html[data-accent="ice"] {
   opacity: 0.6;
 }
 
+.metro-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 2px 4px 4px;
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
+.metro-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metro-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--txt-3);
+  flex: 0 0 auto;
+}
+
+.metro-legend [data-tone="proxy"] i {
+  background: var(--green);
+}
+
+.metro-legend [data-tone="direct"] i {
+  background: var(--txt-3);
+}
+
+.metro-legend [data-tone="block"] i {
+  background: #ff5d6c;
+}
+
+.metro-legend [data-tone="guard"] i {
+  background: transparent;
+  border: 1px dashed var(--green);
+}
+
 @keyframes metro-flow {
   to {
     stroke-dashoffset: -11;
@@ -3964,6 +3980,54 @@ html[data-mini] #root { background: transparent; }
   font-weight: 600;
   color: var(--green);
 }
+/* Каталог пресетов: строки с методами обхода и кнопкой «Применить». */
+.preset-cat {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.preset-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: 10px;
+}
+
+.preset-row.on {
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+}
+
+.preset-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.preset-copy b {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-copy span {
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
 .filter-chip[data-on="true"] {
   border-color: var(--green);
   color: var(--green);

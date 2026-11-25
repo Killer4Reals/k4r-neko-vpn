@@ -12,7 +12,6 @@ pub mod single;
 pub mod store;
 pub mod subscription;
 pub mod version;
-pub mod warp;
 pub mod wfp;
 pub mod wgconf;
 pub mod zapret;
@@ -1064,24 +1063,7 @@ fn auto_history_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// Оркестратор: что мы знаем про пары «сервер + транспорт».
 /// Показать, что лежит в папке zapret, ничего там не меняя.
-/// Зарегистрировать бесплатный WARP и сразу получить готовый профиль.
-#[tauri::command]
-async fn warp_register() -> Result<subscription::Profile, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let id = format!(
-            "warp-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0)
-        );
-        warp::register(&id)
-    })
-    .await
-    .map_err(|e| format!("задача упала: {e}"))?
-}
-
-/// Добавить WireGuard-профиль (WARP или обычный сервер) из текста .conf.
+/// Добавить WireGuard-профиль из текста .conf.
 #[tauri::command]
 fn wireguard_add(text: String) -> Result<subscription::Profile, String> {
     let id = format!(
@@ -2725,7 +2707,6 @@ pub fn run() {
             dns_leak,
             kill_switch_status,
             kill_switch_selfcheck,
-            warp_register,
             wireguard_add,
             zapret_scan,
             zapret_import,

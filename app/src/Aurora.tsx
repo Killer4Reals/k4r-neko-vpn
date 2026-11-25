@@ -29,6 +29,13 @@ export function Aurora({ phase, down, up }: Props) {
     let h = 0;
     let t = 0;
     let lastDraw = 0;
+    // Во время прокрутки фон не перерисовываем: пятна и так размытые, а
+    // каждый кадр с тремя радиальными градиентами на весь экран — дорого.
+    let lastScroll = 0;
+    const onScroll = () => {
+      lastScroll = performance.now();
+    };
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
 
     const resize = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -66,6 +73,10 @@ export function Aurora({ phase, down, up }: Props) {
       raf = requestAnimationFrame(frame);
       if (document.hidden) return;
       if (now - lastDraw < 33) return;
+      if (now - lastScroll < 140) {
+        lastDraw = now;
+        return;
+      }
       const dt = Math.min(0.2, (now - lastDraw) / 1000);
       lastDraw = now;
       t += dt;
@@ -79,6 +90,7 @@ export function Aurora({ phase, down, up }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      document.removeEventListener("scroll", onScroll, { capture: true });
     };
   }, []);
 

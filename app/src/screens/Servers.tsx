@@ -39,8 +39,8 @@ type Props = {
   addSub: (url: string, ua: string, name: string) => void;
   removeSub: (url: string) => void;
   onToggleReserve: (id: string) => void;
-  /** text = конфиг, null = зарегистрировать WARP автоматически */
-  onAddWireguard: (text: string | null) => Promise<void>;
+  /** текст .conf: обычный WireGuard-сервер */
+  onAddWireguard: (text: string) => Promise<void>;
   /** id узлов, отмеченных звёздочкой */
   favorites?: string[];
   toggleFavorite?: (id: string) => void;
@@ -181,8 +181,6 @@ export function ServersScreen(p: Props) {
   const [wgText, setWgText] = useState("");
   const [wgError, setWgError] = useState("");
   const [wgBusy, setWgBusy] = useState(false);
-  const [warpBusy, setWarpBusy] = useState(false);
-  const [warpNote, setWarpNote] = useState("");
 
   const doImport = async () => {
     await p.onImport(link);
@@ -440,34 +438,13 @@ export function ServersScreen(p: Props) {
             <button
               className="btn primary"
               style={{ width: "auto", paddingInline: 14 }}
-              disabled={warpBusy}
-              title={t("warpHint")}
-              onClick={async () => {
-                setWarpBusy(true);
-                setWarpNote("");
-                try {
-                  await p.onAddWireguard(null);
-                  setWarpNote("");
-                } catch (e) {
-                  setWarpNote(String(e));
-                } finally {
-                  setWarpBusy(false);
-                }
-              }}
-            >
-              {warpBusy ? t("warpBusy") : t("warpButton")}
-            </button>
-            <button
-              className="btn"
-              style={{ width: "auto", paddingInline: 14 }}
               onClick={() => setWgOpen((v) => !v)}
             >
               {wgOpen ? t("wgCancel") : t("wgAdd")}
             </button>
           </div>
         </div>
-        <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>{t("warpHint")}</div>
-        {warpNote && <div className="muted warn-txt" style={{ marginTop: 6 }}>{warpNote}</div>}
+        <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>{t("wgHint")}</div>
         {wgOpen && (
           <div style={{ marginTop: 10 }}>
             <div className="field">
@@ -475,7 +452,7 @@ export function ServersScreen(p: Props) {
               <textarea
                 className="input"
                 style={{ height: 130, padding: 10, resize: "vertical", lineHeight: 1.5, fontFamily: "var(--mono)" }}
-                placeholder="[Interface]&#10;PrivateKey = …&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = engage.cloudflareclient.com:2408"
+                placeholder="[Interface]&#10;PrivateKey = …&#10;Address = 10.0.0.2/32&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = vpn.example.com:51820"
                 value={wgText}
                 onChange={(e) => setWgText(e.target.value)}
                 spellCheck={false}
@@ -567,8 +544,12 @@ export function ServersScreen(p: Props) {
       )}
 
       {servers.length > 0 && (q || favOnly) && shown.length === 0 && (
-        <div className="card" style={{ padding: 14 }}>
-          <span className="muted">{favOnly && !q ? t("favEmpty") : t("nothingFound")}</span>
+        <div className="card empty-box">
+          <img src="/mascot/empty.webp" alt="" draggable={false} />
+          <div>
+            <h3>{favOnly && !q ? t("favEmptyTitle") : t("searchEmptyTitle")}</h3>
+            <p className="muted">{favOnly && !q ? t("favoritesHint") : t("searchEmptyHint")}</p>
+          </div>
         </div>
       )}
 

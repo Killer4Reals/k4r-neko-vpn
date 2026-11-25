@@ -11,7 +11,7 @@ export type Server = {
   quality: "good" | "mid" | "bad";
   /** Резервный сервер: включается, только когда основные не работают. */
   reserve?: boolean;
-  /** "wireguard" — профиль WireGuard/WARP. */
+  /** "wireguard" — профиль WireGuard. */
   kind?: string;
   /** адрес узла: по нему показываем провайдера в паспорте выхода */
   host?: string;

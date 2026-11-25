@@ -11,7 +11,6 @@ const KEY_ON = "k4r.sound.on";
 const KEY_VOL = "k4r.sound.volume";
 
 let ctx: Ctx = null;
-let muted = false;
 
 function context(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -40,15 +39,6 @@ export function setVolume(v: number) {
   localStorage.setItem(KEY_VOL, String(Math.min(1, Math.max(0, v))));
 }
 
-/** Быстрое «заглушить» на экране боя (не меняет настройки навсегда). */
-export function muteTemporarily(value: boolean) {
-  muted = value;
-}
-
-export function isMuted(): boolean {
-  return muted;
-}
-
 function tone(freq: number, dur: number, type: OscillatorType, gain: number, slideTo?: number) {
   const ac = context();
   if (!ac) return;
@@ -65,27 +55,7 @@ function tone(freq: number, dur: number, type: OscillatorType, gain: number, sli
   osc.stop(ac.currentTime + dur + 0.02);
 }
 
-function noise(dur: number, gain: number, filterHz: number) {
-  const ac = context();
-  if (!ac) return;
-  const frames = Math.floor(ac.sampleRate * dur);
-  const buffer = ac.createBuffer(1, frames, ac.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < frames; i++) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
-  }
-  const src = ac.createBufferSource();
-  src.buffer = buffer;
-  const filter = ac.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.frequency.value = filterHz;
-  const g = ac.createGain();
-  g.gain.value = gain;
-  src.connect(filter).connect(g).connect(ac.destination);
-  src.start();
-}
-
-export type Sfx = "click" | "whoosh" | "impact" | "papers" | "connect" | "disconnect" | "error";
+export type Sfx = "click" | "connect" | "disconnect" | "error";
 
 /**
  * Мягкий «вдох» в момент подключения: шум, пропущенный через низкие частоты, с
@@ -140,7 +110,7 @@ function playTone(t: Tone, v: number) {
  * Америки две ноты вверх. Один и тот же сигнал везде — это упущенная подсказка.
  */
 export function playConnected(cc: string | undefined) {
-  if (muted || !soundOn()) return;
+  if (!soundOn()) return;
   const ac = context();
   if (!ac) return;
   if (ac.state === "suspended") void ac.resume();
@@ -150,9 +120,9 @@ export function playConnected(cc: string | undefined) {
   for (const t of motifOf(regionOf(cc))) playTone(t, v);
 }
 
-/** Проиграть звук, если звук включён и не заглушён на экране боя. */
+/** Проиграть звук, если звук включён. */
 export function play(sfx: Sfx) {
-  if (muted || !soundOn()) return;
+  if (!soundOn()) return;
   const ac = context();
   if (!ac) return;
   if (ac.state === "suspended") void ac.resume();
@@ -160,16 +130,6 @@ export function play(sfx: Sfx) {
   switch (sfx) {
     case "click":
       tone(520, 0.06, "triangle", 0.12 * v, 380);
-      break;
-    case "whoosh":
-      noise(0.18, 0.18 * v, 900);
-      break;
-    case "impact":
-      tone(90, 0.22, "sawtooth", 0.5 * v, 40);
-      noise(0.12, 0.25 * v, 2200);
-      break;
-    case "papers":
-      noise(0.35, 0.12 * v, 3200);
       break;
     case "connect":
       tone(620, 0.12, "sine", 0.16 * v, 880);

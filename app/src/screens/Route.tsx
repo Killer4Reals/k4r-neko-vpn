@@ -282,7 +282,13 @@ export function RouteScreen({
         {error && <p className="warn-txt">{error}</p>}
 
         {rules.length === 0 ? (
-          <p className="muted" style={{ marginTop: 14 }}>{t("routeEmpty")}</p>
+          <div className="empty-box" style={{ marginTop: 14 }}>
+            <img src="/mascot/empty.webp" alt="" draggable={false} />
+            <div>
+              <h3>{t("routeEmptyTitle")}</h3>
+              <p className="muted">{t("routeEmpty")}</p>
+            </div>
+          </div>
         ) : (
           <div className="rule-list">
             {rules.map((r, i) => (

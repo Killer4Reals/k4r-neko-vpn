@@ -69,6 +69,16 @@ export function MetroMap(p: Props) {
           </g>
         )}
       </svg>
+      {/* Легенда: цвета веток читаются без наведения, а «защита» появляется
+          только когда она реально включена. */}
+      <div className="metro-legend">
+        <span data-tone="proxy"><i />{p.t("routeMetroProxy")}</span>
+        <span data-tone="direct"><i />{p.t("routeMetroDirect")}</span>
+        <span data-tone="block"><i />{p.t("routeMetroBlock")}</span>
+        {p.guard && (
+          <span data-tone="guard"><i />{p.t("routeMetroGuard")}</span>
+        )}
+      </div>
     </div>
   );
 }

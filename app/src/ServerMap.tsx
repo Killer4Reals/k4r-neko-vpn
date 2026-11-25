@@ -39,6 +39,21 @@ export function ServerMap({ servers, selectedId, onPick, t }: Props) {
     if (!ctx) return;
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
+    // карта за пределами экрана не рисуется: прокрутка не должна стоить кадров
+    const live = { current: true };
+    let onScreen = true;
+    const updateLive = () => {
+      live.current = onScreen && !document.hidden;
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      updateLive();
+    });
+    io.observe(cv);
+    const onVis = () => updateLive();
+    document.addEventListener("visibilitychange", onVis);
+    updateLive();
+
     const paint = () => {
       const css = getComputedStyle(el);
       const accent = css.getPropertyValue("--green").trim() || "#39FF14";
@@ -89,6 +104,10 @@ export function ServerMap({ servers, selectedId, onPick, t }: Props) {
 
       const frame = (now: number) => {
         if (!layer.current) return;
+        if (!live.current) {
+          raf = requestAnimationFrame(frame);
+          return;
+        }
         ctx.clearRect(0, 0, w, h);
         ctx.drawImage(layer.current, 0, 0, w, h);
 
@@ -183,6 +202,8 @@ export function ServerMap({ servers, selectedId, onPick, t }: Props) {
     ro.observe(el);
     return () => {
       ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVis);
       stop?.();
     };
   }, [dots, pins, selectedId]);

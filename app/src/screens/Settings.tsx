@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Lang } from "../i18n";
 import { play, setSoundOn, setVolume, soundOn, volume } from "../sound";
 import { globeStyle, setGlobeStyle, type GlobeStyle } from "../globeStyle";
@@ -68,6 +68,56 @@ type Props = {
 
 export function SettingsScreen(p: Props) {
   const [checks, setChecks] = useState<Check[]>([]);
+  // Вкладки: 13 карточек в один столбец — это простыня. Поиск ищет по всем
+  // вкладкам сразу, чтобы не заставлять угадывать, куда переехала настройка.
+  const [tab, setTab] = useState<"general" | "network" | "look" | "data">(() => {
+    const saved = localStorage.getItem("k4r.settingsTab");
+    return saved === "network" || saved === "look" || saved === "data" ? saved : "general";
+  });
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState(0);
+  const body = useRef<HTMLDivElement | null>(null);
+  const pick = (id: "general" | "network" | "look" | "data") => {
+    setTab(id);
+    localStorage.setItem("k4r.settingsTab", id);
+  };
+  useEffect(() => {
+    const el = body.current;
+    if (!el) return;
+    const needle = q.trim().toLowerCase();
+    const norm = (v: string | null) => (v ?? "").toLowerCase();
+    el.dataset.searching = needle ? "1" : "0";
+    let found = 0;
+    for (const card of Array.from(el.querySelectorAll<HTMLElement>(":scope > .card"))) {
+      const rows = Array.from(card.querySelectorAll<HTMLElement>(":scope > .row"));
+      if (!needle) {
+        card.removeAttribute("data-hidden");
+        rows.forEach((r) => r.removeAttribute("data-hidden"));
+        continue;
+      }
+      // Совпадение может быть в заголовке карточки или в одной из строк.
+      // Строки проверяем отдельно, иначе карточка целиком тянет за собой
+      // соседние настройки, которые к запросу отношения не имеют.
+      const rowHits = rows.map((r) => norm(r.textContent).includes(needle));
+      let titleText = card.textContent ?? "";
+      for (const r of rows) {
+        if (r.textContent) titleText = titleText.replace(r.textContent, " ");
+      }
+      const titleHit = norm(titleText).includes(needle);
+      const anyRow = rowHits.some(Boolean);
+      if (!anyRow && !titleHit) {
+        card.setAttribute("data-hidden", "1");
+        continue;
+      }
+      found++;
+      card.removeAttribute("data-hidden");
+      rows.forEach((r, i) => {
+        if (anyRow && !rowHits[i]) r.setAttribute("data-hidden", "1");
+        else r.removeAttribute("data-hidden");
+      });
+    }
+    setHits(found);
+  }, [q, tab]);
   const [accent, setAccent] = useState<string>(
     () => (typeof localStorage !== "undefined" && localStorage.getItem("k4r.accent")) || "neon",
   );
@@ -171,8 +221,45 @@ export function SettingsScreen(p: Props) {
         <h1>{t("settingsTitle")}</h1>
       </div>
 
+      <div className="settings-tabs" role="tablist" aria-label={t("settingsTitle")}>
+        {(
+          [
+            ["general", "setTabGeneral"],
+            ["network", "setTabNetwork"],
+            ["look", "setTabLook"],
+            ["data", "setTabData"],
+          ] as const
+        ).map(([id, key]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            data-on={tab === id}
+            className="settings-tab"
+            onClick={() => pick(id)}
+          >
+            {t(key)}
+          </button>
+        ))}
+        <input
+          className="input settings-search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("setSearch")}
+          aria-label={t("setSearch")}
+          spellCheck={false}
+        />
+        {q && (
+          <button className="ghost-btn" onClick={() => setQ("")} aria-label={t("clear")}>
+            ×
+          </button>
+        )}
+      </div>
+
+      <div className="settings-body" data-tab={tab} ref={body}>
+
       {/* Акцент: тема одна, но цвет действия человек выбирает сам */}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="look" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("accentTitle")}</b>
@@ -205,7 +292,7 @@ export function SettingsScreen(p: Props) {
 
       {/* Аврора: фон дышит вместе с туннелем, но это лишняя работа для
           видеокарты — поэтому тумблер, а не всегда включено */}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="look" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("auroraTitle")}</b>
@@ -224,7 +311,7 @@ export function SettingsScreen(p: Props) {
 
       {/* Проверка одной кнопкой: семь пунктов, каждый — то, что реально можно
           проверить по состоянию. Отчёт копируется, чтобы не описывать словами */}
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="data" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("chkTitle")}</b>
@@ -286,7 +373,7 @@ export function SettingsScreen(p: Props) {
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="general" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("language")}</b>
@@ -302,7 +389,7 @@ export function SettingsScreen(p: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="general" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("connectOnStart")}</b>
@@ -319,7 +406,7 @@ export function SettingsScreen(p: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="general" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("autostart")}</b>
@@ -402,6 +489,9 @@ export function SettingsScreen(p: Props) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="card" data-tab="network" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("killSwitch")}</b>
@@ -526,6 +616,9 @@ export function SettingsScreen(p: Props) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="card" data-tab="data" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("hwidTitle")}</b>
@@ -569,6 +662,9 @@ export function SettingsScreen(p: Props) {
             {t("hwidReset")}
           </button>
         </div>
+      </div>
+
+      <div className="card" data-tab="look" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("globeStyleTitle")}</b>
@@ -629,6 +725,9 @@ export function SettingsScreen(p: Props) {
             />
           </div>
         )}
+      </div>
+
+      <div className="card" data-tab="general" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("gameTitle")}</b>
@@ -657,6 +756,9 @@ export function SettingsScreen(p: Props) {
             />
           </div>
         )}
+      </div>
+
+      <div className="card" data-tab="data" style={{ marginBottom: 14 }}>
         <div className="row" style={{ display: "block" }}>
           <div className="txt" style={{ maxWidth: 560 }}>
             <b>{t("orchTitle")}</b>
@@ -682,6 +784,9 @@ export function SettingsScreen(p: Props) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="card" data-tab="network" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("autoSelectLoss")}</b>
@@ -751,6 +856,9 @@ export function SettingsScreen(p: Props) {
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="card" data-tab="general" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("minimizeToTray")}</b>
@@ -764,6 +872,9 @@ export function SettingsScreen(p: Props) {
             onClick={() => p.setMinimizeToTray(!p.minimizeToTray)}
           />
         </div>
+      </div>
+
+      <div className="card" data-tab="network" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("ipv6")}</b>
@@ -779,7 +890,7 @@ export function SettingsScreen(p: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="network" style={{ marginBottom: 14 }}>
         <div className="row" style={{ display: "block" }}>
           <div className="txt" style={{ maxWidth: 560 }}>
             <b>{t("leakTitle")}</b>
@@ -841,7 +952,7 @@ export function SettingsScreen(p: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="general" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("updates")}</b>
@@ -923,7 +1034,7 @@ export function SettingsScreen(p: Props) {
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="data" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("backupTitle")}</b>
@@ -980,7 +1091,7 @@ export function SettingsScreen(p: Props) {
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="data" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("statsTitle")}</b>
@@ -1011,7 +1122,7 @@ export function SettingsScreen(p: Props) {
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="network" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("leakTitle")}</b>
@@ -1062,7 +1173,7 @@ export function SettingsScreen(p: Props) {
         {leakError && <div className="muted warn-txt">{leakError}</div>}
       </div>
 
-      <div className="card" style={{ marginBottom: 14 }}>
+      <div className="card" data-tab="data" style={{ marginBottom: 14 }}>
         <div className="row">
           <div className="txt">
             <b>{t("coreTitle")}</b>
@@ -1123,7 +1234,7 @@ export function SettingsScreen(p: Props) {
         {coreNote && <div className="muted" style={{ marginTop: 6 }}>{coreNote}</div>}
       </div>
 
-      <div className="card">
+      <div className="card" data-tab="data">
         <dl className="kv">
           <dt>{t("about")}</dt>
           <dd>K4R Neko VPN</dd>
@@ -1169,6 +1280,17 @@ export function SettingsScreen(p: Props) {
           </dd>
         </dl>
       </div>
+      </div>
+
+      {q.trim() && hits === 0 && (
+        <div className="card empty-box">
+          <img src="/mascot/empty.webp" alt="" draggable={false} />
+          <div>
+            <h3>{t("searchEmptyTitle")}</h3>
+            <p className="muted">{t("setNoHits")}</p>
+          </div>
+        </div>
+      )}
     </>
   );
 }

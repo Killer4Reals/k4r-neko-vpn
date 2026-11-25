@@ -120,6 +120,19 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    const live = { current: true };
+    let onScreen = true;
+    const updateLive = () => {
+      live.current = onScreen && !document.hidden;
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      updateLive();
+    });
+    io.observe(canvas);
+    const onVis = () => updateLive();
+    document.addEventListener("visibilitychange", onVis);
+    updateLive();
     if (!ctx) return;
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -161,6 +174,10 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
     let t = 0;
 
     const draw = (now: number) => {
+      if (!live.current) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
       const dt = Math.min(64, now - last) / 1000;
       last = now;
       t += dt;
@@ -463,6 +480,8 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
     raf = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(raf);
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVis);
       themeWatch.disconnect();
     };
   }, [geom, size, target, connected]);

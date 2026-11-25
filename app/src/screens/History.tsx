@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  availability,
+  availabilityWeek,
   clock,
   countByFilter,
   filterEvents,
@@ -61,7 +61,7 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang, head
   const counts = useMemo(() => countByFilter(events), [events]);
   const shown = useMemo(() => filterEvents(events, filter), [events, filter]);
   const groups = useMemo(() => groupByDay(shown, now), [shown, now]);
-  const health = useMemo(() => availability(events, now).slice(0, 6), [events, now]);
+  const health = useMemo(() => availabilityWeek(events, now).slice(0, 6), [events, now]);
 
   const downWord = (n: number) => {
     const form = plural(n, lang);
@@ -89,11 +89,19 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang, head
           {health.map((row) => (
             <div key={row.id} className="hist-uptime">
               <div className="hist-uptime-name">{nameOfId(row.id)}</div>
-              <div className="hist-uptime-bar">
-                <span
-                  className={row.pct >= 98 ? "ok" : row.pct >= 90 ? "warn" : "bad"}
-                  style={{ width: `${Math.max(3, row.pct)}%` }}
-                />
+              <div className="hist-week">
+                {row.slots.map((s) => {
+                  const day = new Date(s.at);
+                  const stamp = `${String(day.getDate()).padStart(2, "0")}.${String(day.getMonth() + 1).padStart(2, "0")} ${String(day.getHours()).padStart(2, "0")}:00`;
+                  const what = s.pct === null ? t("histNoData") : `${s.pct}%`;
+                  return (
+                    <span
+                      key={s.at}
+                      className={`hist-cell ${s.tone}`}
+                      title={`${stamp} · ${what}`}
+                    />
+                  );
+                })}
               </div>
               <div className="hist-uptime-pct">
                 {row.pct}% · {row.downs} {t(downWord(row.downs))}

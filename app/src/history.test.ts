@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   availability,
+  availabilityWeek,
   clock,
   countByFilter,
   filterEvents,
@@ -161,6 +162,33 @@ describe("availability", () => {
     const now = T;
     const list = [ev(now - 10 * 86_400_000, "nodeDown", "old")];
     expect(availability(list, now)).toEqual([]);
+  });
+});
+
+describe("availabilityWeek", () => {
+  it("неделя — 28 отрезков, до первого события серо", () => {
+    const now = T;
+    const list = [ev(now - 3_600_000, "nodeDown", "nl")];
+    const [row] = availabilityWeek(list, now);
+    expect(row.slots).toHaveLength(28);
+    const grey = row.slots.filter((s) => s.tone === "none");
+    expect(grey.length).toBeGreaterThan(0);
+    expect(row.slots[row.slots.length - 1].tone).toBe("bad");
+  });
+
+  it("короткий сбой — жёлтый отрезок, а не красный", () => {
+    const now = T + 86_400_000;
+    const at = now - 12 * 3_600_000;
+    const list = [ev(at, "nodeDown", "de"), ev(at + 10 * 60_000, "nodeUp", "de")];
+    const [row] = availabilityWeek(list, now);
+    const slot = row.slots.find((s) => at >= s.at && at < s.at + 6 * 3_600_000);
+    expect(slot?.tone).toBe("warn");
+    expect(slot?.downs).toBe(1);
+  });
+
+  it("узел без событий в список не попадает", () => {
+    const now = T;
+    expect(availabilityWeek([ev(now - 60_000, "connect", "x")], now)).toEqual([]);
   });
 });
 
