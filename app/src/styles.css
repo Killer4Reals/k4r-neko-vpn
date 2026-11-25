@@ -984,6 +984,11 @@ input {
   color: var(--txt-2);
   font-size: 12px;
   font-weight: 600;
+  /* Кнопка «×» на чипе иначе выходит 21×20 — меньше пальца и меньше
+     доступного минимума 24×24 */
+  min-width: 24px;
+  min-height: 24px;
+  justify-content: center;
   transition: border-color 0.16s, color 0.16s, background 0.16s;
 }
 .chip[data-soon="true"] .led {
@@ -1233,8 +1238,14 @@ input {
   padding: 0 11px;
   outline: none;
   font-size: 12.5px;
+  /* Без явного цвета select рисует текст чёрным на тёмном фоне: контраст 1:1 */
+  color: var(--txt);
   transition: border-color 0.16s, box-shadow 0.16s;
   user-select: text;
+}
+select.input option {
+  color: var(--txt);
+  background: var(--bg-1);
 }
 .input:focus {
   border-color: rgba(57, 255, 20, 0.45);
@@ -2961,7 +2972,9 @@ html[data-accent="ice"] {
   pointer-events: none;
 }
 
-.shell > *:not(.aurora):not(.splash) {
+/* Карточка уведомления — fixed в правом нижнем углу; общее правило ниже
+   раньше перебивало её на relative, и она вылезала слева поверх рейла. */
+.shell > *:not(.aurora):not(.splash):not(.toast) {
   position: relative;
   z-index: 1;
 }
