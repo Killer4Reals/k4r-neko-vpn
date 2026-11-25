@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { nearestWithin, project, rotationFor, shortestDelta, type LatLon } from "./globe";
 import { HOME } from "./map";
 
@@ -24,6 +24,8 @@ type Props = {
   nodes?: GlobeNode[];
   /** нажатие на точку узла: выбрать этот сервер */
   onPick?: (id: string) => void;
+  /** «planet» — спокойный снимок Земли, «cinematic» — облака, звёзды, яркая атмосфера */
+  variant?: "planet" | "cinematic";
 };
 
 /**
@@ -84,10 +86,13 @@ uniform sampler2D uNormal;
 uniform float uCloudShift;
 uniform float uConnected;
 uniform float uRelief;
+uniform vec3 uSun;
+/** 1 — кинематик: контрастнее свет, плотнее облака, ярче атмосфера. */
+uniform float uCine;
 
 void main() {
   vec3 n = normalize(vNormal);
-  vec3 sun = normalize(vec3(-0.26, 0.34, 0.90));
+  vec3 sun = normalize(uSun);
   vec3 eye = vec3(0.0, 0.0, 1.0);
 
   float water = texture2D(uWater, vUv).r;
@@ -105,7 +110,7 @@ void main() {
 
   float ndlGeo = dot(n, sun);
   float ndl = dot(nb, sun);
-  float day = smoothstep(-0.30, 0.45, ndlGeo);
+  float day = smoothstep(mix(-0.30, -0.14, uCine), mix(0.45, 0.30, uCine), ndlGeo);
 
   // Облака плывут быстрее планеты; их тень падает на землю со сдвигом к солнцу.
   // У полюсов строки текстуры сходятся в точку: любой рисунок там растягивается
@@ -118,6 +123,10 @@ void main() {
   float cloudShadow = texture2D(uClouds, vec2(shadowUvX, shadowUvY)).r * (1.0 - polar);
 
   vec3 base = texture2D(uDay, vUv).rgb;
+  // Кинематик: цвет чуть плотнее снимка, иначе на тёмной карточке он киснет.
+  float baseLum = dot(base, vec3(0.299, 0.587, 0.114));
+  base = max(vec3(0.0), base + (base - vec3(baseLum)) * 0.26 * uCine);
+  base *= mix(1.0, 1.05, uCine);
   // Вода чуть глубже суши: снимок NASA на шаре выглядит слишком светлым.
   base *= mix(1.0, 0.93, water);
   base *= mix(1.0, 0.80, cloudShadow * 0.9);
@@ -136,20 +145,23 @@ void main() {
   // Вода: узкий блик солнца и широкая «стеклянная» полоса.
   vec3 h = normalize(sun + eye);
   float nh = max(dot(nb, h), 0.0);
-  float spec = pow(nh, 220.0) * 0.24 + pow(nh, 40.0) * 0.02;
+  float spec = pow(nh, mix(220.0, 150.0, uCine)) * mix(0.24, 0.55, uCine) + pow(nh, 40.0) * 0.02;
   col += vec3(1.0, 0.97, 0.90) * spec * water * day;
 
   // Облака: сверху свой свет, в тени почти не видно.
   float lit = 0.14 + 1.02 * max(ndl, 0.0);
-  col = mix(col, vec3(0.94, 0.96, 1.0) * lit, cloud * 0.42);
+  col = mix(col, vec3(0.96, 0.98, 1.0) * lit, cloud * mix(0.42, 0.60, uCine));
 
   // Атмосфера: плотная голубая дымка у края диска, ярче со стороны солнца.
   float rim = 1.0 - clamp(dot(n, eye), 0.0, 1.0);
   float haze = pow(rim, 2.4);
   float halo = pow(rim, 6.0);
   float sunSide = 0.35 + 0.65 * smoothstep(-0.45, 0.55, ndlGeo);
-  col += vec3(0.26, 0.52, 0.92) * haze * 0.55 * sunSide;
-  col += vec3(0.55, 0.72, 1.0) * halo * 0.55 * sunSide;
+  float air = mix(0.55, 1.0, uCine);
+  col += vec3(0.26, 0.55, 0.95) * haze * 0.55 * sunSide * air;
+  col += vec3(0.55, 0.78, 1.0) * halo * 0.55 * sunSide * air;
+  // Кинематик: широкая голубая вуаль по всему краю, как на референсе.
+  col += vec3(0.10, 0.30, 0.60) * pow(rim, 3.1) * uCine * 0.30;
 
   // Тёплый терминатор: там, где день переходит в ночь.
   float edge = smoothstep(0.30, 0.0, abs(ndlGeo));
@@ -210,7 +222,7 @@ function aniso(gl: WebGLRenderingContext): number {
   return Math.min(8, max || 1);
 }
 
-function loadTex(gl: WebGLRenderingContext, url: string, wrapS: number): WebGLTexture {
+function loadTex(gl: WebGLRenderingContext, url: string, wrapS: number, onLoad?: () => void): WebGLTexture {
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(
@@ -239,6 +251,7 @@ function loadTex(gl: WebGLRenderingContext, url: string, wrapS: number): WebGLTe
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
     gl.generateMipmap(gl.TEXTURE_2D);
+    onLoad?.();
   };
   img.src = url;
   return tex;
@@ -248,8 +261,10 @@ function loadTex(gl: WebGLRenderingContext, url: string, wrapS: number): WebGLTe
  * Настоящая планета: сфера с текстурой Земли, солнце, ночные огни городов,
  * облака и атмосфера. WebGL, без сторонних библиотек.
  */
-export function GlobePlanet({ target, connected = false, label, size, nodes, onPick }: Props) {
+export function GlobePlanet({ target, connected = false, label, size, nodes, onPick, variant = "planet" }: Props) {
   const glRef = useRef<HTMLCanvasElement | null>(null);
+  // Пока текстура не пришла, шар рисовать нечем: вместо чёрного круга — скелет.
+  const [ready, setReady] = useState(false);
   const overRef = useRef<HTMLCanvasElement | null>(null);
   // замеры обновляются каждые 10 минут; пересоздавать ради них WebGL незачем
   const nodesRef = useRef<GlobeNode[]>([]);
@@ -310,6 +325,7 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
 
+    const cine = variant === "cinematic";
     const vs = compile(gl, gl.VERTEX_SHADER, VERT);
     const fs = compile(gl, gl.FRAGMENT_SHADER, FRAG);
     if (!vs || !fs) return;
@@ -320,49 +336,64 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
     gl.useProgram(prog);
 
+    const u: Record<string, WebGLUniformLocation | null> = {
+      spin: gl.getUniformLocation(prog, "uSpin"),
+      tilt: gl.getUniformLocation(prog, "uTilt"),
+      scale: gl.getUniformLocation(prog, "uScale"),
+    };
+    let vbo: WebGLBuffer | null = null;
+    let ubo: WebGLBuffer | null = null;
+    let ibo: WebGLBuffer | null = null;
+    let day: WebGLTexture | null = null;
+    let water: WebGLTexture | null = null;
+    let lights: WebGLTexture | null = null;
+    let clouds: WebGLTexture | null = null;
+    let normal: WebGLTexture | null = null;
+    let sphereIndexCount = 0;
     const geo = sphere();
-    const vbo = gl.createBuffer();
+    sphereIndexCount = geo.idx.length;
+    vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, geo.pos, gl.STATIC_DRAW);
     const aPos = gl.getAttribLocation(prog, "aPos");
     gl.enableVertexAttribArray(aPos);
     gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
 
-    const ubo = gl.createBuffer();
+    ubo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, ubo);
     gl.bufferData(gl.ARRAY_BUFFER, geo.uv, gl.STATIC_DRAW);
     const aUv = gl.getAttribLocation(prog, "aUv");
     gl.enableVertexAttribArray(aUv);
     gl.vertexAttribPointer(aUv, 2, gl.FLOAT, false, 0, 0);
 
-    const ibo = gl.createBuffer();
+    ibo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geo.idx, gl.STATIC_DRAW);
 
-    const day = loadTex(gl, "/earth/day.webp", gl.REPEAT);
-    const normal = loadTex(gl, "/earth/normal.webp", gl.REPEAT);
-    const water = loadTex(gl, "/earth/water.png", gl.REPEAT);
-    const lights = loadTex(gl, "/earth/lights.webp", gl.REPEAT);
-    const clouds = loadTex(gl, "/earth/clouds.webp", gl.REPEAT);
+    day = loadTex(gl, "/earth/day.webp", gl.REPEAT, () => setReady(true));
+    normal = loadTex(gl, "/earth/normal.webp", gl.REPEAT);
+    water = loadTex(gl, "/earth/water.png", gl.REPEAT);
+    lights = loadTex(gl, "/earth/lights.webp", gl.REPEAT);
+    clouds = loadTex(gl, "/earth/clouds.webp", gl.REPEAT);
 
-    const u = {
-      spin: gl.getUniformLocation(prog, "uSpin"),
-      tilt: gl.getUniformLocation(prog, "uTilt"),
-      scale: gl.getUniformLocation(prog, "uScale"),
-      cloud: gl.getUniformLocation(prog, "uCloudShift"),
-      day: gl.getUniformLocation(prog, "uDay"),
-      water: gl.getUniformLocation(prog, "uWater"),
-      lights: gl.getUniformLocation(prog, "uLights"),
-      clouds: gl.getUniformLocation(prog, "uClouds"),
-      normal: gl.getUniformLocation(prog, "uNormal"),
-      relief: gl.getUniformLocation(prog, "uRelief"),
-    };
+    u.cloud = gl.getUniformLocation(prog, "uCloudShift");
+    u.day = gl.getUniformLocation(prog, "uDay");
+    u.water = gl.getUniformLocation(prog, "uWater");
+    u.lights = gl.getUniformLocation(prog, "uLights");
+    u.clouds = gl.getUniformLocation(prog, "uClouds");
+    u.normal = gl.getUniformLocation(prog, "uNormal");
+    u.relief = gl.getUniformLocation(prog, "uRelief");
+    u.sun = gl.getUniformLocation(prog, "uSun");
+    u.cine = gl.getUniformLocation(prog, "uCine");
     gl.uniform1i(u.day, 0);
     gl.uniform1i(u.water, 1);
     gl.uniform1i(u.lights, 2);
     gl.uniform1i(u.clouds, 3);
     gl.uniform1i(u.normal, 4);
     gl.uniform1f(u.relief, 1.0);
+    if (cine) gl.uniform3f(u.sun, 0.55, 0.45, 0.70);
+    else gl.uniform3f(u.sun, -0.26, 0.34, 0.90);
+    gl.uniform1f(u.cine, cine ? 1 : 0);
 
     gl.enable(gl.DEPTH_TEST);
     gl.clearColor(0, 0, 0, 0);
@@ -412,8 +443,8 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       gl.uniform1f(u.spin, s.angle);
       gl.uniform1f(u.tilt, s.tilt);
       gl.uniform1f(u.scale, (1 - 24 / size) * s.zoom);
-      gl.uniform1f(u.cloud, s.cloud);
 
+      gl.uniform1f(u.cloud, s.cloud);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, day);
       gl.activeTexture(gl.TEXTURE1);
@@ -424,8 +455,7 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       gl.bindTexture(gl.TEXTURE_2D, clouds);
       gl.activeTexture(gl.TEXTURE4);
       gl.bindTexture(gl.TEXTURE_2D, normal);
-
-      gl.drawElements(gl.TRIANGLES, geo.idx.length, gl.UNSIGNED_SHORT, 0);
+      gl.drawElements(gl.TRIANGLES, sphereIndexCount, gl.UNSIGNED_SHORT, 0);
       drawOverlay();
 
       raf = requestAnimationFrame(frame);
@@ -451,14 +481,39 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
 
       // Атмосферное свечение вокруг диска: тонкая голубая дымка за краем шара.
       // Именно она даёт ощущение «настоящей планеты в космосе», а не кружка.
+      const cine = variant === "cinematic";
       const glow = ctx.createRadialGradient(cx, cy, R * 0.97, cx, cy, R * 1.16);
-      glow.addColorStop(0, "rgba(122,190,255,0.26)");
-      glow.addColorStop(0.4, "rgba(86,146,255,0.12)");
+      glow.addColorStop(0, `rgba(122,190,255,${cine ? 0.32 : 0.26})`);
+      glow.addColorStop(0.4, `rgba(86,146,255,${cine ? 0.20 : 0.12})`);
       glow.addColorStop(1, "rgba(46,96,206,0)");
+      // Заливка круга градиентом красила и сам диск: шар покрывался голубой
+      // дымкой, из-за которой и планета, и low-poly выглядели выцветшими.
+      // Клипаем кольцо — дымка остаётся только за краем.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * 1.16, 0, Math.PI * 2);
+      ctx.arc(cx, cy, R * 0.995, 0, Math.PI * 2, true);
+      ctx.clip("evenodd");
       ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(cx, cy, R * 1.16, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
+
+      // Кинематик: солнце за краем диска и его ореол — как на референсе.
+      if (cine) {
+        const n = Math.hypot(0.55, 0.45, 0.70);
+        const sx = cx + (0.55 / n) * R * 1.12;
+        const sy = cy - (0.45 / n) * R * 1.12;
+        const flare = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 0.46);
+        flare.addColorStop(0, "rgba(200,235,255,0.16)");
+        flare.addColorStop(0.4, "rgba(130,195,255,0.07)");
+        flare.addColorStop(1, "rgba(80,140,255,0)");
+        ctx.fillStyle = flare;
+        ctx.beginPath();
+        ctx.arc(sx, sy, R * 0.46, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       if (target) {
         const steps = 72;
@@ -673,18 +728,15 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     raf = requestAnimationFrame(frame);
     return () => {
       cancelAnimationFrame(raf);
-      gl.deleteBuffer(vbo);
-      gl.deleteBuffer(ubo);
-      gl.deleteBuffer(ibo);
-      gl.deleteTexture(day);
-      gl.deleteTexture(water);
-      gl.deleteTexture(lights);
-      gl.deleteTexture(clouds);
+      if (vbo) gl.deleteBuffer(vbo);
+      if (ubo) gl.deleteBuffer(ubo);
+      if (ibo) gl.deleteBuffer(ibo);
+      for (const tex of [day, water, lights, clouds, normal]) if (tex) gl.deleteTexture(tex);
       gl.deleteProgram(prog);
       gl.deleteShader(vs);
       gl.deleteShader(fs);
     };
-  }, [size, target, connected]);
+  }, [size, target, connected, variant]);
 
   // крутить мышью
   useEffect(() => {
@@ -747,9 +799,15 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
   }, [size]);
 
   return (
-    <div className="globe globe-3d" style={{ width: size, height: size }}>
+    <div className={`globe globe-3d${variant === "cinematic" ? " cine" : ""}`} style={{ width: size, height: size }}>
+      {variant === "cinematic" && <span className="globe-stars" aria-hidden />}
       <div className="globe-halo" aria-hidden />
-      <canvas ref={glRef} style={{ width: size, height: size }} aria-hidden />
+      {!ready && <span className="globe-boot" aria-hidden />}
+      <canvas
+        ref={glRef}
+        style={{ width: size, height: size, opacity: ready ? 1 : 0, transition: "opacity 0.45s ease" }}
+        aria-hidden
+      />
       <canvas ref={overRef} style={{ width: size, height: size }} />
       {label && <span className="globe-label">{label}</span>}
     </div>

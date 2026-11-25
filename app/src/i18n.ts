@@ -634,11 +634,12 @@ const dict: Dict = {
   hwidReset: { ru: "Новый ID", en: "New ID" },
   globeStyleTitle: { ru: "Вид глобуса", en: "Globe look" },
   globeStyleHint: {
-    ru: "«Неон» — шар из точек в цвет темы. «Планета» — океан, материки и атмосфера.",
-    en: "Neon is the dot sphere in your theme colour. Planet is ocean, continents and atmosphere.",
+    ru: "«Неон» — шар из точек в цвет темы. «Планета» — океан, материки и атмосфера. «Кинематик» — Земля с облаками, звёздами и яркой атмосферой.",
+    en: "Neon is the dot sphere in your theme colour. Planet is ocean, continents and atmosphere. Cinematic adds clouds, stars and a bright atmosphere.",
   },
   globeNeon: { ru: "Неон", en: "Neon" },
   globePlanet: { ru: "Планета", en: "Planet" },
+  globeCinematic: { ru: "Кинематик", en: "Cinematic" },
   soundTitle: { ru: "Звук", en: "Sound" },
   soundHint: {
     ru: "Клики, удары и сигналы подключения. Синтезируются на месте — файлов нет, вес не растёт.",

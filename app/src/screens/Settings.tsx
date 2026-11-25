@@ -561,7 +561,7 @@ export function SettingsScreen(p: Props) {
             <span>{t("globeStyleHint")}</span>
           </div>
           <div className="seg" style={{ display: "flex", gap: 8 }}>
-            {(["neon", "planet"] as GlobeStyle[]).map((g) => (
+            {(["neon", "planet", "cinematic"] as GlobeStyle[]).map((g) => (
               <button
                 key={g}
                 className={`btn${globe === g ? " primary" : ""}`}
@@ -572,7 +572,7 @@ export function SettingsScreen(p: Props) {
                   play("click");
                 }}
               >
-                {t(g === "neon" ? "globeNeon" : "globePlanet")}
+                {t(g === "neon" ? "globeNeon" : g === "planet" ? "globePlanet" : "globeCinematic")}
               </button>
             ))}
           </div>

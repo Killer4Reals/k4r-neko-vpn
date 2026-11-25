@@ -508,8 +508,19 @@ export function Globe({ target, connected = false, label, size = 300, style, nod
 
   useEffect(() => onGlobeStyle(setKind), []);
 
-  if (kind === "planet") {
-    return <GlobePlanet target={target} connected={connected} label={label} size={size} nodes={nodes} onPick={onPick} />;
+  if (kind === "planet" || kind === "cinematic") {
+    return (
+      <GlobePlanet
+        key={kind}
+        target={target}
+        connected={connected}
+        label={label}
+        size={size}
+        nodes={nodes}
+        onPick={onPick}
+        variant={kind}
+      />
+    );
   }
   return <GlobeDots target={target} connected={connected} label={label} size={size} nodes={nodes} />;
 }
