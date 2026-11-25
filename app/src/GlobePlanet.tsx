@@ -125,10 +125,12 @@ void main() {
   vec3 base = texture2D(uDay, vUv).rgb;
   // Кинематик: цвет чуть плотнее снимка, иначе на тёмной карточке он киснет.
   float baseLum = dot(base, vec3(0.299, 0.587, 0.114));
-  base = max(vec3(0.0), base + (base - vec3(baseLum)) * 0.26 * uCine);
+  base = max(vec3(0.0), base + (base - vec3(baseLum)) * 0.34 * uCine);
   base *= mix(1.0, 1.05, uCine);
   // Вода чуть глубже суши: снимок NASA на шаре выглядит слишком светлым.
   base *= mix(1.0, 0.93, water);
+  // Кинематик: океан уводим в глубокий синий, иначе он серо-голубой.
+  base = mix(base, base * vec3(0.80, 0.95, 1.18), water * 0.55 * uCine);
   base *= mix(1.0, 0.80, cloudShadow * 0.9);
 
   // Свет: тёплое солнце + холодная подсветка с ночной стороны.
@@ -145,7 +147,7 @@ void main() {
   // Вода: узкий блик солнца и широкая «стеклянная» полоса.
   vec3 h = normalize(sun + eye);
   float nh = max(dot(nb, h), 0.0);
-  float spec = pow(nh, mix(220.0, 150.0, uCine)) * mix(0.24, 0.55, uCine) + pow(nh, 40.0) * 0.02;
+  float spec = pow(nh, mix(220.0, 330.0, uCine)) * mix(0.24, 0.30, uCine) + pow(nh, 40.0) * 0.02;
   col += vec3(1.0, 0.97, 0.90) * spec * water * day;
 
   // Облака: сверху свой свет, в тени почти не видно.

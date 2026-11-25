@@ -36,9 +36,13 @@ export function MetroMap(p: Props) {
             <circle className="metro-node" cx="128" cy={l.y} r="5" />
             <circle className="metro-node" cx="300" cy={l.y} r="7" />
             <circle className="metro-node" cx="470" cy={l.y} r="5" />
-            <text className="metro-count" x="300" y={l.y - 14} textAnchor="middle">
-              {l.n}
-            </text>
+            {/* Ноль на схеме читается как «сломано», а не «правил нет»:
+                пока счётчик пуст, цифру не рисуем. */}
+            {l.n > 0 && (
+              <text className="metro-count" x="300" y={l.y - 14} textAnchor="middle">
+                {l.n}
+              </text>
+            )}
             <text className="metro-label" x="470" y={l.y + 24} textAnchor="middle">
               {l.label}
             </text>

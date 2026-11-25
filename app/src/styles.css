@@ -484,7 +484,7 @@ input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(8px, 1.5vh, 14px);
+  gap: clamp(6px, 1.2vh, 12px);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   background:
@@ -2666,7 +2666,9 @@ select.input {
     rgba(58, 128, 235, 0.16) 52%,
     rgba(30, 70, 160, 0) 74%
   );
-  filter: blur(14px);
+  /* Градиент сам мягкий: filter: blur заставлял WebView2 перерастрировать
+     слой при прокрутке — отсюда рывки. */
+  transform: translateZ(0);
 }
 .globe-halo {
   position: absolute;
@@ -2678,15 +2680,57 @@ select.input {
     rgba(70, 120, 220, 0.1) 58%,
     rgba(40, 60, 120, 0) 72%
   );
-  filter: blur(8px);
   z-index: -1;
   pointer-events: none;
+  transform: translateZ(0);
 }
-@media (prefers-reduced-motion: reduce) {
-  .globe-halo {
-    filter: blur(8px) none;
-  }
+
+
+/* Вкладки внутри слитых экранов: «Маршруты» и «Аналитика».
+   Отдельный класс: .seg уже занят переключателями языка и режима Split. */
+.subtabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg-2);
 }
+.subtabs button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--txt-3);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.subtabs button.on {
+  background: rgba(57, 255, 20, 0.12);
+  color: var(--txt);
+}
+.subtabs button:hover {
+  color: var(--txt);
+}
+
+/* Паспорт выхода по умолчанию свёрнут: на 720 px он выталкивал цифры за край.
+   Раскрывается кликом и показывает те же поля, что и раньше. */
+.passport-box { width: min(100%, 560px); z-index: 1; }
+.passport-box summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 12px; border: 1px solid var(--line-soft); border-radius: 10px;
+  background: var(--stat-bg); color: var(--txt-3); font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+  list-style: none; user-select: none;
+}
+.passport-box summary::-webkit-details-marker { display: none; }
+.passport-box summary::after { content: "▾"; margin-left: 6px; color: var(--txt-3); transition: transform 0.15s ease; }
+.passport-box[open] summary::after { transform: rotate(180deg); }
+.passport-box summary .passport-score { text-transform: none; }
+.passport-box[open] summary { border-radius: 10px 10px 0 0; }
+.passport-box .passport { margin-top: 0; border-radius: 0 0 10px 10px; }
 
 /* Заголовок блока внутри карточки */
 .card-title {

@@ -136,7 +136,7 @@ export function ZapretScreen({
         <div className="row">
           <div className="txt">
             <b>{t("tunnelGuard")}</b>
-            <span>{t("zapretSub")}</span>
+            <span>{t("zapretMaskHint")}</span>
           </div>
           <button
             role="switch" className="switch"

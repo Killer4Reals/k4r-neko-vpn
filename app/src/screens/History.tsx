@@ -21,6 +21,8 @@ type Props = {
   onClear: () => void;
   /** Сохранить историю файлом: строка CSV на событие. */
   onSave?: (csv: string) => void;
+  /** Заголовок рисует вкладка «Аналитика» — внутри неё он лишний. */
+  head?: boolean;
 };
 
 const DAY_LABEL: Record<string, string> = {
@@ -44,7 +46,7 @@ const KIND_TONE: Record<HistoryEvent["kind"], string> = {
  * событие и честная доступность узлов: «этот за неделю падал 6 раз» — повод
  * его больше не выбирать.
  */
-export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Props) {
+export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang, head = true }: Props) {
   const now = Date.now();
   // Фильтр запоминается: человек, который смотрит только сбои, не должен
   // каждый раз переключать его заново.
@@ -74,10 +76,12 @@ export function HistoryScreen({ t, events, nameOfId, onClear, onSave, lang }: Pr
 
   return (
     <>
-      <div className="page-head">
-        <h1>{t("histTitle")}</h1>
-        <p>{t("histSub")}</p>
-      </div>
+      {head && (
+        <div className="page-head">
+          <h1>{t("histTitle")}</h1>
+          <p>{t("histSub")}</p>
+        </div>
+      )}
 
       {health.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>

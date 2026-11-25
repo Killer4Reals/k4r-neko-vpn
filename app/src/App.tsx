@@ -92,14 +92,39 @@ const HINT_POSE: Record<Screen, Pose> = {
 const navItems: { id: Screen; key: string; icon: typeof PowerIcon }[] = [
   { id: "home", key: "navHome", icon: PowerIcon },
   { id: "servers", key: "navServers", icon: ServerIcon },
-  { id: "split", key: "navSplit", icon: SplitIcon },
-  { id: "route", key: "navRoute", icon: RouteIcon },
+  { id: "split", key: "navRoutes", icon: SplitIcon },
   { id: "zapret", key: "navZapret", icon: ShieldIcon },
-  { id: "stats", key: "navStats", icon: RouteIcon },
-  { id: "history", key: "navHistory", icon: LogIcon },
+  { id: "stats", key: "navAnalytics", icon: RouteIcon },
   { id: "logs", key: "navLogs", icon: LogIcon },
   { id: "settings", key: "navSettings", icon: GearIcon },
 ];
+
+/** Переключатель вкладок внутри слитых экранов: «Маршруты» и «Аналитика». */
+function Seg<T extends string>({
+  items,
+  value,
+  onChange,
+}: {
+  items: { id: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="subtabs" role="tablist">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          role="tab"
+          aria-selected={value === it.id}
+          className={value === it.id ? "on" : ""}
+          onClick={() => onChange(it.id)}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const DEFAULT_SUB = "";
 // Панели узнают клиента по UA и чужим отвечают 502 — берём самый
@@ -150,7 +175,16 @@ function protoTag(p: Profile): string {
 export default function App() {
   const initial = new URLSearchParams(window.location.search);
   const [lang, setLang] = useState<Lang>("ru");
-  const [screen, setScreen] = useState<Screen>((initial.get("screen") as Screen) || "home");
+  const [screen, setScreen] = useState<Screen>(() => {
+    const saved = initial.get("screen") as Screen | null;
+    // Старые ссылки вели на отдельные «Маршрутизацию» и «Историю»: теперь это
+    // вкладки внутри «Маршрутов» и «Аналитики».
+    if (saved === "route") return "split";
+    if (saved === "history") return "stats";
+    return saved || "home";
+  });
+  const [routesTab, setRoutesTab] = useState<"apps" | "rules">("apps");
+  const [analyticsTab, setAnalyticsTab] = useState<"stats" | "history">("stats");
   // История событий: переживает перезапуск, 300 записей — это месяцы
   const [events, setEvents] = useState<HistoryEvent[]>(() => parseEvents(localStorage.getItem("k4r.history")));
   const record = useCallback((kind: HistoryEvent["kind"], a?: string, b?: string) => {
@@ -295,7 +329,6 @@ export default function App() {
   }, [lat, record]);
 
   const [loaded, setLoaded] = useState(!inTauri);
-  const [admin, setAdmin] = useState(true);
   const [zapretDir, setZapretDir] = useState<string | null>(null);
   /// the preset the owner picked must survive a restart, not snap back to the first
   const [zapretPreset, setZapretPreset] = useState("");
@@ -408,11 +441,10 @@ export default function App() {
     api
       .coreInfo()
       .then((info) => {
-        setAdmin(info.admin);
         setZapretDir(info.zapret_dir);
         setAutostart(info.autostart);
       })
-      .catch(() => setAdmin(true));
+      .catch(() => undefined);
   }, []);
 
   // Restore what the user had last time; the app must work with zero external programs.
@@ -1601,15 +1633,6 @@ export default function App() {
         </button>
       </header>
 
-      {!admin && (
-        <div className="banner">
-          <span>Для туннеля нужны права администратора — Windows не даёт создать сетевой адаптер без них.</span>
-          <button className="btn primary" style={{ width: "auto", paddingInline: 14 }} onClick={() => api.relaunchAdmin()}>
-            Перезапустить как администратор
-          </button>
-        </div>
-      )}
-
       {upd && (
         <div className="banner">
           <span>
@@ -1714,50 +1737,78 @@ export default function App() {
               onAddWireguard={addWireguard}
             />
           )}
-          {screen === "split" && <SplitScreen {...ctx} />}
-          {screen === "stats" && <StatsScreen t={t} />}
-          {screen === "history" && (
-            <HistoryScreen
-              t={t}
-              lang={lang}
-              events={events}
-              nameOfId={(id) => {
-                const v = viewServers.find((x) => x.id === id);
-                if (v) return v.city || v.country || v.tag || id;
-                // узел мог уйти из подписки: остался только id. Две буквы —
-                // это код страны, покажем страну, а не «jp»
-                if (/^[a-z]{2}$/i.test(id)) return nameOf(id.toLowerCase()) || id;
-                return id;
-              }}
-              onSave={async (csv) => {
-                try {
-                  const path = await api.exportText("history", csv);
-                  setWarnings([`История сохранена: ${path}`]);
-                } catch (e) {
-                  setWarnings([String(e)]);
-                }
-              }}
-              onClear={() => {
-                setEvents([]);
-                localStorage.removeItem("k4r.history");
-              }}
-            />
+          {screen === "split" && (
+            <>
+              <Seg
+                items={[
+                  { id: "apps", label: t("tabApps") },
+                  { id: "rules", label: t("tabRules") },
+                ]}
+                value={routesTab}
+                onChange={setRoutesTab}
+              />
+              {routesTab === "apps" ? (
+                <SplitScreen {...ctx} head={false} />
+              ) : (
+                <RouteScreen
+                  t={t}
+                  head={false}
+                  rules={rules}
+                  setRules={setRules}
+                  ruDirect={routeRu}
+                  setRuDirect={setRouteRu}
+                  blockAds={routeAds}
+                  setBlockAds={setRouteAds}
+                  connected={conn === "connected"}
+                  onReconnect={reconnectTunnel}
+                  city={selected.city}
+                  country={selected.country}
+                  guard={zapretState === "running"}
+                />
+              )}
+            </>
           )}
-          {screen === "route" && (
-            <RouteScreen
-              t={t}
-              rules={rules}
-              setRules={setRules}
-              ruDirect={routeRu}
-              setRuDirect={setRouteRu}
-              blockAds={routeAds}
-              setBlockAds={setRouteAds}
-              connected={conn === "connected"}
-              onReconnect={reconnectTunnel}
-              city={selected.city}
-              country={selected.country}
-              guard={zapretState === "running"}
-            />
+          {screen === "stats" && (
+            <>
+              <Seg
+                items={[
+                  { id: "stats", label: t("navStats") },
+                  { id: "history", label: t("navHistory") },
+                ]}
+                value={analyticsTab}
+                onChange={setAnalyticsTab}
+              />
+              {analyticsTab === "stats" ? (
+                <StatsScreen t={t} head={false} />
+              ) : (
+                <HistoryScreen
+                  t={t}
+                  lang={lang}
+                  head={false}
+                  events={events}
+                  nameOfId={(id) => {
+                    const v = viewServers.find((x) => x.id === id);
+                    if (v) return v.city || v.country || v.tag || id;
+                    // узел мог уйти из подписки: остался только id. Две буквы —
+                    // это код страны, покажем страну, а не «jp»
+                    if (/^[a-z]{2}$/i.test(id)) return nameOf(id.toLowerCase()) || id;
+                    return id;
+                  }}
+                  onSave={async (csv) => {
+                    try {
+                      const path = await api.exportText("history", csv);
+                      setWarnings([`История сохранена: ${path}`]);
+                    } catch (e) {
+                      setWarnings([String(e)]);
+                    }
+                  }}
+                  onClear={() => {
+                    setEvents([]);
+                    localStorage.removeItem("k4r.history");
+                  }}
+                />
+              )}
+            </>
           )}
           {screen === "zapret" && (
             <ZapretScreen

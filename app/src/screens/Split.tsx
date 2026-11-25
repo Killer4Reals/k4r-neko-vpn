@@ -5,6 +5,7 @@ import { SearchIcon } from "../icons";
 
 type Props = {
   t: (k: string) => string;
+  head?: boolean;
   catalog: AppEntry[];
   chosen: ChosenApp[];
   assignApp: (exe: string, name: string, via: boolean) => void;
@@ -74,6 +75,7 @@ function Row({
 
 export function SplitScreen({
   t,
+  head = true,
   catalog,
   chosen,
   assignApp,
@@ -106,10 +108,12 @@ export function SplitScreen({
 
   return (
     <>
-      <div className="page-head">
-        <h1>{t("splitTitle")}</h1>
-        <p>{t("splitSub")}</p>
-      </div>
+      {head && (
+        <div className="page-head">
+          <h1>{t("splitTitle")}</h1>
+          <p>{t("splitSub")}</p>
+        </div>
+      )}
 
       <div className="split-sum">
         <span className="split-stat" data-kind="via">

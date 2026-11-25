@@ -7,6 +7,7 @@ import { exitLabel, metroCounts } from "../metroMath";
 
 type Props = {
   t: (k: string) => string;
+  head?: boolean;
   rules: RouteRule[];
   setRules: (r: RouteRule[]) => void;
   ruDirect: boolean;
@@ -46,6 +47,7 @@ const actionLabel: Record<RouteRule["action"], string> = {
  */
 export function RouteScreen({
   t,
+  head = true,
   rules,
   setRules,
   ruDirect,
@@ -106,10 +108,12 @@ export function RouteScreen({
 
   return (
     <>
-      <div className="page-head">
-        <h1>{t("routeTitle")}</h1>
-        <p>{t("routeSub")}</p>
-      </div>
+      {head && (
+        <div className="page-head">
+          <h1>{t("routeTitle")}</h1>
+          <p>{t("routeSub")}</p>
+        </div>
+      )}
 
       <MetroMap
         t={t}

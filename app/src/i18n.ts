@@ -181,6 +181,7 @@ const dict: Dict = {
   },
   qrEmpty: { ru: "Сначала появится ссылка подписки", en: "The subscription link comes first" },
   copyLink: { ru: "Скопировать ссылку", en: "Copy link" },
+  trafficToday: { ru: "Трафик сегодня", en: "Traffic today" },
   trafficUsed: { ru: "израсходовано", en: "used" },
   noLimit: { ru: "без лимита", en: "no limit" },
   trafficLeft: { ru: "осталось", en: "left" },
@@ -490,6 +491,10 @@ const dict: Dict = {
     ru: "Zapret 2 маскирует туннель от DPI, чтобы соединение не рвали",
     en: "Zapret 2 disguises the tunnel from DPI so the connection is not cut"
   },
+  zapretMaskHint: {
+    ru: "Маскирует пакеты на уровне сети — DPI не видит туннель.",
+    en: "Masks packets on the network level — DPI cannot see the tunnel."
+  },
   preset: { ru: "Пресет", en: "Preset" },
   zapretAuto: { ru: "Запускать вместе с приложением", en: "Start together with the app" },
   zapretAutoHint: {
@@ -528,6 +533,10 @@ const dict: Dict = {
     en: "Re-measure as soon as the tunnel drops, without waiting for the timer",
   },
   autoSelectSwitched: { ru: "Автовыбор: переключил на", en: "Auto-select: switched to" },
+  navRoutes: { ru: "Маршруты", en: "Routes" },
+  navAnalytics: { ru: "Аналитика", en: "Analytics" },
+  tabApps: { ru: "Приложения", en: "Apps" },
+  tabRules: { ru: "Правила", en: "Rules" },
   navStats: { ru: "Статистика", en: "Stats" },
   navHistory: { ru: "История", en: "History" },
   chkTitle: { ru: "Проверка одной кнопкой", en: "One-click check" },

@@ -9,7 +9,8 @@ import { Flag } from "../Flag";
 import { humanBytes, leftBytes, subTiming } from "../sub";
 import { grade, providerOf, score } from "../passport";
 import { isFresh } from "../health";
-import { Turbine } from "../Turbine";
+import { dayKey, human } from "../stats";
+import { api } from "../api";
 
 type Props = {
   t: (k: string) => string;
@@ -114,6 +115,29 @@ export function HomeScreen(p: Props) {
   }
   const [uptime, setUptime] = useState(0);
 
+  // Трафик за сегодня: цифра нужна на главной, а не только в «Аналитике».
+  // Обновляем раз в минуту и при смене состояния — этого достаточно, чтобы
+  // число не отставало, но не дёргало экран каждую секунду.
+  const [today, setToday] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api
+        .statsRead()
+        .then((days) => {
+          if (!alive) return;
+          const row = days.find((d) => d.day === dayKey());
+          setToday(row ? row.down + row.up : 0);
+        })
+        .catch(() => undefined);
+    void load();
+    const id = window.setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [conn]);
+
   useEffect(() => {
     if (conn !== "connected") {
       setUptime(0);
@@ -174,8 +198,8 @@ export function HomeScreen(p: Props) {
       // высота hero минус подписи сверху и снизу — остальное отдаём шару
       const w = el.clientWidth || 0;
       const h = el.clientHeight || 0;
-      const byHeight = h - 196;
-      const size = Math.max(220, Math.min(440, Math.min(w - 36, byHeight)));
+      const byHeight = h - 360;
+      const size = Math.max(210, Math.min(400, Math.min(w - 36, byHeight)));
       setGlobeSize((prev) => (Math.abs(prev - size) < 2 ? prev : Math.round(size)));
     };
     measure();
@@ -315,8 +339,6 @@ export function HomeScreen(p: Props) {
           ))}
         </div>
 
-        <Turbine data={p.trail} t={t} />
-        <Sparkline data={p.trail} />
 
         <div className="stats">
           <div className="stat">
@@ -332,6 +354,10 @@ export function HomeScreen(p: Props) {
             </div>
           </div>
           <div className="stat">
+            <div className="k">{t("trafficToday")}</div>
+            <div className="v">{human(today)}</div>
+          </div>
+          <div className="stat">
             <div className="k">{t("uptime")}</div>
             <div className="v">
               {mm}:{ss}
@@ -341,6 +367,15 @@ export function HomeScreen(p: Props) {
 
         {/* Паспорт выхода: то, что интернет знает о тебе прямо сейчас, и
             насколько этому выходу можно верить */}
+        <details className="passport-box">
+          <summary>
+            <span className="k">{t("passportTitle")}</span>
+            <span className="passport-score">
+              {passScore}
+              <small>/100</small>
+              <b>{passGrade}</b>
+            </span>
+          </summary>
         <div className="passport" data-grade={passGrade}>
           <div className="passport-head">
             <span className="k">{t("passportTitle")}</span>
@@ -374,6 +409,7 @@ export function HomeScreen(p: Props) {
             </div>
           </div>
         </div>
+        </details>
 
         <SubLine expire={p.subExpire} total={p.subTotal} used={p.subUsed} t={t} />
 
@@ -460,35 +496,6 @@ export function HomeScreen(p: Props) {
  * Срок подписки и остаток трафика. Показываем только то, что провайдер
  * действительно сообщил: выдуманная дата хуже, чем пустое место.
  */
-/**
- * Живая кривая скорости. Тридцать девять точек — это ровно сорок секунд: видно
- * не цифру «сейчас», а как канал дышит. Пока данных нет, линия прижата к нулю,
- * но панель не прыгает по высоте.
- */
-function Sparkline(p: { data: number[] }) {
-  // Меньше трёх точек — ещё не кривая, а случайная палка: не рисуем.
-  if (p.data.length < 3) return null;
-  const points = p.data;
-  const max = Math.max(1, ...points);
-  const step = 100 / Math.max(1, points.length - 1);
-  const line = points
-    .map((v, i) => `${(i * step).toFixed(2)},${(28 - (v / max) * 26).toFixed(2)}`)
-    .join(" ");
-  const area = `0,28 ${line} 100,28`;
-  return (
-    <svg className="spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" className="spark-top" />
-          <stop offset="100%" className="spark-bottom" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#sparkFill)" />
-      <polyline points={line} className="spark-line" />
-    </svg>
-  );
-}
-
 function SubLine(p: { expire: number; total: number; used: number; t: (k: string) => string }) {
   const timing = subTiming(p.expire);
   const left = leftBytes(p.total, p.used, 0);

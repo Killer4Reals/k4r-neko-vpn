@@ -4,13 +4,13 @@ import { barHeight, human, totals, windowOf, type DayTraffic } from "../stats";
 import { Rings } from "../Rings";
 import { ringPct } from "../ringMath";
 
-type Props = { t: (k: string) => string };
+type Props = { t: (k: string) => string; head?: boolean };
 
 /**
  * Статистика трафика за 7 или 30 дней. Те же цифры, что на телефоне: только
  * то, что прошло через туннель, и ничего наружу.
  */
-export function StatsScreen({ t }: Props) {
+export function StatsScreen({ t, head = true }: Props) {
   const [days, setDays] = useState<DayTraffic[]>([]);
   const [span, setSpan] = useState(7);
   const [confirm, setConfirm] = useState(false);
@@ -37,10 +37,12 @@ export function StatsScreen({ t }: Props) {
 
   return (
     <>
-      <div className="page-head">
-        <h1>{t("statsTitle")}</h1>
-        <p>{t("statsSub")}</p>
-      </div>
+      {head && (
+        <div className="page-head">
+          <h1>{t("statsTitle")}</h1>
+          <p>{t("statsSub")}</p>
+        </div>
+      )}
 
       <Rings items={ringItems} />
 

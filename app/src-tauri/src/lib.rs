@@ -2110,6 +2110,14 @@ fn refresh_tray(app: &tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Отладочный порт WebView2 включается только явным флагом --cdp: в обычном
+    // запуске браузерный движок не должен слушать localhost. Флаг нужен живым
+    // тестам — после requireAdministrator переменные окружения из обычной
+    // консоли до elevated-процесса не доходят.
+    if std::env::args().any(|a| a == "--cdp") {
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=9222");
+    }
+
     // Второй экземпляр не должен поднимать второе ядро: он просто показывает
     // окно первого и выходит. Порт-сторож держится, пока жив процесс.
     let single = match single::acquire(single::PORT) {
