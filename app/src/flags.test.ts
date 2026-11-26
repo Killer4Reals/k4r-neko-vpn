@@ -71,6 +71,8 @@ describe("nameOf", () => {
   it("называет страну по коду", () => {
     expect(nameOf("fi")).toBe("Финляндия");
     expect(nameOf("nl")).toBe("Нидерланды");
+    expect(nameOf("fi", "en")).toBe("Finland");
+    expect(nameOf("nl", "en")).toBe("Netherlands");
   });
 
   it("возвращает null для незнакомого кода", () => {

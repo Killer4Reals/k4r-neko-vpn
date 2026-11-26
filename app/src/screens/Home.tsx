@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Globe, takePick } from "../GlobeView";
 import type { GlobeNode } from "../GlobePlanet";
-import { countryOf } from "../globe";
+import { countryOf, spreadGlobeNodes } from "../globe";
 import type { ConnState, Server } from "../data";
 import { BoltIcon, RefreshIcon } from "../icons";
 import { SCENARIOS, type ScenarioId } from "../scenarios";
@@ -15,6 +15,7 @@ import { api } from "../api";
 
 type Props = {
   t: (k: string) => string;
+  lang: "ru" | "en";
   conn: ConnState;
   toggleConnection: () => void;
   selected: Server;
@@ -46,6 +47,12 @@ type Props = {
   /** address the internet sees right now, "" until measured */
   ip: string;
   ipBusy: boolean;
+  /** страна фактического выхода, две буквы; пусто — ещё не измерили */
+  exitCc: string;
+  /** город фактического выхода, если сервис его знает */
+  exitCity: string;
+  /** провайдер фактического выхода, например "AS... WAIcore" */
+  exitOrg: string;
   onCheckIp: () => void;
   realCount: number;
   /** какой сценарий сейчас включён; null — настройки смешаны руками */
@@ -94,26 +101,41 @@ export function HomeScreen(p: Props) {
   const passFresh = isFresh(p.latAt?.[selected.id]);
   const passScore = score(passMs, selected.quality, passFresh);
   const passGrade = grade(passScore);
+  const exitAt = p.exitCc ? countryOf(p.exitCc) : null;
+  const exitName = exitAt ? nameOf(p.exitCc, p.lang) : "";
+  const profileName = nameOf(selected.cc || selected.flag, p.lang) ?? selected.country;
+  // Профиль и фактический выход разошлись. Тогда и флаг, и подпись, и
+  // кольцо на глобусе показывают выход, а имя профиля остаётся пояснением.
+  const actualExit = Boolean(exitName && exitName !== profileName);
 
   // Узлы на планете: без открытия списка видно, кто ответил, кто тормозит, а
-  // кто молчит. Замер старше 12 минут считаем старым — он не врёт, но устарел.
-  const globeNodes: GlobeNode[] = [];
-  for (const s of servers) {
-    if (!(s.id in p.lat)) continue; // ещё не мерили — точку не рисуем
-    const at = countryOf(s.flag || s.cc);
-    if (!at) continue;
-    const ms = p.lat[s.id];
-    const stamp = p.latAt?.[s.id];
-    const stale = typeof stamp !== "number" || Date.now() - stamp > 12 * 60 * 1000;
-    globeNodes.push({
-      id: s.id,
-      lat: at.lat,
-      lon: at.lon,
-      ms,
-      stale: ms !== null && stale,
-      label: s.city || s.country,
-    });
-  }
+  // кто ещё не мерили. Замер старше 12 минут считаем старым — он не врёт, но
+  // устарел. Точки с одинаковой страной разводим, иначе десять серверов из
+  // одного города сливаются в одну и кажется, что «всё в одном месте».
+  const globeNodes: GlobeNode[] = spreadGlobeNodes(
+    servers.flatMap((s) => {
+      // Активный узел показываем там, где он реально выпускает трафик, а не
+      // там, где провайдер написал его название. Остальные узлы — по профилю:
+      // их фактический выход можно узнать только отдельным подключением.
+      const isSelected = s.id === selected.id;
+      const at = isSelected && exitAt ? exitAt : countryOf(s.flag || s.cc);
+      if (!at) return [];
+      const measured = s.id in p.lat;
+      const ms = measured ? p.lat[s.id] : null;
+      const stamp = p.latAt?.[s.id];
+      const stale = measured && (typeof stamp !== "number" || Date.now() - stamp > 12 * 60 * 1000);
+      const renamed = isSelected && exitName && exitName !== profileName;
+      return [{
+        id: s.id,
+        lat: at.lat,
+        lon: at.lon,
+        ms,
+        stale: ms !== null && stale,
+        pending: !measured,
+        label: renamed ? `${s.city || s.country} → ${exitName}` : s.city || s.country,
+      }];
+    }),
+  );
   const [uptime, setUptime] = useState(0);
 
   // Трафик за сегодня: цифра нужна на главной, а не только в «Аналитике».
@@ -277,7 +299,7 @@ export function HomeScreen(p: Props) {
             </svg>
             <Globe
               size={globeSize}
-              target={countryOf(selected.flag || selected.cc)}
+              target={exitAt ?? countryOf(selected.flag || selected.cc)}
               connected={conn === "connected"}
               nodes={globeNodes}
               onPick={(id) => setSelectedId(id)}
@@ -294,9 +316,15 @@ export function HomeScreen(p: Props) {
           </div>
 
           <div className="server-line">
-            <Flag cc={selected.flag || selected.cc} size="sm" />
-            <strong>{selected.city}</strong>
-            <span>{selected.country}</span>
+            <Flag cc={actualExit ? p.exitCc : selected.flag || selected.cc} size="sm" />
+            <strong>{actualExit ? exitName : selected.city}</strong>
+            {actualExit ? (
+              <span className="profile-tag">
+                {t("profileOf")} {profileName}
+              </span>
+            ) : (
+              <span>{selected.sub ?? selected.country}</span>
+            )}
             <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
           </div>
         </div>
@@ -368,7 +396,16 @@ export function HomeScreen(p: Props) {
 
         {/* Паспорт выхода: то, что интернет знает о тебе прямо сейчас, и
             насколько этому выходу можно верить */}
-        <details className="passport-box">
+        <details
+          className="passport-box"
+          onToggle={(e) => {
+            // На низком окне раскрытый паспорт уходит под край. Подводим его
+            // целиком, чтобы пояснение о реальном выходе не осталось скрытым.
+            if (e.currentTarget.open) {
+              e.currentTarget.scrollIntoView({ block: "nearest", behavior: "smooth" });
+            }
+          }}
+        >
           <summary>
             <span className="k">{t("passportTitle")}</span>
             <span className="passport-score">
@@ -378,18 +415,10 @@ export function HomeScreen(p: Props) {
             </span>
           </summary>
         <div className="passport" data-grade={passGrade}>
-          <div className="passport-head">
-            <span className="k">{t("passportTitle")}</span>
-            <span className="passport-score" title={t("passportScoreHint")}>
-              {passScore}
-              <small>/100</small>
-              <b>{passGrade}</b>
-            </span>
-          </div>
           <div className="passport-grid">
             <div className="passport-cell">
               <span className="k">{t("passportIp")}</span>
-              <strong className="ip">{p.ip || "—"}</strong>
+              <strong className="ip" title={p.ip}>{p.ip || "—"}</strong>
               <button className="ghost-btn" onClick={p.onCheckIp} disabled={p.ipBusy} title={t("myIpHint")}>
                 {p.ipBusy ? "…" : t("ipCheck")}
               </button>
@@ -397,23 +426,28 @@ export function HomeScreen(p: Props) {
             <div className="passport-cell">
               <span className="k">{t("passportCountry")}</span>
               <strong>
-                <Flag cc={selected.flag || selected.cc} size="sm" />{" "}
-                {/* country — вторая строка списка; у страны с тем же именем
-                    там адрес узла. В паспорте нужен именно название страны. */}
-                {selected.country.includes(":")
-                  ? nameOf(selected.cc || selected.flag) ?? selected.country
-                  : selected.country}
+                <Flag cc={p.exitCc || selected.flag || selected.cc} size="sm" />{" "}
+                {/* В паспорте — страна фактического выхода. Название профиля
+                    может врать: «Германия» провайдера выпускает в Финляндию. */}
+                {exitName || profileName}
               </strong>
             </div>
             <div className="passport-cell">
               <span className="k">{t("passportProvider")}</span>
-              <strong>{providerOf(selected.host)}</strong>
+              <strong>{p.exitOrg || providerOf(selected.host)}</strong>
             </div>
             <div className="passport-cell">
               <span className="k">{t("passportProto")}</span>
               <strong>{selected.tag}</strong>
             </div>
           </div>
+          {exitName && exitName !== profileName && (
+            <p className="passport-note">
+              {t("passportExitMismatch")
+                .replace("{profile}", profileName)
+                .replace("{exit}", exitName)}
+            </p>
+          )}
         </div>
         </details>
 
@@ -467,7 +501,7 @@ export function HomeScreen(p: Props) {
               <span>
                 <div className="name">{s.city}</div>
                 <div className="sub">
-                  {s.country} · {s.tag}
+                  {s.sub ?? s.country} · {s.tag}
                 </div>
               </span>
               <span className="lat">

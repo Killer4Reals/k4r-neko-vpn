@@ -415,12 +415,12 @@ input {
   background: var(--green);
   box-shadow: 0 0 10px rgba(57, 255, 20, 0.65);
 }
-/* Подпись появляется ПОД иконкой: над иконкой она накрывала заголовок
-   раздела, и было не понять, что читаешь — меню или страницу. */
+/* Подпись — по центру под иконкой, а не сбоку: сбоку она наезжала на
+   заголовок страницы и её принимали за часть контента. */
 .rail .nav .label {
   position: absolute;
-  left: 56px;
-  top: calc(100% + 2px);
+  left: 50%;
+  top: calc(100% + 6px);
   white-space: nowrap;
   background: var(--bg-3);
   border: 1px solid var(--line);
@@ -429,7 +429,7 @@ input {
   padding: 5px 9px;
   border-radius: 7px;
   opacity: 0;
-  transform: translateY(-4px);
+  transform: translate(-50%, -4px);
   pointer-events: none;
   transition: opacity 0.14s, transform 0.14s;
   transition-delay: 0.18s;
@@ -437,7 +437,12 @@ input {
 }
 .rail .nav:hover .label {
   opacity: 1;
-  transform: none;
+  transform: translate(-50%, 0);
+}
+/* У активного пункта подпись не нужна: он и так подсвечен, а подсказка
+   остаётся висеть после клика и закрывает соседнюю иконку. */
+.rail .nav.active:hover .label {
+  opacity: 0;
 }
 .rail .grow {
   flex: 1;
@@ -720,7 +725,7 @@ input {
   font-size: 13px;
   z-index: 1;
 }
-.hero .server-line /* ------ выбор DNS: категории, поиск, три способа подключения ------ */
+/* ------ выбор DNS: категории, поиск, три способа подключения ------ */
 .dns-box {
   display: grid;
   gap: 14px;
@@ -915,6 +920,12 @@ input {
   border-color: var(--green-line);
   color: var(--green);
 }
+.hero .server-line .profile-tag {
+  color: var(--txt-3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .hero .server-line strong {
   color: var(--txt);
   font-weight: 650;
@@ -1555,6 +1566,8 @@ select.input {
 
 .hero-error {
   max-width: 420px;
+  max-height: 132px;
+  overflow: auto;
   text-align: center;
   font-size: 12px;
   line-height: 1.5;
@@ -1564,6 +1577,10 @@ select.input {
   border-radius: var(--radius-md);
   padding: 7px 11px;
   z-index: 1;
+  /* Текст ошибки — технический: его нужно уметь выделить и скопировать. */
+  user-select: text;
+  cursor: text;
+  overflow-wrap: anywhere;
 }
 
 .muted {
@@ -2304,6 +2321,12 @@ select.input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.guard-copy .guard-note {
+  font-family: var(--font);
+  color: var(--txt-2);
+  white-space: normal;
 }
 
 /* ---------- помощник-маскот ---------- */
@@ -3139,21 +3162,6 @@ html[data-accent="ice"] {
   border-color: rgba(255, 77, 94, 0.38);
 }
 
-.passport-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.passport-head .k {
-  font-size: 10px;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-  color: var(--txt-3);
-  flex: 1;
-}
-
 .passport-score {
   font-family: var(--mono);
   font-size: 18px;
@@ -3206,10 +3214,20 @@ html[data-accent="ice"] {
 
 .passport-cell strong {
   font-size: 12px;
+  line-height: 1.3;
   color: var(--txt);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Провайдер выхода бывает длинным (AS213887 WAIcore Ltd): лучше две
+     строки, чем «WAIcore L…» без возможности прочитать название. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.passport-cell strong.ip {
+  font-size: 11px;
+  /* IPv6 бывает длиннее колонки: переносим целиком, а не прячем хвост
+     за многоточием. Полный адрес остаётся и в title. */
+  white-space: normal;
+  word-break: break-all;
 }
 
 .passport-cell .ghost-btn {
@@ -3217,6 +3235,13 @@ html[data-accent="ice"] {
   margin-top: 2px;
   padding: 0;
   font-size: 10px;
+}
+
+.passport-note {
+  margin: 8px 0 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--warn-text, #ffd166);
 }
 
 @media (max-width: 760px) {

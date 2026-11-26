@@ -34,6 +34,15 @@ export type Profile = {
   cc?: string;
 };
 
+/** Адрес и страна фактического выхода в интернет. */
+export type ExitInfo = {
+  ip: string;
+  /** Двухбуквенный код страны, например "fi"; пусто — сервис не сказал. */
+  country: string;
+  city: string;
+  org: string;
+};
+
 /** Результат проверки утечек. */
 export type LeakReport = {
   ipv6_blocked: boolean;
@@ -155,6 +164,7 @@ export const api = {
   /** mica / acrylic / none — какая подложка окна включилась (Win11 и старше). */
   windowBackdrop: () => invoke<string>("window_backdrop"),
   myIp: () => invoke<string>("my_ip"),
+  exitInfo: () => invoke<ExitInfo>("exit_info"),
   stateExport: () => invoke<string>("state_export"),
   stateImport: (text: string) => invoke<void>("state_import", { text }),
   dnsLeak: () => invoke<{ resolver: string; egress: string }>("dns_leak"),

@@ -302,7 +302,10 @@ mod tests {
 
     #[test]
     fn sees_both_zapret_process_names() {
-        assert!(tasklist_has("winws.exe 16664 Console 1 12 345 K", "winws.exe"));
+        assert!(tasklist_has(
+            "winws.exe 16664 Console 1 12 345 K",
+            "winws.exe"
+        ));
         assert!(tasklist_has("winws2.exe 1 Console", "winws2.exe"));
         assert!(!tasklist_has("INFO: No tasks are running", "winws.exe"));
     }

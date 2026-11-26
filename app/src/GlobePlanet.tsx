@@ -10,6 +10,8 @@ export type GlobeNode = {
   ms: number | null;
   /** замер постарел — узел не мёртв, его просто давно не спрашивали */
   stale?: boolean;
+  /** ещё ни разу не мерили: узел есть, результата пока нет */
+  pending?: boolean;
   /** «Франкфурт» — для подсказки при наведении */
   label?: string;
   /** id сервера: по нему нажатие на точку выбирает узел */
@@ -582,9 +584,19 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
           const x = cx + p.x * R;
           const y = cy - p.y * R;
           if (n.id) hits.push({ id: n.id, x, y });
-          const color =
-            n.ms === null ? "#ff5d6c" : n.stale ? "#8e8a9c" : n.ms < 90 ? "#39FF14" : n.ms < 180 ? "#ffd166" : "#ff9a4d";
-          const a = (n.ms === null ? 0.6 : n.stale ? 0.45 : 0.85) * Math.min(1, p.z * 1.6);
+          const pending = n.pending === true;
+          const color = pending
+            ? "#9db6d8"
+            : n.ms === null
+              ? "#ff5d6c"
+              : n.stale
+                ? "#8e8a9c"
+                : n.ms < 90
+                  ? "#39FF14"
+                  : n.ms < 180
+                    ? "#ffd166"
+                    : "#ff9a4d";
+          const a = (pending ? 0.5 : n.ms === null ? 0.6 : n.stale ? 0.45 : 0.85) * Math.min(1, p.z * 1.6);
           // тёмная подложка: точка читается и на белом облаке, и на синем океане
           ctx.globalAlpha = a * 0.55;
           ctx.fillStyle = "#07040d";
@@ -596,7 +608,15 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
           ctx.beginPath();
           ctx.arc(x, y, 3, 0, Math.PI * 2);
           ctx.fill();
-          if (n.ms !== null && !n.stale) {
+          if (pending) {
+            // Нет замера — не «мёртв»: спокойное кольцо вместо красной точки.
+            ctx.globalAlpha = a * 0.8;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(x, y, 5.2, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (n.ms !== null && !n.stale) {
             ctx.globalAlpha = a * 0.3;
             ctx.beginPath();
             ctx.arc(x, y, 6.4, 0, Math.PI * 2);
@@ -625,11 +645,13 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
         // 12 px — «почти попал»: прицеливаться в точку 3 px мышью невозможно
         if (near && near.d <= 12 && near.n.label) {
           const tail = near.n.id ? " · нажми" : "";
-          const text = near.n.ms === null
-            ? `${near.n.label} · нет ответа${tail}`
-            : near.n.stale
-              ? `${near.n.label} · ${near.n.ms} мс (давно)${tail}`
-              : `${near.n.label} · ${near.n.ms} мс${tail}`;
+          const text = near.n.pending
+            ? `${near.n.label} · ещё не мерили${tail}`
+            : near.n.ms === null
+              ? `${near.n.label} · нет ответа${tail}`
+              : near.n.stale
+                ? `${near.n.label} · ${near.n.ms} мс (давно)${tail}`
+                : `${near.n.label} · ${near.n.ms} мс${tail}`;
           ctx.font = "600 11px system-ui, sans-serif";
           const w = ctx.measureText(text).width + 14;
           const h = 20;

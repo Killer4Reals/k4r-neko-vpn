@@ -45,6 +45,10 @@ impl Default for EngineStatus {
 }
 
 pub struct Engine {
+    /// Сериализует запуск и остановку: остановка, пришедшая во время 8-секундного
+    /// ожидания готовности, иначе не видит ещё не сохранённый дочерний процесс и
+    /// оставляет его жить без управления.
+    pub op: Mutex<()>,
     pub status: Mutex<EngineStatus>,
     pub child: Mutex<Option<Child>>,
     /// The kill-switch process: holds the tunnel adapter up and rejects traffic
@@ -61,6 +65,7 @@ pub struct Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self {
+            op: Mutex::new(()),
             status: Mutex::new(EngineStatus::default()),
             child: Mutex::new(None),
             hold: Mutex::new(None),
@@ -140,6 +145,25 @@ impl Default for NetOptions {
             cache_path: String::new(),
         }
     }
+}
+
+/// Приводит порты к формату sing-box `port_range`: "a:b" или "a:a".
+/// Дефис из пользовательских настроек тоже понимаем.
+fn port_ranges(ports: &[String]) -> Vec<String> {
+    ports
+        .iter()
+        .filter_map(|raw| {
+            let p = raw.trim().replace('-', ":");
+            if p.is_empty() {
+                return None;
+            }
+            Some(if p.contains(':') {
+                p
+            } else {
+                format!("{p}:{p}")
+            })
+        })
+        .collect()
 }
 
 /// Builds a sing-box config: TUN in, VLESS out, split tunneling by process name.
@@ -473,14 +497,14 @@ fn build_with_outbound(
     if opts.game_mode {
         // Игры и голос — напрямую: задержка важнее, а прятать игровой трафик
         // в туннеле всё равно бессмысленно.
-        let ports: Vec<String> = opts
-            .game_ports
-            .iter()
-            .map(|p| p.trim().replace('-', ":"))
-            .filter(|p| !p.is_empty())
-            .collect();
+        //
+        // sing-box 1.14 принимает `port` только числом, а диапазоны — полем
+        // `port_range` (массив строк "начало:конец"). Массив в `port` роняет
+        // всё ядро на разборе конфига, поэтому одиночные порты превращаем в
+        // вырожденный диапазон "3074:3074".
+        let ports = port_ranges(&opts.game_ports);
         if !ports.is_empty() {
-            rules.push(json!({ "port": ports, "outbound": "direct" }));
+            rules.push(json!({ "port_range": ports, "outbound": "direct" }));
         }
     }
     if opts.route_ru_direct {
@@ -490,6 +514,13 @@ fn build_with_outbound(
         rules.push(json!({ "rule_set": ["ads"], "action": "reject" }));
     }
     if only_chosen {
+        // Паспорт выхода обязан видеть туннель и в режиме «только выбранные»:
+        // служебные адреса проверки выхода идут через proxy, иначе приложение
+        // увидит прямой адрес провайдера и покажет чужую страну.
+        rules.push(json!({
+            "domain_suffix": ["ipify.org", "ipwho.is", "ipinfo.io"],
+            "outbound": "proxy"
+        }));
         if opts.block_ipv6 && !opts.tunnel_apps.is_empty() {
             // a tunnelled program keeps no IPv6 of its own: that would leak
             rules.push(json!({
@@ -1148,7 +1179,16 @@ pub fn stop_hold(engine: &Engine) {
 pub fn poll(engine: &Engine) -> EngineStatus {
     let mut guard = engine.child.lock().unwrap();
     if let Some(child) = guard.as_mut() {
-        if let Ok(Some(code)) = child.try_wait() {
+        if let Ok(None) = child.try_wait() {
+            // Процесс жив — это и есть правда о туннеле, даже если статус
+            // успел сброситься гонкой команд.
+            let mut st = engine.status.lock().unwrap();
+            if st.state != EngineState::Running {
+                st.state = EngineState::Running;
+                st.message = "туннель поднят".into();
+                st.pid = child.id();
+            }
+        } else if let Ok(Some(code)) = child.try_wait() {
             let mut st = engine.status.lock().unwrap();
             if st.state == EngineState::Running {
                 let log = engine
@@ -1394,6 +1434,26 @@ mod tests {
     }
 
     #[test]
+    fn game_mode_config_is_accepted_by_the_engine() {
+        let bin = sidecar_path(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources"));
+        let real = std::fs::metadata(&bin).map(|m| m.len()).unwrap_or(0) > 1_000_000;
+        if !real {
+            eprintln!("sing-box нет рядом — проверка игрового конфига пропущена");
+            return;
+        }
+        let opts = NetOptions {
+            game_mode: true,
+            game_ports: GAME_PORTS.iter().map(|p| p.to_string()).collect(),
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let path = std::env::temp_dir().join("k4r-neko-vpn-test-game-config.json");
+        std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap()).unwrap();
+        check_config(&bin, &path).expect("engine rejected the game-mode config");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn own_rule_sends_a_domain_directly() {
         let opts = NetOptions {
             rules: vec![RouteRule {
@@ -1467,7 +1527,11 @@ mod tests {
         };
         let cfg = build_config(&sample(), &[], &opts);
         let rules = cfg["route"]["rules"].as_array().unwrap();
-        assert!(!rules.iter().any(|r| r.get("domain_suffix").is_some()));
+        assert!(!rules.iter().any(|r| {
+            r["domain_suffix"]
+                .as_array()
+                .is_some_and(|d| d.iter().any(|v| v.as_str() == Some("bad.example")))
+        }));
     }
 
     #[test]
@@ -1553,16 +1617,18 @@ mod tests {
         let rules = cfg["route"]["rules"].as_array().unwrap();
         let game = rules
             .iter()
-            .find(|r| r.get("port").is_some())
+            .find(|r| r.get("port_range").is_some())
             .expect("game rule");
         assert_eq!(game["outbound"], "direct");
-        let ports: Vec<String> = game["port"]
+        let ports: Vec<String> = game["port_range"]
             .as_array()
             .unwrap()
             .iter()
             .map(|v| v.as_str().unwrap().to_string())
             .collect();
         assert!(ports.iter().any(|p| p == "27015:27050"));
+        // Одиночный порт — вырожденный диапазон, иначе ядро его не примет.
+        assert!(ports.iter().any(|p| p == "3074:3074"));
         // Разделитель обязан быть в формате sing-box, а не дефисом.
         assert!(ports.iter().all(|p| !p.contains('-')));
     }
@@ -1572,7 +1638,20 @@ mod tests {
         let opts = NetOptions::default();
         let cfg = build_config(&sample(), &[], &opts);
         let rules = cfg["route"]["rules"].as_array().unwrap();
-        assert!(!rules.iter().any(|r| r.get("port").is_some()));
+        assert!(!rules
+            .iter()
+            .any(|r| r.get("port").is_some() || r.get("port_range").is_some()));
+    }
+
+    #[test]
+    fn game_ports_are_normalized_for_sing_box() {
+        let ports = port_ranges(&[
+            "3074".into(),
+            "27015-27050".into(),
+            " 5000:5500 ".into(),
+            "".into(),
+        ]);
+        assert_eq!(ports, vec!["3074:3074", "27015:27050", "5000:5500"]);
     }
 
     #[test]
@@ -1791,14 +1870,53 @@ mod tests {
     }
 
     #[test]
-    fn empty_whitelist_tunnels_nothing() {
+    fn empty_whitelist_tunnels_no_programs() {
         let opts = NetOptions {
             split_mode: "only".into(),
             ..NetOptions::default()
         };
         let cfg = build_config(&sample(), &[], &opts);
         let rules = cfg["route"]["rules"].as_array().unwrap();
-        assert!(!rules.iter().any(|r| r["outbound"] == "proxy"));
+        assert!(
+            !rules
+                .iter()
+                .any(|r| r["outbound"] == "proxy" && r.get("process_name").is_some()),
+            "no program may be tunnelled without being chosen"
+        );
+        assert!(
+            rules
+                .iter()
+                .any(|r| r["outbound"] == "proxy" && r.get("domain_suffix").is_some()),
+            "exit checks must still see the tunnel"
+        );
         assert_eq!(cfg["route"]["final"], "direct");
+    }
+
+    #[test]
+    fn split_mode_sends_exit_checks_through_the_tunnel() {
+        let opts = NetOptions {
+            split_mode: "only".into(),
+            tunnel_apps: vec!["telegram.exe".into()],
+            ..NetOptions::default()
+        };
+        let cfg = build_config(&sample(), &[], &opts);
+        let rules = cfg["route"]["rules"].as_array().unwrap();
+        let checks = rules
+            .iter()
+            .position(|r| {
+                r["outbound"] == "proxy"
+                    && r["domain_suffix"]
+                        .as_array()
+                        .is_some_and(|d| d.iter().any(|v| v.as_str() == Some("ipify.org")))
+            })
+            .expect("exit checks must be proxied");
+        let split = rules
+            .iter()
+            .position(|r| r["outbound"] == "proxy" && r["process_name"][0] == "telegram.exe")
+            .unwrap();
+        assert!(
+            checks < split,
+            "exit checks must not depend on the split list"
+        );
     }
 }

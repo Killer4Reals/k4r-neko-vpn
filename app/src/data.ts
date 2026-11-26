@@ -6,6 +6,8 @@ export type Server = {
   flag: string;
   city: string;
   country: string;
+  /** Вторая строка списка: страна, если она отличается от названия, иначе пояснение. */
+  sub?: string;
   tag: string;
   lat: number;
   quality: "good" | "mid" | "bad";

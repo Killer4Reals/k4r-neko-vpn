@@ -18,7 +18,7 @@ pub mod zapret;
 pub mod zapret_lists;
 
 use probe::PingResult;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use store::AppState;
 use subscription::{Profile, SubHeader, SubResult};
@@ -1194,6 +1194,14 @@ fn kill_switch_set(app: tauri::AppHandle, on: bool) -> Result<wfp::Status, Strin
     })
 }
 
+/// sing-box не смог занять порт мониторинга: его успел забрать другой
+/// процесс между пробой free_port() и стартом. Это лечится новым портом,
+/// а не показом сырой ошибки человеку.
+fn api_port_busy(message: &str) -> bool {
+    message.contains("external controller listen error")
+        || message.contains("bind: An attempt was made")
+}
+
 // Восемь аргументов — договор с интерфейсом: поле `args` у `invoke`
 // перечисляет их по именам, и обёртка в структуру его бы изменила.
 #[allow(clippy::too_many_arguments)]
@@ -1208,6 +1216,10 @@ fn engine_start(
     mode: Option<String>,
     via: Option<Vec<String>>,
 ) -> Result<engine::EngineStatus, String> {
+    // Пуск и стоп — одна критическая секция. Иначе «стоп», нажатый во время
+    // ожидания готовности, не видит ещё не сохранённый процесс и оставляет
+    // туннель жить при выключенном интерфейсе.
+    let _op = engine.op.lock().unwrap();
     let bin = core_bin(&app);
     let log_path = data_dir(&app)?.join("logs").join("engine.log");
     engine::write_log_header(
@@ -1216,7 +1228,7 @@ fn engine_start(
     );
 
     let saved = store::load(&data_dir(&app)?);
-    let opts = engine::NetOptions {
+    let mut opts = engine::NetOptions {
         dns_mode: if saved.dns_mode.is_empty() {
             "tunnel".into()
         } else {
@@ -1281,7 +1293,6 @@ fn engine_start(
             }
         }
     }
-    *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
     *engine.last_sample.lock().unwrap() = None;
 
     // Honesty over a pretty status: a tunnel that carries nothing must not be
@@ -1294,8 +1305,31 @@ fn engine_start(
     }
 
     let pool = pool.unwrap_or_default();
-    let config = engine::build_pool_config(&profile, &pool, &excluded, &opts);
-    let status = engine::start(&engine, &bin, &config, &log_path, &profile.name)?;
+    // free_port() only probes a port and immediately closes it: Windows can hand
+    // the same port to another process before sing-box binds it. On a busy
+    // machine this looked like "auto-connect is broken" with a raw bind error.
+    // Retry with a fresh port instead of showing that to a person.
+    let mut attempt = 0;
+    let status = loop {
+        *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
+        let config = engine::build_pool_config(&profile, &pool, &excluded, &opts);
+        match engine::start(&engine, &bin, &config, &log_path, &profile.name) {
+            Ok(st) => break st,
+            Err(e) => {
+                if api_port_busy(&e) && attempt < 3 {
+                    attempt += 1;
+                    engine::write_log_header(
+                        &log_path,
+                        &format!("порт API занят, повтор {attempt}/3"),
+                    );
+                    opts.api_port = engine::free_port();
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    };
     supervise(app, saved.reconnect, saved.kill_switch);
     Ok(status)
 }
@@ -1402,6 +1436,7 @@ fn engine_stop(
     engine: State<'_, engine::Engine>,
     release: Option<bool>,
 ) -> engine::EngineStatus {
+    let _op = engine.op.lock().unwrap();
     let status = engine::stop(&engine);
     // Переподключение (release = false) не должно открывать интернет даже на
     // мгновение: блокировка остаётся. Явное «Отключить» — снимает.
@@ -1598,6 +1633,158 @@ async fn my_ip() -> Result<String, String> {
     })
     .await
     .map_err(|e| format!("задача упала: {e}"))?
+}
+
+/// What the internet actually sees: not the country printed in the profile
+/// name, but the country of the exit address. Providers sometimes route a
+/// "Germany" profile through Finland; the globe must follow the real exit.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ExitInfo {
+    #[serde(default)]
+    pub ip: String,
+    #[serde(default)]
+    pub country: String,
+    #[serde(default)]
+    pub city: String,
+    #[serde(default)]
+    pub org: String,
+}
+
+/// ipwho.is возвращает страну по маршруту, а ipinfo — по регистрации
+/// диапазона. На одном и том же адресе они расходятся (NL против DE),
+/// поэтому основной источник — ipwho.is: он совпал с ifconfig.co и
+/// iplocation.net на живом выходе. ipinfo остаётся запасным.
+#[derive(Deserialize)]
+struct IpWhoAnswer {
+    #[serde(default)]
+    success: bool,
+    #[serde(default)]
+    ip: String,
+    #[serde(default)]
+    country_code: String,
+    #[serde(default)]
+    city: String,
+    #[serde(default)]
+    connection: Option<IpWhoConnection>,
+}
+
+#[derive(Deserialize)]
+struct IpWhoConnection {
+    #[serde(default)]
+    org: String,
+    #[serde(default)]
+    isp: String,
+}
+
+fn parse_ipwho(body: &str) -> Result<ExitInfo, String> {
+    let answer: IpWhoAnswer =
+        serde_json::from_str(body).map_err(|e| format!("ipwho вернул мусор: {e}"))?;
+    if !answer.success || answer.ip.trim().is_empty() || answer.country_code.trim().len() != 2 {
+        return Err("ipwho не знает адрес или страну".into());
+    }
+    let conn = answer.connection.unwrap_or(IpWhoConnection {
+        org: String::new(),
+        isp: String::new(),
+    });
+    let org = if conn.org.trim().is_empty() {
+        conn.isp
+    } else {
+        conn.org
+    };
+    Ok(ExitInfo {
+        ip: answer.ip.trim().to_string(),
+        country: answer.country_code.trim().to_ascii_lowercase(),
+        city: answer.city.trim().to_string(),
+        org: org.trim().to_string(),
+    })
+}
+
+fn parse_ipinfo(body: &str) -> Result<ExitInfo, String> {
+    let mut info: ExitInfo =
+        serde_json::from_str(body).map_err(|e| format!("ipinfo вернул мусор: {e}"))?;
+    info.ip = info.ip.trim().to_string();
+    info.country = info.country.trim().to_ascii_lowercase();
+    info.city = info.city.trim().to_string();
+    info.org = info.org.trim().to_string();
+    if info.ip.is_empty() {
+        return Err("ipinfo не вернул адрес".into());
+    }
+    Ok(info)
+}
+
+fn fetch_exit_json(agent: &ureq::Agent, url: &str) -> Result<String, String> {
+    let mut resp = agent
+        .get(url)
+        .call()
+        .map_err(|e| format!("не удалось узнать выход: {e}"))?;
+    let mut body = String::new();
+    use std::io::Read as _;
+    resp.body_mut()
+        .as_reader()
+        .take(8192)
+        .read_to_string(&mut body)
+        .map_err(|e| format!("не удалось прочитать ответ: {e}"))?;
+    Ok(body)
+}
+
+fn public_ip(raw: &str) -> Option<String> {
+    let ip = raw.trim();
+    if ip.parse::<std::net::IpAddr>().is_ok() {
+        Some(ip.to_string())
+    } else {
+        None
+    }
+}
+
+/// ipwho.is за Cloudflare отдаёт закэшированный чужой адрес, если спросить
+/// «кто я» без адреса. Поэтому сначала узнаём свой адрес у ipify, а затем
+/// спрашиваем геобазу именно про него: ответ с другим адресом отвергаем.
+fn fetch_exit_blocking() -> Result<ExitInfo, String> {
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(std::time::Duration::from_secs(8)))
+        .build()
+        .into();
+
+    let ip = match fetch_exit_json(&agent, "https://api.ipify.org")
+        .and_then(|body| public_ip(&body).ok_or_else(|| "ipify вернул не адрес".to_string()))
+    {
+        Ok(ip) => ip,
+        Err(no_ip) => {
+            // Совсем без адреса оставаться нельзя: пробуем прямой ipinfo,
+            // он же даёт страну и провайдера.
+            let body = fetch_exit_json(&agent, "https://ipinfo.io/json")
+                .map_err(|fallback| format!("{no_ip}; запасной источник: {fallback}"))?;
+            return parse_ipinfo(&body);
+        }
+    };
+
+    match fetch_exit_json(&agent, &format!("https://ipwho.is/{ip}")).and_then(|body| {
+        let geo = parse_ipwho(&body)?;
+        if geo.ip == ip {
+            Ok(geo)
+        } else {
+            Err(format!("ipwho ответил за {} вместо {ip}", geo.ip))
+        }
+    }) {
+        Ok(info) => Ok(info),
+        Err(primary) => {
+            let body = fetch_exit_json(&agent, &format!("https://ipinfo.io/{ip}/json"))
+                .map_err(|fallback| format!("{primary}; запасной источник: {fallback}"))?;
+            let mut info = parse_ipinfo(&body)
+                .map_err(|fallback| format!("{primary}; запасной источник: {fallback}"))?;
+            if info.ip != ip {
+                info.ip = ip;
+            }
+            Ok(info)
+        }
+    }
+}
+
+#[tauri::command]
+async fn exit_info() -> Result<ExitInfo, String> {
+    tauri::async_runtime::spawn_blocking(fetch_exit_blocking)
+        .await
+        .map_err(|e| format!("задача упала: {e}"))?
 }
 
 #[tauri::command]
@@ -2469,7 +2656,10 @@ pub fn run() {
     // тестам — после requireAdministrator переменные окружения из обычной
     // консоли до elevated-процесса не доходят.
     if std::env::args().any(|a| a == "--cdp") {
-        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--remote-debugging-port=9222");
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--remote-debugging-port=9222",
+        );
     }
 
     // Второй экземпляр не должен поднимать второе ядро: он просто показывает
@@ -2728,6 +2918,7 @@ pub fn run() {
             update_check,
             update_install,
             my_ip,
+            exit_info,
             state_export,
             state_import,
             dns_leak,
@@ -3040,5 +3231,88 @@ mod export_tests {
         let path = write_export(&dir, "../evil", "x", "txt", 42).unwrap();
         assert_eq!(path.parent().unwrap(), dir.as_path());
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod api_retry_tests {
+    use super::api_port_busy;
+
+    #[test]
+    fn busy_api_port_is_retryable() {
+        assert!(api_port_busy(
+            "FATAL start service: external controller listen error: listen tcp 127.0.0.1:54075: bind: An attempt was made to access a socket"
+        ));
+        assert!(api_port_busy(
+            "listen tcp 127.0.0.1:54075: bind: An attempt was made to access a socket in a way forbidden"
+        ));
+    }
+
+    #[test]
+    fn other_start_errors_are_not_masked_by_retry() {
+        assert!(!api_port_busy(
+            "движок завершился с кодом 1: invalid config"
+        ));
+        assert!(!api_port_busy("туннель не поднялся"));
+    }
+}
+
+#[cfg(test)]
+mod exit_tests {
+    use super::*;
+
+    /// Живой запрос к сервису геолокации: в CI не гоняем, но вручную проверяем,
+    /// что команда действительно разбирает ответ, а не только компилируется.
+    #[test]
+    #[ignore = "требует сети"]
+    fn live_exit_info_is_parsed() {
+        let info = fetch_exit_blocking().expect("сервис должен ответить");
+        println!("{} {} {} {}", info.ip, info.country, info.city, info.org);
+        assert!(!info.ip.is_empty());
+        assert_eq!(info.country.len(), 2, "страна должна быть двухбуквенной");
+    }
+
+    #[test]
+    fn ipwho_answer_maps_country_and_org() {
+        let body = r#"{
+            "ip":"81.31.210.217","success":true,"country":"Germany",
+            "country_code":"DE","city":"Frankfurt am Main",
+            "connection":{"asn":214716,"org":"WEYRO LTD","isp":"WEYRO LTD"}
+        }"#;
+        let info = parse_ipwho(body).expect("ответ ipwho должен разбираться");
+        assert_eq!(info.ip, "81.31.210.217");
+        assert_eq!(info.country, "de");
+        assert_eq!(info.city, "Frankfurt am Main");
+        assert_eq!(info.org, "WEYRO LTD");
+    }
+
+    #[test]
+    fn public_ip_accepts_only_an_address() {
+        assert_eq!(public_ip(" 213.165.58.69\n"), Some("213.165.58.69".into()));
+        assert_eq!(
+            public_ip("2a0b:4141:1820:44c::2"),
+            Some("2a0b:4141:1820:44c::2".into())
+        );
+        assert_eq!(public_ip("<html>error</html>"), None);
+    }
+
+    #[test]
+    fn ipwho_failure_does_not_look_like_an_exit() {
+        let body = r#"{"ip":"81.31.210.217","success":false,"message":"reserved range"}"#;
+        assert!(parse_ipwho(body).is_err());
+    }
+
+    #[test]
+    fn ipwho_without_country_is_not_a_complete_exit() {
+        let body = r#"{"ip":"81.31.210.217","success":true,"country_code":"","city":"Frankfurt"}"#;
+        assert!(parse_ipwho(body).is_err());
+    }
+
+    #[test]
+    fn ipinfo_fallback_lowercases_country() {
+        let body = r#"{"ip":"213.165.58.69","country":"FI","city":"Helsinki","org":"AS213887 WAIcore Ltd"}"#;
+        let info = parse_ipinfo(body).expect("ответ ipinfo должен разбираться");
+        assert_eq!(info.country, "fi");
+        assert_eq!(info.org, "AS213887 WAIcore Ltd");
     }
 }

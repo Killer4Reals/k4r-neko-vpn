@@ -4,7 +4,7 @@ import "@fontsource-variable/manrope";
 import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
-import type { ChosenApp, KillSwitchStatus, OrchRow, RouteRule, SplitPreset } from "./api";
+import type { ChosenApp, ExitInfo, KillSwitchStatus, OrchRow, RouteRule, SplitPreset } from "./api";
 import { isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 import { isDegraded, pushRate } from "./degrade";
 import { lastAliveAt, poolDead, slowSwitchTarget } from "./health";
@@ -288,19 +288,64 @@ export default function App() {
   const lastDegrade = useRef(0);
   const autoTickRef = useRef<((force?: boolean) => void) | null>(null);
   const [ip, setIp] = useState("");
+  const [exit, setExit] = useState<ExitInfo | null>(null);
   const [ipBusy, setIpBusy] = useState(false);
 
   const checkIp = async () => {
     if (!inTauri) return;
     setIpBusy(true);
     try {
-      setIp(await api.myIp());
+      const info = await api.exitInfo();
+      setIp(info.ip);
+      setExit(info);
     } catch {
-      setIp("");
+      // Сервис геолокации мог не ответить, но адрес всё ещё полезен.
+      try {
+        setIp(await api.myIp());
+      } catch {
+        setIp("");
+      }
+      setExit(null);
     } finally {
       setIpBusy(false);
     }
   };
+
+  // Выход — это факт, а не название профиля: провайдер может назвать узел
+  // «Германия», а выпустить в Финляндию. Спрашиваем страну у самого адреса.
+  // Первый запрос может попасть в момент, когда туннель ещё поднимается,
+  // поэтому делаем несколько попыток с паузой, а не одну.
+  useEffect(() => {
+    if (!inTauri || conn !== "connected") {
+      setExit(null);
+      return;
+    }
+    let alive = true;
+    let timer = 0;
+    let attempt = 0;
+    const run = async () => {
+      if (!alive) return;
+      try {
+        const info = await api.exitInfo();
+        if (!alive) return;
+        setExit(info);
+        setIp(info.ip);
+      } catch {
+        if (!alive) return;
+        attempt += 1;
+        if (attempt < 4) {
+          timer = window.setTimeout(run, 1200 * attempt);
+        } else {
+          setExit(null);
+        }
+      }
+    };
+    timer = window.setTimeout(run, 1200);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [conn, selectedId]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState(initial.get("error") ?? "");
@@ -383,6 +428,13 @@ export default function App() {
   const [deviceId, setDeviceId] = useState("");
   const [notifyOn, setNotifyOn] = useState(true);
   const timer = useRef<number | null>(null);
+  // Чего хочет человек: включить или выключить. Нужен, чтобы фоновая сверка
+  // не «воскрешала» зелёный статус, пока команда остановки ещё выполняется.
+  const tunnelWant = useRef<"on" | "off" | null>(null);
+  // Ошибку стираем только при переходе «был не в сети → туннель поднялся»,
+  // иначе фоновая сверка каждые 2 секунды затирала бы ошибки watchdog и
+  // горячих клавиш.
+  const tunnelWasRunning = useRef(false);
   /** Идёт автопереключение: не даём таймеру и триггеру потери сработать повторно. */
   const switching = useRef(false);
   const win = inTauri ? getCurrentWindow() : null;
@@ -398,18 +450,24 @@ export default function App() {
   const viewServers = useMemo<Server[]>(() => {
     if (profiles.length === 0) return demoCatalog;
     return profiles.map((p) => {
-      // Страна из разбора подписки точнее, чем попытка угадать её по имени.
-      const cc = p.cc && knownCc(p.cc) ? p.cc : ccFromName(p.name);
-      const country = nameOf(cc ?? "");
+      // Имя профиля — то, что владелец видит в списке, поэтому оно главнее
+      // разбора домена: у CDN-доменов страна часто чужая. Если в имени страны
+      // нет (например, «YouTube 2»), берём код, который дал разбор подписки.
+      const named = ccFromName(p.name);
+      const cc = named && knownCc(named) ? named : p.cc && knownCc(p.cc) ? p.cc : null;
+      const country = nameOf(cc ?? "", lang);
       const title = stripCc(p.name) || p.host;
-      // вторая строка: страна, если она не повторяет название; иначе адрес сервера
-      const sub = country && country.toLowerCase() !== title.toLowerCase() ? country : `${p.host}:${p.port}`;
+      // Вторая строка не должна быть сырым хостом: для названия-страны
+      // («Финляндия») это выглядело как технический мусор. Показываем страну,
+      // если она отличается, иначе поясняем, что это узел подписки.
+      const sub = country && country.toLowerCase() !== title.toLowerCase() ? country : t("serverNode");
       return {
       id: p.id,
       cc: cc ?? "",
       flag: cc ?? "",
       city: title,
-      country: sub,
+      country: country ?? `${p.host}:${p.port}`,
+      sub,
       tag: protoTag(p),
       lat: lat[p.id] ?? 0,
       quality: "good" as const,
@@ -418,7 +476,7 @@ export default function App() {
       host: p.host,
       };
     });
-  }, [profiles, lat]);
+  }, [profiles, lat, lang, t]);
 
   const toggleReserve = useCallback((id: string) => {
     setProfiles((list) => list.map((p) => (p.id === id ? { ...p, reserve: !p.reserve } : p)));
@@ -605,25 +663,40 @@ export default function App() {
     if (timer.current) window.clearTimeout(timer.current);
   }, []);
 
-  // Keep UI in sync with the real process while a tunnel is up.
+  // Процесс — единственный источник правды. Сверяемся и при открытии окна,
+  // и постоянно: иначе запуск через «Автоподключение» или гонка старта
+  // оставляют зелёный туннель с надписью «Отключено».
   useEffect(() => {
-    if (!inTauri || conn === "idle") return;
-    const id = window.setInterval(async () => {
+    if (!inTauri) return;
+    let alive = true;
+    const sync = async () => {
       try {
         const st = await api.engineStatus();
-        if (st.state === "error") {
-          setConn("error");
+        if (!alive) return;
+        if (st.state === "running") {
+          if (tunnelWant.current === "off") return;
+          if (!tunnelWasRunning.current) setError("");
+          tunnelWasRunning.current = true;
+          setConn((prev) => (prev === "connected" ? prev : "connected"));
+        } else if (st.state === "idle") {
+          tunnelWasRunning.current = false;
+          setConn((prev) => (prev === "connected" ? "idle" : prev));
+        } else if (st.state === "error" && tunnelWant.current !== "off") {
+          tunnelWasRunning.current = false;
+          setConn((prev) => (prev === "idle" ? prev : "error"));
           setError(st.message);
         }
-        if (st.state === "idle" && conn !== "connecting") {
-          setConn("idle");
-        }
       } catch {
-        /* engine not reachable: keep current state */
+        /* движок недоступен: не выдумываем состояние */
       }
-    }, 2000);
-    return () => window.clearInterval(id);
-  }, [conn]);
+    };
+    void sync();
+    const id = window.setInterval(sync, 2000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [inTauri]);
 
   useEffect(() => {
     if (!inTauri) return;
@@ -696,6 +769,7 @@ export default function App() {
   }, []);
 
   const stopTunnel = useCallback(async (release = true) => {
+    tunnelWant.current = "off";
     setError("");
     if (inTauri) {
       try {
@@ -739,6 +813,7 @@ export default function App() {
   }, []);
 
   const startTunnel = useCallback(async (onlyId?: string) => {
+    tunnelWant.current = "on";
     setError("");
     setConn("connecting");
     prevTotals.current = null;
@@ -1769,6 +1844,9 @@ export default function App() {
               blocked={false}
               ip={ip}
               ipBusy={ipBusy}
+              exitCc={conn === "connected" ? exit?.country ?? "" : ""}
+              exitCity={conn === "connected" ? exit?.city ?? "" : ""}
+              exitOrg={conn === "connected" ? exit?.org ?? "" : ""}
               onCheckIp={checkIp}
               onOpenSplit={() => setScreen("split")}
               onOpenZapret={() => setScreen("zapret")}
@@ -1818,6 +1896,10 @@ export default function App() {
           )}
           {screen === "split" && (
             <>
+              <div className="page-head">
+                <h1>{t("splitTitle")}</h1>
+                <p>{t("splitSub")}</p>
+              </div>
               <Seg
                 items={[
                   { id: "apps", label: t("tabApps") },

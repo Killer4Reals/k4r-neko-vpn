@@ -4,7 +4,7 @@
 sing-box, аккуратный интерфейс на React и маскот, который живёт в интерфейсе, а
 не висит картинкой в углу.
 
-> **Windows 1.54.0**, **Android 1.35.3** (отдельный репозиторий
+> **Windows 1.55.0**, **Android 1.35.3** (отдельный репозиторий
 > [k4r-neko-vpn-android](https://github.com/Killer4Reals/k4r-neko-vpn-android)).
 > iOS не планируется. Что менялось: [CHANGELOG.md](CHANGELOG.md).
 >

@@ -84,6 +84,9 @@ export function ZapretScreen({
   // Zapret (someone else's winws2) is shown as running and left alone.
   const on = status?.state === "running" || status?.state === "external";
   const foreign = status?.state === "external";
+  // Чужой экземпляр не управляется приложением: показываем ЕГО пресет, а не
+  // сохранённый у нас. Иначе экран врёт «работает X», хотя запущен Y.
+  const shownPreset = foreign ? status?.preset || t("zapretNone") : preset || t("zapretNone");
 
   const toggle = async () => {
     setError("");
@@ -135,17 +138,19 @@ export function ZapretScreen({
         <div className="guard-copy">
           <b>{stateLabel}</b>
           <span>
-            {presets === null ? t("presetsLoading") : preset || t("zapretNone")}
+            {presets === null ? t("presetsLoading") : shownPreset}
             {status?.pid ? ` · PID ${status.pid}` : ""}
           </span>
+          {foreign && <span className="guard-note">{t("zapretForeignNote")}</span>}
         </div>
         <button
           className="btn"
           style={{ width: "auto", paddingInline: 16 }}
           disabled={busy || foreign || (!on && !preset)}
+          title={foreign ? t("zapretForeignHint") : undefined}
           onClick={toggle}
         >
-          {on ? t("zapretHalt") : t("zapretRun")}
+          {foreign ? t("zapretForeignHold") : on ? t("zapretHalt") : t("zapretRun")}
         </button>
       </div>
 
@@ -168,7 +173,7 @@ export function ZapretScreen({
         <div className="row">
           <div className="txt">
             <b>{t("preset")}</b>
-            <span className="mono">{preset || t("zapretNone")}</span>
+            <span className="mono">{shownPreset}</span>
           </div>
           <button
             className="btn"

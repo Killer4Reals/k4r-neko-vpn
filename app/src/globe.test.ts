@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countryOf, isLand, landDots, project, rotationFor, shortestDelta, nearestWithin } from "./globe";
+import { countryOf, isLand, landDots, project, rotationFor, shortestDelta, nearestWithin, spreadGlobeNodes } from "./globe";
 
 describe("landmask", () => {
   it("has a meaningful amount of land, but not all of it", () => {
@@ -79,6 +79,43 @@ describe("центрирование страны", () => {
       const p = project(c, rotationFor(c), c.lat);
       expect(p.z, cc).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("разведение узлов одной страны", () => {
+  it("не меняет одиночный узел и первый из группы", () => {
+    const one = [{ id: "a", lat: 51, lon: 10 }];
+    expect(spreadGlobeNodes(one)).toEqual(one);
+    const two = spreadGlobeNodes([
+      { id: "a", lat: 51, lon: 10 },
+      { id: "b", lat: 51, lon: 10 },
+    ]);
+    expect(two[0]).toEqual({ id: "a", lat: 51, lon: 10 });
+    expect(two[1].lat !== two[0].lat || two[1].lon !== two[0].lon).toBe(true);
+  });
+
+  it("разводит все серверы одной страны и не теряет их", () => {
+    const nodes = Array.from({ length: 11 }, (_, i) => ({
+      id: String(i),
+      lat: 51,
+      lon: 10,
+    }));
+    const out = spreadGlobeNodes(nodes);
+    expect(out).toHaveLength(nodes.length);
+    const keys = new Set(out.map((n) => `${n.lat.toFixed(4)},${n.lon.toFixed(4)}`));
+    expect(keys.size).toBe(nodes.length);
+    for (const n of out) {
+      expect(Math.hypot(n.lat - 51, n.lon - 10)).toBeLessThan(12);
+    }
+  });
+
+  it("детерминирован: один и тот же вход даёт те же координаты", () => {
+    const nodes = [
+      { id: "a", lat: 51, lon: 10 },
+      { id: "b", lat: 51, lon: 10 },
+      { id: "c", lat: 51, lon: 10 },
+    ];
+    expect(spreadGlobeNodes(nodes)).toEqual(spreadGlobeNodes(nodes));
   });
 });
 

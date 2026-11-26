@@ -596,7 +596,7 @@ export function ServersScreen(p: Props) {
               <Flag cc={s.flag || s.cc} />
               <span>
                 <div className="name">{s.city}</div>
-                <div className="sub">{s.country}</div>
+                <div className="sub">{s.sub ?? s.country}</div>
               </span>
               <span className="sub" style={{ fontFamily: "var(--mono)" }}>
                 {s.kind === "wireguard" ? "WG" : s.tag}

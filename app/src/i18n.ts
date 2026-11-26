@@ -229,6 +229,11 @@ const dict: Dict = {
   passportCountry: { ru: "Страна", en: "Country" },
   passportProvider: { ru: "Провайдер", en: "Provider" },
   passportProto: { ru: "Протокол", en: "Protocol" },
+  passportExitMismatch: {
+    ru: "Профиль: {profile}. Фактический выход: {exit}.",
+    en: "Profile: {profile}. Actual exit: {exit}.",
+  },
+  profileOf: { ru: "профиль:", en: "profile:" },
   passportScoreHint: {
     ru: "Оценка выхода: задержка, заявленное качество узла и свежесть замера",
     en: "Exit score: latency, declared node quality and how fresh the check is",
@@ -381,6 +386,7 @@ const dict: Dict = {
     en: "a dot on the planet: green is fast, yellow slower, orange slow, red no answer, grey not checked for a while. Clicking a dot picks that node",
   },
   serverDead: { ru: "не отвечает", en: "no answer" },
+  serverNode: { ru: "узел подписки", en: "subscription node" },
   serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },
   serversSub: { ru: "Список приходит из твоей подписки", en: "The list comes from your subscription" },
   subUrl: { ru: "Ссылка подписки", en: "Subscription URL" },
@@ -556,6 +562,11 @@ const dict: Dict = {
   presetNoFilter: { ru: "В этом фильтре пусто — сбрось фильтр.", en: "Nothing under this filter — clear it." },
   zapretRun: { ru: "Запустить", en: "Start" },
   zapretHalt: { ru: "Остановить", en: "Stop" },
+  zapretForeignHold: { ru: "Не трогаем", en: "Leave it" },
+  zapretForeignNote: {
+    ru: "Это чужая копия — приложение её не останавливает.",
+    en: "This is another copy — the app leaves it running.",
+  },
 
   settingsTitle: { ru: "Настройки", en: "Settings" },
   setTabGeneral: { ru: "Общее", en: "General" },
@@ -572,13 +583,13 @@ const dict: Dict = {
     en: "Every interval I measure all servers and switch only if another one is 25% faster than the current. Off by default.",
   },
   autoSelectOff: { ru: "выкл", en: "off" },
-  autoSwitchSlow: { ru: "уходить с просевшего узла", en: "leave a lagging node" },
+  autoSwitchSlow: { ru: "Уходить с просевшего узла", en: "Leave a lagging node" },
   autoSwitchSlowHint: {
     ru: "Раз в 10 минут меряю узлы. Если текущий хуже лучшего больше чем на 40 мс — переключаю сам и говорю об этом. Тумблер выключен — не трогаю ничего.",
     en: "Every 10 minutes I measure the nodes. If the current one is more than 40 ms worse than the best, I switch and say so. Off — I touch nothing.",
   },
   slowSwitched: { ru: "узел просел, перешёл на", en: "node got slow, moved to" },
-  autoSelectLoss: { ru: "при потере соединения", en: "on connection loss" },
+  autoSelectLoss: { ru: "Перемерять при потере соединения", en: "Re-measure on connection loss" },
   autoSelectLossHint: {
     ru: "Перемерять сразу, как только туннель упал, не дожидаясь таймера",
     en: "Re-measure as soon as the tunnel drops, without waiting for the timer",

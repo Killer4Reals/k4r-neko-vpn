@@ -81,6 +81,29 @@ export function easeOut(t: number): number {
 }
 
 /**
+ * Разводит узлы, у которых совпадают координаты страны. Провайдер часто даёт
+ * десять серверов в одной стране — без разведения они рисуются одной точкой,
+ * и кажется, будто весь список «в одном месте». Первый узел остаётся в центре,
+ * остальные расходятся детерминированной спиралью: позиция не зависит от
+ * порядка отрисовки, а выбранный сервер не «прыгает» между кадрами.
+ */
+export function spreadGlobeNodes<T extends LatLon>(nodes: T[], spacingDeg = 1.8): T[] {
+  const seen = new Map<string, number>();
+  return nodes.map((n) => {
+    const key = `${n.lat.toFixed(2)},${n.lon.toFixed(2)}`;
+    const index = seen.get(key) ?? 0;
+    seen.set(key, index + 1);
+    if (index === 0) return n;
+    const angle = index * 2.399963;
+    const radius = spacingDeg * Math.sqrt(index);
+    const lat = Math.max(-80, Math.min(80, n.lat + radius * Math.cos(angle)));
+    const cos = Math.max(0.25, Math.cos((n.lat * Math.PI) / 180));
+    const lon = ((n.lon + (radius * Math.sin(angle)) / cos + 540) % 360) - 180;
+    return { ...n, lat, lon };
+  });
+}
+
+/**
  * Ближайшая точка на экране: по ней ловим наведение и нажатие. Радиус 12 px —
  * «почти попал»: прицеливаться в точку 3 px мышью невозможно.
  */

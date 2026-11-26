@@ -126,7 +126,18 @@ export function stripCc(name: string): string {
 }
 
 /** Страна по коду — для подписи, когда в имени сервера её нет. */
-export function nameOf(cc: string): string | null {
+export function nameOf(cc: string, lang: "ru" | "en" = "ru"): string | null {
+  const code = (cc ?? "").trim().toLowerCase();
+  // Незнакомый код — не страна: ICU на «zz» отвечает «неизвестный регион»,
+  // а списку нужен именно null, чтобы показать адрес узла.
+  if (!(code in COUNTRY)) return null;
+  if (lang === "en") {
+    try {
+      return new Intl.DisplayNames(["en"], { type: "region" }).of(code.toUpperCase()) ?? null;
+    } catch {
+      return null;
+    }
+  }
   const names: Record<string, string> = {
     ru: "Россия",
     fi: "Финляндия",
@@ -180,11 +191,7 @@ export function nameOf(cc: string): string | null {
     tj: "Таджикистан",
     kg: "Киргизия",
   };
-  const code = (cc ?? "").trim().toLowerCase();
   if (names[code]) return names[code];
-  // Незнакомый код — не страна: ICU на «zz» отвечает «неизвестный регион»,
-  // а списку нужен именно null, чтобы показать адрес узла.
-  if (!(code in COUNTRY)) return null;
   // Остальные страны и территории берём из ICU: 250 названий руками — это
   // гарантированные опечатки, а Windows уже знает их по-русски.
   try {
