@@ -142,6 +142,7 @@ export function SettingsScreen(p: Props) {
   const [updateState, setUpdateState] = useState<"idle" | "busy" | "latest" | "found" | "error" | "blocked">("idle");
   const [updateNote, setUpdateNote] = useState("");
   const [updateLink, setUpdateLink] = useState("");
+  const [updateSha, setUpdateSha] = useState("");
   const [deviceDraft, setDeviceDraft] = useState("");
   const [hotkeyDraft, setHotkeyDraft] = useState(p.hotkey);
   const [exported, setExported] = useState("");
@@ -978,6 +979,7 @@ export function SettingsScreen(p: Props) {
                   setUpdateState("found");
                   setUpdateNote(`${t("updateFound")} ${res.version}${res.notes ? ` — ${res.notes}` : ""}`);
                   setUpdateLink(res.url);
+                  setUpdateSha(res.sha256);
                 } else {
                   setUpdateState("latest");
                   setUpdateNote(t("updateLatest"));
@@ -1016,8 +1018,9 @@ export function SettingsScreen(p: Props) {
                   onClick={async () => {
                     try {
                       setUpdateNote(`${t("downloading")}…`);
-                      const path = await api.updateDownload(updateLink);
+                      const path = await api.updateDownload(updateLink, updateSha);
                       setUpdateNote(`${t("downloadDone")} ${path}`);
+                      await api.updateInstall(path);
                     } catch (e) {
                       setUpdateNote(String(e));
                     }

@@ -252,7 +252,11 @@ export default function App() {
   // Живой фон включается в настройках; по умолчанию — да, как и просили.
   const [auroraOn, setAuroraOn] = useState(readAurora);
   // Автообновление: тихо проверяем версию и показываем баннер, если вышла новая.
-  const [upd, setUpd] = useState<{ version: string; url: string } | null>(null);
+  const [upd, setUpd] = useState<{
+    version: string;
+    url: string;
+    sha256: string;
+  } | null>(null);
   const [updBusy, setUpdBusy] = useState(false);
   const [ver, setVer] = useState("");
   const autoUpd = useRef(false);
@@ -1485,7 +1489,7 @@ export default function App() {
         if (!res) return;
         const skipped = localStorage.getItem("k4r-skip-update");
         if (skipped === res.version) return;
-        setUpd({ version: res.version, url: res.url });
+        setUpd({ version: res.version, url: res.url, sha256: res.sha256 });
       } catch {
         // нет сети или адрес не задан — это не ошибка для человека
       }
@@ -1499,7 +1503,7 @@ export default function App() {
     setUpdBusy(true);
     setToast({ title: t("updReadyTitle"), body: t("updInstalling") });
     try {
-      const path = await api.updateDownload(upd.url);
+      const path = await api.updateDownload(upd.url, upd.sha256);
       await api.updateInstall(path);
     } catch (e) {
       setUpdBusy(false);

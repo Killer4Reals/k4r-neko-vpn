@@ -935,10 +935,33 @@ async fn dns_leak() -> Result<serde_json::Value, String> {
     .map_err(|e| format!("задача упала: {e}"))?
 }
 
-/// Скачивает установщик новой версии и запускает его. Проверку версии делает
-/// окно, сюда приходит уже готовый адрес.
+/// SHA-256 файла: установщик проверяем до запуска, а не после.
+fn sha256_file(path: &std::path::Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| format!("не смог открыть файл: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("не смог прочитать файл: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Скачивает установщик новой версии и проверяет его контрольную сумму.
+/// Запуск — отдельной командой, иначе установщик стартовал бы дважды.
 #[tauri::command]
-async fn update_download(url: String) -> Result<String, String> {
+async fn update_download(url: String, sha256: String) -> Result<String, String> {
+    let expected = sha256.trim().to_ascii_lowercase();
+    if expected.len() != 64 || !expected.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("в описании обновления нет корректной контрольной суммы".into());
+    }
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("ссылка должна начинаться с http:// или https://".into());
     }
@@ -963,7 +986,11 @@ async fn update_download(url: String) -> Result<String, String> {
             return Err("файл слишком маленький — похоже, это не установщик".into());
         }
         drop(file);
-        launch_detached(&path)?;
+        let actual = sha256_file(&path)?;
+        if actual != expected {
+            let _ = std::fs::remove_file(&path);
+            return Err("скачанный установщик повреждён: контрольная сумма не совпала".into());
+        }
         Ok(path.display().to_string())
     })
     .await
@@ -1495,6 +1522,28 @@ struct UpdateInfo {
     version: String,
     url: String,
     notes: String,
+    sha256: String,
+}
+
+/// Разбор манифеста отдельно от сети: так его можно проверить тестом.
+fn parse_update(body: &str, current: &str) -> Result<Option<UpdateInfo>, String> {
+    let value: serde_json::Value = serde_json::from_str(body)
+        .map_err(|e| format!("ответ не похож на описание версии: {e}"))?;
+    let version = value["version"].as_str().unwrap_or("").trim().to_string();
+    if version.is_empty() {
+        return Err("в описании версии нет поля version".into());
+    }
+    // Только строго новее: манифест может отстать от установленной сборки, и
+    // предлагать откат на старую версию — это не обновление, а поломка.
+    if !version::is_newer(&version, current.trim()) {
+        return Ok(None);
+    }
+    Ok(Some(UpdateInfo {
+        version,
+        url: value["url"].as_str().unwrap_or("").to_string(),
+        notes: value["notes"].as_str().unwrap_or("").to_string(),
+        sha256: value["sha256"].as_str().unwrap_or("").to_string(),
+    }))
 }
 
 /// Reads a tiny manifest: {"version": "0.3.1", "url": "https://...", "notes": "..."}
@@ -1517,22 +1566,7 @@ fn update_check(manifest_url: String, current: String) -> Result<Option<UpdateIn
         .into_body()
         .read_to_string()
         .map_err(|e| e.to_string())?;
-    let value: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("ответ не похож на описание версии: {e}"))?;
-    let version = value["version"].as_str().unwrap_or("").trim().to_string();
-    if version.is_empty() {
-        return Err("в описании версии нет поля version".into());
-    }
-    // Только строго новее: манифест может отстать от установленной сборки, и
-    // предлагать откат на старую версию — это не обновление, а поломка.
-    if !version::is_newer(&version, current.trim()) {
-        return Ok(None);
-    }
-    Ok(Some(UpdateInfo {
-        version,
-        url: value["url"].as_str().unwrap_or("").to_string(),
-        notes: value["notes"].as_str().unwrap_or("").to_string(),
-    }))
+    parse_update(&body, &current)
 }
 
 /// The address the internet sees right now. While the tunnel is up the whole
@@ -2838,6 +2872,36 @@ mod logs_tests {
         assert_eq!(n, 0);
         assert!(out.is_file());
         let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::{parse_update, sha256_file};
+
+    #[test]
+    fn counts_sha256_of_a_downloaded_file() {
+        let path = std::env::temp_dir().join(format!("k4r-sha-{}.bin", std::process::id()));
+        std::fs::write(&path, b"k4r-neko-vpn").unwrap();
+        assert_eq!(
+            sha256_file(&path).unwrap(),
+            "79c52229e1d14a79a5f228329081b0bbd6851a0109fdadd93c586eec619b1980"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn manifest_gives_the_installer_hash() {
+        let body = r#"{"version":"1.54.1","url":"https://example.com/setup.exe","notes":"x","sha256":"abc123"}"#;
+        let upd = parse_update(body, "1.54.0").unwrap().unwrap();
+        assert_eq!(upd.version, "1.54.1");
+        assert_eq!(upd.sha256, "abc123");
+    }
+
+    #[test]
+    fn same_version_is_not_an_update() {
+        let body = r#"{"version":"1.54.0","url":"https://example.com/setup.exe"}"#;
+        assert!(parse_update(body, "1.54.0").unwrap().is_none());
     }
 }
 

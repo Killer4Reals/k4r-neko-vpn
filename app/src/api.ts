@@ -161,7 +161,8 @@ export const api = {
   coreLatest: () => invoke<string>("core_latest"),
   coreUpdate: (version: string) => invoke<string>("core_update", { version }),
   coreReset: () => invoke<string>("core_reset"),
-  updateDownload: (url: string) => invoke<string>("update_download", { url }),
+  updateDownload: (url: string, sha256: string) =>
+    invoke<string>("update_download", { url, sha256 }),
   updateInstall: (path: string) => invoke<void>("update_install", { path }),
   zapretSettings: () =>
     invoke<{
@@ -177,7 +178,12 @@ export const api = {
   speedTest: () =>
     invoke<{ bytes: number; seconds: number; mbytes_per_second: number }>("speed_test"),
   updateCheck: (manifestUrl: string, current: string) =>
-    invoke<{ version: string; url: string; notes: string } | null>("update_check", {
+    invoke<{
+      version: string;
+      url: string;
+      notes: string;
+      sha256: string;
+    } | null>("update_check", {
       manifestUrl,
       current,
     }),
