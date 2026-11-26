@@ -10,7 +10,7 @@ pub const SCHEMA: u32 = 5;
 /// репозитории: одно поле версии и ссылка на установщик. Пусто у тех, кто
 /// сознательно очистил поле, — их выбор не переписываем.
 pub const UPDATE_URL: &str =
-    "https://raw.githubusercontent.com/Killer4Reals/k4r-neko-vpn/master/version.json";
+    "https://raw.githubusercontent.com/Killer4Reals/k4r-neko-vpn-releases/master/version.json";
 
 fn yes() -> bool {
     true
