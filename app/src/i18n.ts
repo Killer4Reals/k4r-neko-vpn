@@ -16,6 +16,31 @@ const dict: Dict = {
   stOff: { ru: "Отключено", en: "Disconnected" },
   stConnecting: { ru: "Подключение…", en: "Connecting…" },
   stConnected: { ru: "Защищено", en: "Protected" },
+  stTunnelSplit: { ru: "Туннель активен · только выбранные", en: "Tunnel active · selected apps only" },
+  stTunnelNoKill: { ru: "Туннель активен · без kill-switch", en: "Tunnel active · no kill switch" },
+  stTunnelKillUnavailable: { ru: "Туннель активен · kill-switch неактивен", en: "Tunnel active · kill switch inactive" },
+  stScopeHint: {
+    ru: "Статус показывает, что именно защищено: весь трафик, только выбранные программы или без блокировки при обрыве",
+    en: "The status shows what is protected: all traffic, selected apps only, or without kill-switch protection",
+  },
+  failoverTitle: { ru: "Туннель оборвался", en: "Tunnel dropped" },
+  failoverEngineLost: {
+    ru: "Движок неожиданно остановился. Переключаюсь на другой узел",
+    en: "The engine stopped unexpectedly. Switching to another node",
+  },
+  failoverRestarted: {
+    ru: "Супервизор перезапустил движок. Переключаюсь на другой узел",
+    en: "The supervisor restarted the engine. Switching to another node",
+  },
+  failoverSwitching: { ru: "Переключаюсь на", en: "Switching to" },
+  failoverNoAlt: {
+    ru: "Живых альтернатив нет. Проверь подписку и повтори",
+    en: "No live alternative. Check the subscription and retry",
+  },
+  failoverManual: { ru: "Повтор после обрыва", en: "Retry after the drop" },
+  failoverRecoveredTitle: { ru: "Туннель переключён", en: "Tunnel switched" },
+  failoverDismiss: { ru: "Понятно", en: "Got it" },
+  failoverRetry: { ru: "Повторить", en: "Retry" },
   stError: { ru: "Ошибка", en: "Error" },
 
   connect: { ru: "Включить VPN", en: "Connect VPN" },
@@ -234,10 +259,12 @@ const dict: Dict = {
     en: "Profile: {profile}. Actual exit: {exit}.",
   },
   profileOf: { ru: "профиль:", en: "profile:" },
-  passportScoreHint: {
-    ru: "Оценка выхода: задержка, заявленное качество узла и свежесть замера",
-    en: "Exit score: latency, declared node quality and how fresh the check is",
+  profile: { ru: "профиль", en: "profile" },
+  passportLatencyHint: {
+    ru: "Пинг до узла и свежесть замера. Это не оценка скорости и не гарантия качества канала",
+    en: "Ping to the node and how fresh the check is. Not a speed score or a guarantee of channel quality",
   },
+  passportNoMeasure: { ru: "нет замера", en: "not measured" },
   auroraTitle: { ru: "Живой фон", en: "Living backdrop" },
   auroraHint: {
     ru: "Мягкие волны за интерфейсом дышат вместе с туннелем и трафиком. Выключи, если греется ноутбук.",
@@ -357,6 +384,10 @@ const dict: Dict = {
     ru: "Если туннель упадёт, интернет придерживается до восстановления. Локальная сеть и принтер работают",
     en: "If the tunnel drops, internet is held back until it is back. Your local network keeps working",
   },
+  killSwitchInactiveHint: {
+    ru: "Kill-switch не активен: при обрыве трафик может пойти напрямую. Открой настройки",
+    en: "Kill switch is inactive: traffic may go direct if the tunnel drops. Open settings",
+  },
   holdActive: {
     ru: "Интернет придержан",
     en: "Internet held",
@@ -390,6 +421,8 @@ const dict: Dict = {
   serversTitle: { ru: "Серверы и подписка", en: "Servers and subscription" },
   serversSub: { ru: "Список приходит из твоей подписки", en: "The list comes from your subscription" },
   subUrl: { ru: "Ссылка подписки", en: "Subscription URL" },
+  showSecret: { ru: "Показать", en: "Show" },
+  hideSecret: { ru: "Скрыть", en: "Hide" },
   subHeaders: { ru: "Заголовки запроса", en: "Request headers" },
   subHeadersHint: {
     ru: "Некоторые провайдеры отдают конфиги только определённым клиентам. Здесь можно вписать нужные заголовки.",
@@ -862,7 +895,10 @@ const dict: Dict = {
   },
 
   logsTitle: { ru: "Журнал", en: "Log" },
-  logsSub: { ru: "Ключи и адреса вырезаны", en: "Keys and addresses are redacted" },
+  logsSub: {
+    ru: "Сырой журнал движка: может содержать IP, домены и пути процессов. Не публикуй без проверки",
+    en: "Raw engine log: may contain IPs, domains and process paths. Do not publish without checking",
+  },
 };
 
 export function t(lang: Lang, key: keyof typeof dict | string): string {

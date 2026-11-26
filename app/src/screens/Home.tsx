@@ -8,7 +8,8 @@ import { SCENARIOS, type ScenarioId } from "../scenarios";
 import { Flag } from "../Flag";
 import { nameOf } from "../flags";
 import { humanBytes, leftBytes, subTiming } from "../sub";
-import { grade, providerOf, score } from "../passport";
+import { providerOf } from "../passport";
+import { connectedStatusKey } from "../protection";
 import { isFresh } from "../health";
 import { dayKey, human } from "../stats";
 import { api } from "../api";
@@ -25,6 +26,10 @@ type Props = {
   /** real state of the guard, not a wish: off / running / external / error */
   zapretState: "off" | "running" | "external" | "error";
   killSwitch: boolean;
+  /** реальное состояние ОС-блокировки, а не только тумблер в настройках */
+  killSwitchActive: boolean;
+  /** только выбранные программы или весь трафик */
+  splitMode: "only" | "all";
   /** id -> ms of the last health check, null = no answer */
   lat: Record<string, number | null>;
   /** id -> когда мерили, чтобы отличить живой замер от старого */
@@ -95,12 +100,10 @@ const fmt = (bytesPerSec: number) => {
 export function HomeScreen(p: Props) {
   const { t, conn, toggleConnection, selected, servers, selectedId, setSelectedId } = p;
 
-  // Паспорт выхода: одна оценка вместо трёх графиков. Свежесть замера важна:
-  // «40 мс» недельной давности — это не 40 мс.
+  // Паспорт выхода: только измеренный пинг и свежесть. «40 мс» недельной
+  // давности — это не 40 мс, а выдуманная оценка не значит ничего.
   const passMs = typeof p.lat[selected.id] === "number" ? p.lat[selected.id] : null;
   const passFresh = isFresh(p.latAt?.[selected.id]);
-  const passScore = score(passMs, selected.quality, passFresh);
-  const passGrade = grade(passScore);
   const exitAt = p.exitCc ? countryOf(p.exitCc) : null;
   const exitName = exitAt ? nameOf(p.exitCc, p.lang) : "";
   const profileName = nameOf(selected.cc || selected.flag, p.lang) ?? selected.country;
@@ -173,9 +176,13 @@ export function HomeScreen(p: Props) {
   // Never claim "blocked" on the strength of a toggle: the guard art only
   // appears when the backend reports real enforcement.
   const guarded = p.blocked;
+  // «Защищено» — только когда весь трафик идёт в туннель и OS-блокировка
+  // реально включена. Иначе честно говорим, что именно защищено.
+  const connectedKey = connectedStatusKey(p.splitMode, p.killSwitch, p.killSwitchActive);
   const statusKey = guarded
     ? "stBlocked"
-    : conn === "connected" ? "stConnected" : conn === "connecting" ? "stConnecting" : conn === "error" ? "stError" : "stOff";
+    : conn === "connected" ? connectedKey : conn === "connecting" ? "stConnecting" : conn === "error" ? "stError" : "stOff";
+  const statusHint = conn === "connected" ? t("stScopeHint") : undefined;
   const hintKey = conn === "connected" ? "hintConnected" : conn === "connecting" ? "hintConnecting" : "hintOff";
   const view = guarded ? "guard" : conn;
   const m = guarded ? GUARD : mascot[conn];
@@ -255,7 +262,7 @@ export function HomeScreen(p: Props) {
             показывает состояние, нажатие на шар включает и выключает VPN.
             Маскот — маленький компаньон в углу, он больше ничего не закрывает. */}
         <div className="hero-top">
-          <div className="status-pill" data-state={view}>
+          <div className="status-pill" data-state={view} title={statusHint}>
             <span className="dot" />
             {t(statusKey)}
             {p.poolSize > 1 && view === "connected" && (
@@ -323,9 +330,13 @@ export function HomeScreen(p: Props) {
                 {t("profileOf")} {profileName}
               </span>
             ) : (
-              <span>{selected.sub ?? selected.country}</span>
+              <span>
+                {selected.sub ? `${t("profileOf")} ${selected.sub}` : t("profile")} · {selected.tag}
+              </span>
             )}
-            <span className="lat">{selected.lat === 0 ? "—" : `${selected.lat} ms`}</span>
+            <span className="lat" title={passFresh ? t("nodeFresh") : t("nodeStale")}>
+              {passMs === null ? t("passportNoMeasure") : `${passMs} мс`}
+            </span>
           </div>
         </div>
 
@@ -350,7 +361,7 @@ export function HomeScreen(p: Props) {
           </div>
         )}
 
-        {p.error && <div className="hero-error">{p.error}</div>}
+        {p.error.trim() && <div className="hero-error">{p.error}</div>}
 
         {/* Сценарии: один клик вместо пяти переключателей в настройках */}
         <div className="quick scenarios">
@@ -408,13 +419,19 @@ export function HomeScreen(p: Props) {
         >
           <summary>
             <span className="k">{t("passportTitle")}</span>
-            <span className="passport-score">
-              {passScore}
-              <small>/100</small>
-              <b>{passGrade}</b>
+            <span className="passport-latency" title={t("passportLatencyHint")}>
+              {passMs !== null ? (
+                <>
+                  <b>{passMs}</b>
+                  <small> мс</small>
+                </>
+              ) : (
+                <b>—</b>
+              )}
+              <em>{passMs === null ? t("passportNoMeasure") : passFresh ? t("nodeFresh") : t("nodeStale")}</em>
             </span>
           </summary>
-        <div className="passport" data-grade={passGrade}>
+        <div className="passport">
           <div className="passport-grid">
             <div className="passport-cell">
               <span className="k">{t("passportIp")}</span>
@@ -465,8 +482,8 @@ export function HomeScreen(p: Props) {
           </button>
           <button
             className="chip"
-            data-on={p.killSwitch}
-            title={t("killSwitchHint")}
+            data-on={p.killSwitchActive}
+            title={p.killSwitchActive ? t("killSwitchHint") : t("killSwitchInactiveHint")}
             onClick={p.onOpenSettings}
           >
             <span className="led" />
@@ -501,7 +518,7 @@ export function HomeScreen(p: Props) {
               <span>
                 <div className="name">{s.city}</div>
                 <div className="sub">
-                  {s.sub ?? s.country} · {s.tag}
+                  {t("profileOf")} {s.sub ?? s.country} · {s.tag}
                 </div>
               </span>
               <span className="lat">
@@ -509,12 +526,7 @@ export function HomeScreen(p: Props) {
                   <span className="dead">{t("serverDead")}</span>
                 ) : (
                   <>
-                    <span className="bars" data-q={s.quality}>
-                      <i />
-                      <i />
-                      <i />
-                    </span>
-                    {p.lat[s.id] ?? (s.lat === 0 ? "—" : s.lat)}
+                    {p.lat[s.id] ?? "—"}
                   </>
                 )}
               </span>

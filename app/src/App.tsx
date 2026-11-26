@@ -8,6 +8,7 @@ import type { ChosenApp, ExitInfo, KillSwitchStatus, OrchRow, RouteRule, SplitPr
 import { isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 import { isDegraded, pushRate } from "./degrade";
 import { lastAliveAt, poolDead, slowSwitchTarget } from "./health";
+import { engineRestarted, pickFailover, unexpectedStop } from "./failover";
 import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
 import { HistoryScreen } from "./screens/History";
 import { activeScenario, changedKeys, scenarioById, type ScenarioId, type ScenarioSettings } from "./scenarios";
@@ -189,6 +190,7 @@ export default function App() {
     const el = document.querySelector(".content");
     if (el) el.scrollTop = 0;
   }, [screen]);
+
   const [routesTab, setRoutesTab] = useState<"apps" | "rules">("apps");
   const [analyticsTab, setAnalyticsTab] = useState<"stats" | "history">("stats");
   // История событий: переживает перезапуск, 300 записей — это месяцы
@@ -349,6 +351,9 @@ export default function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [error, setError] = useState(initial.get("error") ?? "");
+  /// Причина неожиданного обрыва: показывается поверх всех экранов, пока не восстановились.
+  const [tunnelIssue, setTunnelIssue] = useState("");
+  const [tunnelRecovered, setTunnelRecovered] = useState(false);
   const [busy, setBusy] = useState(false);
   const [lat, setLat] = useState<Record<string, number | null>>({});
   // История замеров на узел: спарклайн показывает не «сейчас», а динамику.
@@ -437,6 +442,9 @@ export default function App() {
   const tunnelWasRunning = useRef(false);
   /** Идёт автопереключение: не даём таймеру и триггеру потери сработать повторно. */
   const switching = useRef(false);
+  const failoverRef = useRef<((reason?: string) => void) | null>(null);
+  const lastFailover = useRef(0);
+  const enginePid = useRef(0);
   const win = inTauri ? getCurrentWindow() : null;
 
   const t = useT(lang);
@@ -460,7 +468,7 @@ export default function App() {
       // Вторая строка не должна быть сырым хостом: для названия-страны
       // («Финляндия») это выглядело как технический мусор. Показываем страну,
       // если она отличается, иначе поясняем, что это узел подписки.
-      const sub = country && country.toLowerCase() !== title.toLowerCase() ? country : t("serverNode");
+      const sub = country && country.toLowerCase() !== title.toLowerCase() ? country : "";
       return {
       id: p.id,
       cc: cc ?? "",
@@ -470,7 +478,6 @@ export default function App() {
       sub,
       tag: protoTag(p),
       lat: lat[p.id] ?? 0,
-      quality: "good" as const,
       reserve: p.reserve ?? false,
       kind: p.kind,
       host: p.host,
@@ -675,16 +682,29 @@ export default function App() {
         if (!alive) return;
         if (st.state === "running") {
           if (tunnelWant.current === "off") return;
+          // Туннель мог быть поднят до открытия окна: без этой строки
+          // неожиданное падение такого туннеля не считается неожиданным.
+          tunnelWant.current = "on";
+          const pid = st.pid ?? 0;
+          const restarted = engineRestarted(enginePid.current, pid, tunnelWasRunning.current);
+          enginePid.current = pid;
           if (!tunnelWasRunning.current) setError("");
           tunnelWasRunning.current = true;
           setConn((prev) => (prev === "connected" ? prev : "connected"));
+          if (restarted) failoverRef.current?.(t("failoverRestarted"));
         } else if (st.state === "idle") {
+          const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "idle");
           tunnelWasRunning.current = false;
+          enginePid.current = 0;
           setConn((prev) => (prev === "connected" ? "idle" : prev));
+          if (unexpected) failoverRef.current?.(st.message || "");
         } else if (st.state === "error" && tunnelWant.current !== "off") {
+          const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "error");
           tunnelWasRunning.current = false;
+          enginePid.current = 0;
           setConn((prev) => (prev === "idle" ? prev : "error"));
           setError(st.message);
+          if (unexpected) failoverRef.current?.(st.message || "");
         }
       } catch {
         /* движок недоступен: не выдумываем состояние */
@@ -770,7 +790,10 @@ export default function App() {
 
   const stopTunnel = useCallback(async (release = true) => {
     tunnelWant.current = "off";
+    enginePid.current = 0;
     setError("");
+    setTunnelIssue("");
+    setTunnelRecovered(false);
     if (inTauri) {
       try {
         await api.engineStop(release);
@@ -855,6 +878,7 @@ export default function App() {
           splitMode,
           via,
         );
+        enginePid.current = st.pid ?? 0;
         setConn(st.state === "running" ? "connected" : "error");
         if (st.state !== "running") setError(engineErrorText(st.message));
       } catch (e) {
@@ -867,6 +891,63 @@ export default function App() {
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setConn("connected"), 1500);
   }, [chosen, profiles, selectedId, dnsMode, readNetMap, writeNetMap]);
+
+  /**
+   * Неожиданный обрыв — не повод молча остаться без VPN. Пробуем другой узел
+   * и оставляем на экране причину; ручное отключение сюда не попадает.
+   */
+  const failover = useCallback(async (reason?: string) => {
+    if (!inTauri || switching.current) return;
+    if (Date.now() - lastFailover.current < 8000) return;
+    lastFailover.current = Date.now();
+    switching.current = true;
+    const why = reason?.trim() || t("failoverEngineLost");
+    setTunnelIssue(why);
+    setTunnelRecovered(false);
+    setError("");
+    try {
+      const next = pickFailover(profiles, selectedId, lat, quarantinedIds(orch));
+      if (!next) {
+        switching.current = false;
+        setTunnelIssue(t("failoverNoAlt"));
+        setError(t("failoverNoAlt"));
+        setConn("idle");
+        return;
+      }
+      setSelectedId(next.id);
+      record("switch", selectedId, next.id);
+      setToast({
+        title: t("failoverTitle"),
+        body: `${t("failoverSwitching")} ${next.name || next.host}`,
+      });
+      await startTunnel(next.id);
+    } finally {
+      window.setTimeout(() => {
+        switching.current = false;
+      }, 4000);
+    }
+  }, [inTauri, lat, orch, profiles, record, selectedId, startTunnel, t]);
+
+  useEffect(() => {
+    failoverRef.current = (reason) => void failover(reason);
+    return () => {
+      failoverRef.current = null;
+    };
+  }, [failover]);
+
+  const issueConn = useRef(conn);
+  useEffect(() => {
+    // Не стираем причину сразу: человек должен увидеть, что именно оборвалось
+    // и что приложение переключилось само. Баннер убирается кнопкой.
+    const was = issueConn.current;
+    issueConn.current = conn;
+    if (conn === "connected" && was !== "connected" && tunnelIssue) setTunnelRecovered(true);
+  }, [conn, tunnelIssue]);
+
+  const retryTunnel = useCallback(() => {
+    lastFailover.current = 0;
+    void failover(t("failoverManual"));
+  }, [failover, t]);
 
   const toggleConnection = useCallback(() => {
     if (busy) return;
@@ -1809,6 +1890,30 @@ export default function App() {
         </div>
       )}
 
+      {tunnelIssue && (
+        <div className="banner tunnel-banner" data-recovered={tunnelRecovered ? "true" : undefined} role="alert">
+          <span>
+            <b>{t(tunnelRecovered ? "failoverRecoveredTitle" : "failoverTitle")}</b> {tunnelIssue}
+          </span>
+          {tunnelRecovered ? (
+            <button
+              className="btn"
+              style={{ width: "auto", paddingInline: 14 }}
+              onClick={() => {
+                setTunnelIssue("");
+                setTunnelRecovered(false);
+              }}
+            >
+              {t("failoverDismiss")}
+            </button>
+          ) : (
+            <button className="btn" style={{ width: "auto", paddingInline: 14 }} onClick={retryTunnel}>
+              {t("failoverRetry")}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="body">
         <nav className="rail">
           {navItems.map(({ id, key, icon: Icon }) => (
@@ -1841,6 +1946,8 @@ export default function App() {
               trail={trail}
               poolSize={poolSize}
               killSwitch={killSwitch}
+              killSwitchActive={ksState.state === "on"}
+              splitMode={splitMode}
               blocked={false}
               ip={ip}
               ipBusy={ipBusy}

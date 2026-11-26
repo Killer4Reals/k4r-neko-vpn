@@ -10,7 +10,6 @@ const srv = (id: string, city: string, country: string, lat: number): Server => 
   country,
   tag: "VLESS",
   lat,
-  quality: "good",
 });
 
 const list = [

@@ -78,6 +78,10 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
   // ref, как это делает планета.
   const nodesRef = useRef<GlobeNode[]>([]);
   nodesRef.current = nodes ?? [];
+  // Цель меняется от рендера к рендеру; цикл рисования не должен из-за этого
+  // перезапускаться. Эффект цели отдельно двигает state и будит кадр.
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   const geom = useMemo(() => {
     const list = landDots(2);
@@ -99,6 +103,9 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
     return { n, cosLat, sinLat, cosLon, sinLon, biomeOf };
   }, []);
 
+  const wakeRef = useRef<((reset?: boolean) => void) | null>(null);
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
     goal: target ? rotationFor(target) : 0,
@@ -110,30 +117,28 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
   useEffect(() => {
     if (!target) return;
     const s = state.current;
-    const goal = rotationFor(target);
-    s.goal = s.angle + shortestDelta(s.angle, goal);
-    s.goalTilt = Math.max(-68, Math.min(68, target.lat));
+    const goal = s.angle + shortestDelta(s.angle, rotationFor(target));
+    const goalTilt = Math.max(-68, Math.min(68, target.lat));
+    // Тот же target приходит каждый рендер. Не сбрасываем hold и не будим
+    // кадр, если цель не изменилась: иначе цикл никогда не засыпает.
+    if (Math.abs(goal - s.goal) < 0.001 && Math.abs(goalTilt - s.goalTilt) < 0.001) return;
+    s.goal = goal;
+    s.goalTilt = goalTilt;
     s.hold = HOLD_SECS;
-  }, [target]);
+    // Цель будит кадр, но не продлевает предохранитель: иначе обновление
+    // exit-локации раз в пару секунд держало бы цикл вечно.
+    wakeRef.current?.();
+    // Координаты, а не объект: Home перерисовывается раз в секунду, и новый
+    // объект с теми же координатами заново будил шар навсегда.
+  }, [target?.lat, target?.lon]);
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
     const live = { current: true };
     let onScreen = true;
-    const updateLive = () => {
-      live.current = onScreen && !document.hidden;
-    };
-    const io = new IntersectionObserver(([entry]) => {
-      onScreen = entry.isIntersecting;
-      updateLive();
-    });
-    io.observe(canvas);
-    const onVis = () => updateLive();
-    document.addEventListener("visibilitychange", onVis);
-    updateLive();
-    if (!ctx) return;
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(size * dpr);
@@ -170,12 +175,24 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
     ];
 
     let raf = 0;
+    const started = { at: performance.now() };
+    let frames = 0;
+    let lastMove = performance.now();
+    let prevAngle = state.current.angle;
+    let prevTilt = state.current.tilt;
     let last = performance.now();
     let t = 0;
 
     const draw = (now: number) => {
+      frames += 1;
       if (!live.current) {
-        raf = requestAnimationFrame(draw);
+        raf = 0;
+        return;
+      }
+      // Жёсткий предел жизни цикла: 8 секунд на один «сеанс» анимации.
+      // Таймеры WebView2 здесь ненадёжны, а кадры идут всегда.
+      if (now - started.at > 8000 || frames > 900) {
+        raf = 0;
         return;
       }
       const dt = Math.min(64, now - last) / 1000;
@@ -193,7 +210,7 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
           s.hold -= dt;
           s.angle += (s.goal - s.angle) * Math.min(1, dt * 3.4);
           s.angle += Math.sin(t * 0.8) * dt * 0.02;
-        } else if (target) {
+        } else if (targetRef.current) {
           // Выбранная страна остаётся в центре. Раньше шар после паузы
           // возвращался к «нейтральному» наклону и уплывал, и точки узлов
           // сбивались к кромке — выглядело так, будто они все в одном месте.
@@ -337,7 +354,7 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
           const pb = project(b, s.angle, s.tilt);
           if (pa.z <= 0.02 || pb.z <= 0.02) continue;
           const fade = Math.min(pa.z, pb.z);
-          ctx.globalAlpha = (connected ? 0.6 : 0.34) * fade;
+          ctx.globalAlpha = (connectedRef.current ? 0.6 : 0.34) * fade;
           ctx.strokeStyle = planet ? "#ffe9a8" : palette.accent;
           ctx.beginPath();
           ctx.moveTo(cx + pa.x * R, cy - pa.y * R);
@@ -474,17 +491,70 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
         ctx.globalAlpha = 1;
       }
 
+      // Останавливаемся, когда шар реально неподвижен 1.6 с. Считаем движение,
+      // а не hold/цель: иначе любой повторный рендер будит цикл навсегда.
+      const moved = Math.abs(s.angle - prevAngle) + Math.abs(s.tilt - prevTilt);
+      prevAngle = s.angle;
+      prevTilt = s.tilt;
+      if (moved > 0.0012) lastMove = now;
+      if (now - lastMove > 1600) {
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(draw);
     };
 
-    raf = requestAnimationFrame(draw);
+    // Жёсткий предохранитель: даже если движение не сойдётся, через 8 с после
+    // последнего действия цикл останавливается и не жжёт GPU вхолостую.
+    let idleTimer: number | undefined;
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }, 8000);
+    };
+    const wake = (reset = false) => {
+      if (reset) {
+        started.at = performance.now();
+        frames = 0;
+        armIdle();
+      }
+      if (raf === 0 && live.current) {
+        armIdle();
+        raf = requestAnimationFrame(draw);
+      }
+    };
+    wakeRef.current = wake;
+    const updateLive = () => {
+      live.current = onScreen && !document.hidden;
+      if (live.current) wake();
+      else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      updateLive();
+    });
+    io.observe(canvas);
+    const onVis = () => updateLive();
+    document.addEventListener("visibilitychange", onVis);
+    updateLive();
+
     return () => {
+      // Старый цикл должен умереть даже если кадр уже выполняется: иначе он
+      // дорисует ещё один requestAnimationFrame и останется вторым циклом.
+      live.current = false;
+      clearTimeout(idleTimer);
       cancelAnimationFrame(raf);
+      wakeRef.current = null;
       io.disconnect();
       document.removeEventListener("visibilitychange", onVis);
       themeWatch.disconnect();
     };
-  }, [geom, size, target, connected]);
+  }, [geom, size]);
 
   // Крутить шар мышью: потянул влево — планета поехала влево.
   useEffect(() => {
@@ -498,9 +568,13 @@ function GlobeDots({ target, connected = false, label, size = 300, nodes }: Omit
       lastX = e.clientX;
       canvas.setPointerCapture(e.pointerId);
       state.current.hold = 0;
+      wakeRef.current?.(true);
     };
     const move = (e: PointerEvent) => {
+      // Наведение без перетаскивания не должно продлевать анимацию: иначе
+      // неподвижный курсор над шаром держит цикл вечно.
       if (!dragging) return;
+      wakeRef.current?.(true);
       const dx = e.clientX - lastX;
       lastX = e.clientX;
       const s = state.current;

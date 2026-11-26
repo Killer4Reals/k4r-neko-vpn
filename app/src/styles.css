@@ -1646,6 +1646,31 @@ select.input {
   color: var(--warn-text, #ffcf70);
 }
 
+/* Обрыв движка: красная полоса, пока туннель не восстановлен. После
+   автопереключения она становится спокойной, но причина остаётся видимой. */
+.banner.tunnel-banner {
+  border-bottom-color: #6b1f27;
+  background: rgba(255, 77, 94, 0.1);
+  color: #ff9aa3;
+}
+
+.tunnel-banner .btn {
+  background: transparent;
+  border-color: #6b1f27;
+  color: #ff9aa3;
+}
+
+.banner.tunnel-banner[data-recovered="true"] {
+  border-bottom-color: rgba(110, 231, 183, 0.28);
+  background: rgba(110, 231, 183, 0.07);
+  color: var(--green-line, #8ff0c0);
+}
+
+.tunnel-banner[data-recovered="true"] .btn {
+  border-color: rgba(110, 231, 183, 0.35);
+  color: var(--green-line, #8ff0c0);
+}
+
 /* corner card: the notification that always works, even without Windows toasts */
 .toast {
   position: fixed;
@@ -2700,6 +2725,7 @@ select.input {
 .passport-box summary::after { content: "▾"; margin-left: 6px; color: var(--txt-3); transition: transform 0.15s ease; }
 .passport-box[open] summary::after { transform: rotate(180deg); }
 .passport-box summary .passport-score { text-transform: none; }
+.passport-box summary .passport-latency { text-transform: none; }
 .passport-box[open] summary { border-radius: 10px 10px 0 0; }
 .passport-box .passport { margin-top: 0; border-radius: 0 0 10px 10px; }
 
@@ -3082,6 +3108,15 @@ html[data-accent="ice"] {
   opacity: 0.75;
 }
 
+/* В покое пунктир не должен крутиться: opacity: 0 не останавливает
+   анимацию, и WebView2 продолжал перерисовывать весь SVG. */
+.globe-progress[data-state="off"] .pg-packets,
+.globe-progress[data-state="error"] .pg-packets,
+.globe-progress[data-state="guard"] .pg-packets {
+  animation: none;
+  opacity: 0;
+}
+
 @keyframes packets-run {
   from { stroke-dashoffset: 0; }
   to { stroke-dashoffset: -106; }
@@ -3090,6 +3125,14 @@ html[data-accent="ice"] {
 @media (prefers-reduced-motion: reduce) {
   .globe-progress .pg-packets { animation: none; opacity: 0; }
 }
+
+/* Главный экран не должен стоить 5% CPU в покое. Оставляем неон статичным:
+   кольцо, пакеты и маскот больше не перерисовываются каждый кадр. */
+.globe-btn[data-state="connected"] .globe-ring { animation: none; }
+.globe-progress .pg-packets { animation: none; opacity: 0.55; }
+.globe-mascot img,
+.globe-mascot[data-state="connected"] img { animation: none; }
+.metro [data-tone="proxy"] .metro-lane[data-live="true"] { animation: none; stroke-dasharray: none; }
 
 /* Живой фон: canvas под содержимым, клики идут сквозь него. Заставку не
    трогаем — она сама поверх всего. */
@@ -3190,6 +3233,33 @@ html[data-accent="ice"] {
 
 .passport[data-grade="D"] .passport-score b {
   color: var(--red, #ff4d5e);
+}
+
+/* В паспорте больше нет «оценки канала»: только измеренный пинг и свежесть. */
+.passport-latency {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--txt);
+}
+
+.passport-latency b {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.passport-latency small {
+  font-size: 10px;
+  color: var(--txt-3);
+}
+
+.passport-latency em {
+  margin-left: 4px;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--txt-3);
 }
 
 .passport-grid {

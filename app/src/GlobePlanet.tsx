@@ -279,6 +279,10 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
   const hitRef = useRef<{ id: string; x: number; y: number }[]>([]);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
+  // Разбудить уснувший рендер: движение, смена цели, возврат окна на экран.
+  const wakeRef = useRef<((reset?: boolean) => void) | null>(null);
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
 
   const state = useRef({
     angle: target ? rotationFor(target) : 0,
@@ -293,12 +297,18 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     arrived: -1,
     zoom: 1,
   });
+  // Цель может меняться на каждом рендере; цикл рисования не должен из-за
+  // этого перезапускаться и терять фазу. Эффект цели двигает state отдельно.
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   useEffect(() => {
     if (!target) return;
     const s = state.current;
     const to = s.angle + shortestDelta(s.angle, rotationFor(target));
     const toTilt = Math.max(-68, Math.min(68, target.lat));
+    // Тот же target приходит каждый рендер — не начинаем перелёт заново.
+    if (Math.abs(to - s.goal) < 0.001 && Math.abs(toTilt - s.goalTilt) < 0.001) return;
     // Дальний перелёт длится дольше ближнего: глаз ждёт соразмерности пути.
     const span = Math.abs(to - s.angle) / 180;
     s.move = {
@@ -312,7 +322,8 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     s.goal = to;
     s.goalTilt = toTilt;
     s.hold = HOLD_SECS;
-  }, [target]);
+    wakeRef.current?.();
+  }, [target?.lat, target?.lon]);
 
   // сфера
   useEffect(() => {
@@ -406,24 +417,21 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     const live = { current: true };
     let onScreen = true;
-    const updateLive = () => {
-      live.current = onScreen && !document.hidden;
-    };
-    const io = new IntersectionObserver(([entry]) => {
-      onScreen = entry.isIntersecting;
-      updateLive();
-    });
-    io.observe(canvas);
-    const onVis = () => updateLive();
-    document.addEventListener("visibilitychange", onVis);
-    updateLive();
     let raf = 0;
+    const started = { at: performance.now() };
+    let lastMove = performance.now();
+    let prevAngle = state.current.angle;
+    let prevTilt = state.current.tilt;
     let last = performance.now();
     let t = 0;
 
     const frame = (now: number) => {
       if (!live.current) {
-        raf = requestAnimationFrame(frame);
+        raf = 0;
+        return;
+      }
+      if (now - started.at > 8000) {
+        raf = 0;
         return;
       }
       const dt = Math.min(64, now - last) / 1000;
@@ -452,7 +460,7 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
         }
       } else if (s.hold > 0) {
         s.hold -= dt;
-      } else if (target) {
+      } else if (targetRef.current) {
         // Выбранная страна держится в центре. Раньше шар после паузы
         // возвращался к нейтральному наклону, и точки узлов уезжали к кромке.
         s.angle += (s.goal - s.angle) * Math.min(1, dt * 2.4);
@@ -484,8 +492,57 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       gl.drawElements(gl.TRIANGLES, sphereIndexCount, gl.UNSIGNED_SHORT, 0);
       drawOverlay();
 
+      // Не жжём GPU, пока сфера реально не двигается. Считаем угол/наклон,
+      // а не hold: повторный рендер не должен заводить цикл навсегда.
+      const moved = Math.abs(s.angle - prevAngle) + Math.abs(s.tilt - prevTilt);
+      prevAngle = s.angle;
+      prevTilt = s.tilt;
+      if (moved > 0.0008) lastMove = now;
+      if (!s.move && now - lastMove > 1600) {
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(frame);
     };
+
+    // Предохранитель: сфера не должна крутить WebGL вечно после того, как
+    // пользователь и цель давно замерли.
+    let idleTimer: number | undefined;
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }, 8000);
+    };
+    const wake = (reset = false) => {
+      if (reset) {
+        started.at = performance.now();
+        armIdle();
+      }
+      if (raf === 0 && live.current) {
+        armIdle();
+        raf = requestAnimationFrame(frame);
+      }
+    };
+    wakeRef.current = wake;
+
+    const updateLive = () => {
+      live.current = onScreen && !document.hidden;
+      if (live.current) wake();
+      else {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+    const io = new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      updateLive();
+    });
+    io.observe(canvas);
+    const onVis = () => updateLive();
+    document.addEventListener("visibilitychange", onVis);
+    updateLive();
 
     // --- оверлей: маршрут, точка «ты», страна, спутники ---------------------
     const drawOverlay = () => {
@@ -503,7 +560,7 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       const cy = size / 2;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size, size);
-      const accent = connected ? "#5dff6a" : "#39FF14";
+      const accent = connectedRef.current ? "#5dff6a" : "#39FF14";
 
       // Атмосферное свечение вокруг диска: тонкая голубая дымка за краем шара.
       // Именно она даёт ощущение «настоящей планеты в космосе», а не кружка.
@@ -551,7 +608,7 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
           const pa = project(a, s.angle, s.tilt);
           const pb = project(b, s.angle, s.tilt);
           if (pa.z <= 0.02 || pb.z <= 0.02) continue;
-          ctx.globalAlpha = (connected ? 0.72 : 0.4) * Math.min(pa.z, pb.z);
+          ctx.globalAlpha = (connectedRef.current ? 0.72 : 0.4) * Math.min(pa.z, pb.z);
           ctx.beginPath();
           ctx.moveTo(cx + pa.x * R, cy - pa.y * R);
           ctx.lineTo(cx + pb.x * R, cy - pb.y * R);
@@ -771,9 +828,12 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       }
     };
 
-    raf = requestAnimationFrame(frame);
+    // updateLive() уже запустил первый кадр; второй цикл здесь не нужен.
     return () => {
+      live.current = false;
+      clearTimeout(idleTimer);
       cancelAnimationFrame(raf);
+      wakeRef.current = null;
       io.disconnect();
       document.removeEventListener("visibilitychange", onVis);
       if (vbo) gl.deleteBuffer(vbo);
@@ -784,7 +844,7 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       gl.deleteShader(vs);
       gl.deleteShader(fs);
     };
-  }, [size, target, connected, variant]);
+  }, [size, variant]);
 
   // крутить мышью
   useEffect(() => {
@@ -799,15 +859,22 @@ export function GlobePlanet({ target, connected = false, label, size, nodes, onP
       lastX = e.clientX;
       canvas.setPointerCapture(e.pointerId);
       state.current.hold = 0;
+      wakeRef.current?.(true);
     };
     const move = (e: PointerEvent) => {
       // где курсор: нужно для подсказки над узлом
       const box = canvas.getBoundingClientRect();
-      pointer.current = {
+      const prev = pointer.current;
+      const next = {
         x: ((e.clientX - box.left) / box.width) * size,
         y: ((e.clientY - box.top) / box.height) * size,
         inside: true,
       };
+      pointer.current = next;
+      // Неподвижный курсор не должен продлевать анимацию.
+      const movedPointer =
+        !prev.inside || Math.abs(prev.x - next.x) > 0.5 || Math.abs(prev.y - next.y) > 0.5;
+      if (movedPointer || dragging) wakeRef.current?.(true);
       if (!dragging) return;
       const dx = e.clientX - lastX;
       lastX = e.clientX;

@@ -86,6 +86,8 @@ function subUsage(s: { info?: SubInfo | null } | null | undefined, t: (k: string
 export function ServersScreen(p: Props) {
   const { t, servers, selectedId, setSelectedId, warnings, busy, realCount } = p;
   const [link, setLink] = useState("");
+  // Ссылка подписки содержит токен: по умолчанию она скрыта, как пароль.
+  const [showSub, setShowSub] = useState(false);
   // «4 из 6 отвечают»: считаем по последнему замеру
   const alive = aliveCount(servers.map((s) => s.id), p.lat);
   // «проверено 3 мин назад»: без этого серые точки выглядят как приговор
@@ -226,13 +228,28 @@ export function ServersScreen(p: Props) {
       <div className="card" style={{ marginBottom: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 12 }}>
           <div className="field">
-            <label>{t("subUrl")}</label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <label>{t("subUrl")}</label>
+              <button
+                type="button"
+                className="ghost-btn"
+                style={{ padding: 0, height: "auto" }}
+                aria-label={showSub ? t("hideSecret") : t("showSecret")}
+                onClick={() => setShowSub((v) => !v)}
+              >
+                {showSub ? t("hideSecret") : t("showSecret")}
+              </button>
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 className="input"
+                type={showSub ? "text" : "password"}
                 value={p.subUrl}
                 onChange={(e) => p.setSubUrl(e.target.value)}
                 spellCheck={false}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
               />
               <button
                 className="ghost-btn"
@@ -596,7 +613,9 @@ export function ServersScreen(p: Props) {
               <Flag cc={s.flag || s.cc} />
               <span>
                 <div className="name">{s.city}</div>
-                <div className="sub">{s.sub ?? s.country}</div>
+                <div className="sub">
+                  {s.sub ? `${t("profileOf")} ${s.sub}` : t("profile")} · {s.tag}
+                </div>
               </span>
               <span className="sub" style={{ fontFamily: "var(--mono)" }}>
                 {s.kind === "wireguard" ? "WG" : s.tag}
@@ -624,11 +643,6 @@ export function ServersScreen(p: Props) {
                       data-fresh={isFresh(p.latAt?.[s.id]) ? "1" : "0"}
                       title={isFresh(p.latAt?.[s.id]) ? t("nodeFresh") : t("nodeStale")}
                     />
-                    <span className="bars" data-q={s.quality}>
-                      <i />
-                      <i />
-                      <i />
-                    </span>
                     {(() => {
                       const hist = p.sparks?.[s.id] ?? [];
                       const pts = sparkPoints(hist, 40, 12);
@@ -645,7 +659,7 @@ export function ServersScreen(p: Props) {
                         </svg>
                       ) : null;
                     })()}
-                    {p.lat[s.id] ?? (s.lat === 0 ? "—" : s.lat)}
+                    {p.lat[s.id] ?? "—"}
                   </>
                 )}
               </span>
