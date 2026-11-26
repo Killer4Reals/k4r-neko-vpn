@@ -2500,8 +2500,10 @@ fn write_logs_zip(
             } else {
                 &bytes[..]
             };
+            // Архив уходит в поддержку: ссылки и ключи из журнала вырезаем.
+            let text = store::redact_log(&String::from_utf8_lossy(slice));
             zw.start_file(&name, opts).map_err(|e| e.to_string())?;
-            zw.write_all(slice).map_err(|e| e.to_string())?;
+            zw.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
             wrote += 1;
         }
     }
@@ -3013,6 +3015,30 @@ mod logs_tests {
             .read_to_string(&mut body)
             .unwrap();
         assert_eq!(body, "строка журнала");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn zip_redacts_secrets_from_logs() {
+        let base = std::env::temp_dir().join(format!("k4r-zip-secret-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(
+            base.join("engine.log"),
+            "dial vless://11111111-2222-3333-4444-555555555555@edge.example:443?token=abc",
+        )
+        .unwrap();
+        let out = base.join("out.zip");
+        write_logs_zip(&base, &out, "сводка").unwrap();
+        let mut ar = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+        let mut body = String::new();
+        use std::io::Read;
+        ar.by_name("engine.log")
+            .unwrap()
+            .read_to_string(&mut body)
+            .unwrap();
+        assert!(!body.contains("11111111"), "secret leaked: {body}");
+        assert!(body.contains("vless://<redacted>"));
         let _ = std::fs::remove_dir_all(&base);
     }
 

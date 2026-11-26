@@ -6,7 +6,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use crate::store::RouteRule;
+use crate::store::{redact_log, RouteRule};
 use crate::subscription::Profile;
 
 /// CREATE_NO_WINDOW: a console child must never flash a black window on screen.
@@ -1237,6 +1237,7 @@ fn read_tail(path: &Path, lines: usize) -> String {
     let Ok(text) = std::fs::read_to_string(path) else {
         return String::new();
     };
+    let text = redact_log(&text);
     let all: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     let start = all.len().saturating_sub(lines);
     all[start..].join(" | ")

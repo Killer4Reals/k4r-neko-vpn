@@ -450,6 +450,131 @@ pub fn rotate_log_at(path: &Path, limit: u64) -> bool {
     std::fs::rename(path, &backup).is_ok()
 }
 
+/// Schemes whose whole URL is a credential: user id, key or password sits
+/// before the host. A diagnostic log must not carry them into a shared zip.
+const SECRET_SCHEMES: &[&str] = &[
+    "vless://",
+    "vmess://",
+    "trojan://",
+    "ss://",
+    "hysteria2://",
+    "hy2://",
+    "tuic://",
+    "wireguard://",
+];
+
+/// Key/value pairs that are credentials even in a one-line error message.
+const SECRET_KEYS: &[&str] = &[
+    "password=",
+    "passwd=",
+    "token=",
+    "access_token=",
+    "refresh_token=",
+    "api_key=",
+    "private_key=",
+    "uuid=",
+    "secret=",
+];
+
+/// Redacts credentials before logs leave the app (screen or diagnostics zip).
+/// Keeps hosts, IPs, ports and error text: they are what makes a log useful.
+pub fn redact_log(text: &str) -> String {
+    text.lines().map(redact_line).collect::<Vec<_>>().join("\n")
+}
+
+fn redact_line(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    loop {
+        let lower = rest.to_ascii_lowercase();
+        let mut hit: Option<(usize, usize)> = None; // byte position, kind
+        for scheme in SECRET_SCHEMES {
+            if let Some(pos) = lower.find(scheme) {
+                if hit.map(|(p, _)| pos < p).unwrap_or(true) {
+                    hit = Some((pos, 0));
+                }
+            }
+        }
+        for key in SECRET_KEYS {
+            if let Some(pos) = lower.find(key) {
+                if hit.map(|(p, _)| pos < p).unwrap_or(true) {
+                    hit = Some((pos, 1));
+                }
+            }
+        }
+        if let Some(pos) = lower.find("authorization:") {
+            if hit.map(|(p, _)| pos < p).unwrap_or(true) {
+                hit = Some((pos, 2));
+            }
+        }
+        let Some((pos, kind)) = hit else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..pos]);
+        match kind {
+            0 => {
+                // Scheme is ASCII, so the byte slice is a valid boundary.
+                let scheme_len = SECRET_SCHEMES
+                    .iter()
+                    .find(|s| lower[pos..].starts_with(**s))
+                    .map(|s| s.len())
+                    .unwrap_or(0);
+                if scheme_len == 0 {
+                    out.push_str(&rest[pos..]);
+                    break;
+                }
+                out.push_str(&rest[pos..pos + scheme_len]);
+                out.push_str("<redacted>");
+                let bytes = rest.as_bytes();
+                let mut end = pos + scheme_len;
+                while end < bytes.len() {
+                    let b = bytes[end];
+                    if b.is_ascii_whitespace()
+                        || matches!(b, b'"' | b'\'' | b')' | b']' | b'}' | b',' | b';')
+                    {
+                        break;
+                    }
+                    end += 1;
+                }
+                rest = &rest[end..];
+            }
+            1 => {
+                let key = SECRET_KEYS
+                    .iter()
+                    .find(|k| lower[pos..].starts_with(**k))
+                    .copied()
+                    .unwrap_or("");
+                if key.is_empty() {
+                    out.push_str(&rest[pos..]);
+                    break;
+                }
+                out.push_str(&rest[pos..pos + key.len()]);
+                out.push_str("<redacted>");
+                let bytes = rest.as_bytes();
+                let mut end = pos + key.len();
+                while end < bytes.len() {
+                    let b = bytes[end];
+                    if b.is_ascii_whitespace()
+                        || matches!(b, b'&' | b'"' | b'\'' | b')' | b']' | b'}' | b',' | b';')
+                    {
+                        break;
+                    }
+                    end += 1;
+                }
+                rest = &rest[end..];
+            }
+            _ => {
+                out.push_str(&rest[pos..pos + "authorization:".len()]);
+                out.push_str(" <redacted>");
+                // The header value runs to the end of this line.
+                rest = "";
+            }
+        }
+    }
+    out
+}
+
 pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
     let name = match which {
         "zapret" => "zapret.log",
@@ -459,7 +584,7 @@ pub fn tail(data_dir: &Path, which: &str, lines: usize) -> String {
     let Ok(text) = std::fs::read_to_string(path) else {
         return String::new();
     };
-    let text = strip_ansi(&text);
+    let text = redact_log(&strip_ansi(&text));
     let all: Vec<&str> = text.lines().collect();
     let start = all.len().saturating_sub(lines);
     all[start..].join("\n")
@@ -706,6 +831,47 @@ mod tests {
         assert_eq!(load(&dir).hwid, again);
         assert!(!id.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn secret_urls_never_reach_a_shared_log() {
+        let raw =
+            "dial vless://11111111-2222-3333-4444-555555555555@edge.example:443?type=tcp#node";
+        let out = redact_log(raw);
+        assert_eq!(out, "dial vless://<redacted>");
+        assert!(!out.contains("11111111"));
+    }
+
+    #[test]
+    fn query_tokens_are_redacted_but_query_shape_stays() {
+        let raw = "GET https://sub.example/api?token=abc123&x=1";
+        assert_eq!(
+            redact_log(raw),
+            "GET https://sub.example/api?token=<redacted>&x=1"
+        );
+        assert_eq!(
+            redact_log("https://sub.example/path?x=1"),
+            "https://sub.example/path?x=1"
+        );
+    }
+
+    #[test]
+    fn key_values_and_auth_headers_are_redacted() {
+        assert_eq!(
+            redact_log("password=hunter2 private_key=abc"),
+            "password=<redacted> private_key=<redacted>"
+        );
+        assert_eq!(
+            redact_log("Authorization: Bearer abc.def"),
+            "Authorization: <redacted>"
+        );
+    }
+
+    #[test]
+    fn ordinary_diagnostics_survive() {
+        let raw = "INFO outbound connection to 1.2.3.4:443 via direct";
+        assert_eq!(redact_log(raw), raw);
+        assert_eq!(redact_log("a\n\nb"), "a\n\nb");
     }
 
     #[test]
