@@ -5,7 +5,7 @@ type Dict = Record<string, { ru: string; en: string }>;
 const dict: Dict = {
   appName: { ru: "K4R Neko VPN", en: "K4R Neko VPN" },
 
-  navHome: { ru: "Подключение", en: "Connection" },
+  navHome: { ru: "VPN", en: "VPN" },
   navServers: { ru: "Серверы", en: "Servers" },
   navSplit: { ru: "Разделение", en: "Split tunnel" },
   navRoute: { ru: "Маршрутизация", en: "Routing" },

@@ -313,13 +313,24 @@ export function HomeScreen(p: Props) {
             />
           </button>
 
-          {/* Подпись под шаром объясняет, что нажатие делает; маскот рядом,
-              а не поверх планеты */}
+          {/* Явная кнопка под шаром: клик по планете остаётся, но больше не
+              единственный способ включить VPN. Маскот — рядом, не поверх. */}
           <div className="orb-hint" data-state={view}>
             <span className="globe-mascot" aria-hidden data-state={view}>
               <img src={m} alt="" draggable={false} />
             </span>
-            <span className="hint-text">{t(hintKey)}</span>
+            <button
+              className="btn primary connect-btn"
+              onClick={toggleConnection}
+              disabled={conn === "connecting"}
+              title={t(hintKey)}
+            >
+              {conn === "connecting"
+                ? t("stConnecting")
+                : conn === "connected"
+                  ? t("disconnect")
+                  : t("connect")}
+            </button>
           </div>
 
           <div className="server-line">

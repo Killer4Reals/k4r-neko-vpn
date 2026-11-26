@@ -375,24 +375,27 @@ input {
 /* ---------- sidebar ---------- */
 
 .rail {
-  width: 72px;
-  flex: 0 0 72px;
+  width: 96px;
+  flex: 0 0 96px;
   border-right: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 14px 0;
-  gap: 6px;
+  padding: 12px 0;
+  gap: 4px;
   background: linear-gradient(180deg, var(--rail-sheen), transparent 40%);
 }
 
 .rail .nav {
   position: relative;
-  width: 46px;
-  height: 44px;
+  width: 80px;
+  height: 52px;
   border-radius: 11px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   color: var(--txt-3);
   transition: color 0.16s, background 0.16s;
 }
@@ -415,34 +418,25 @@ input {
   background: var(--green);
   box-shadow: 0 0 10px rgba(57, 255, 20, 0.65);
 }
-/* Подпись — по центру под иконкой, а не сбоку: сбоку она наезжала на
-   заголовок страницы и её принимали за часть контента. */
+/* Подпись всегда видна под иконкой: догадываться по пиктограмме — плохая
+   навигация, особенно на первом запуске. */
 .rail .nav .label {
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 6px);
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  color: var(--txt);
-  font-size: 12px;
-  padding: 5px 9px;
-  border-radius: 7px;
-  opacity: 0;
-  transform: translate(-50%, -4px);
-  pointer-events: none;
-  transition: opacity 0.14s, transform 0.14s;
-  transition-delay: 0.18s;
-  z-index: 20;
-}
-.rail .nav:hover .label {
+  color: inherit;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.01em;
   opacity: 1;
-  transform: translate(-50%, 0);
 }
-/* У активного пункта подпись не нужна: он и так подсвечен, а подсказка
-   остаётся висеть после клика и закрывает соседнюю иконку. */
-.rail .nav.active:hover .label {
-  opacity: 0;
+.rail .nav.active .label {
+  font-weight: 650;
+}
+.rail .nav:focus-visible {
+  outline: 2px solid var(--green-line);
+  outline-offset: 2px;
 }
 .rail .grow {
   flex: 1;
@@ -689,15 +683,32 @@ input {
 
 .btn.connect-btn {
   width: auto;
-  min-width: 158px;
-  padding: 9px 22px;
-  font-size: 13px;
+  min-width: 190px;
+  padding: 9px 20px;
+  font-size: 13.5px;
   border-radius: 999px;
   letter-spacing: 0.01em;
+  flex: 0 0 auto;
+}
+.btn.connect-btn:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
 }
 .btn.connect-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+/* Отключение — не главное действие: зелёная кнопка здесь читается как
+   «включить ещё раз». */
+.orb-hint[data-state="connected"] .connect-btn {
+  background: var(--bg-3);
+  border-color: var(--line);
+  color: var(--txt);
+  box-shadow: none;
+}
+.orb-hint[data-state="connected"] .connect-btn:hover {
+  background: var(--bg-2);
+  border-color: var(--txt-3);
 }
 
 /* Подпись под кружком: что произойдёт по нажатию, словами, а не догадкой */
