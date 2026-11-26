@@ -4,13 +4,18 @@ use std::path::{Path, PathBuf};
 use crate::subscription::Profile;
 
 /// Bumped whenever a stored file needs a one-time fix on load.
-pub const SCHEMA: u32 = 5;
+pub const SCHEMA: u32 = 6;
 
 /// Где приложение смотрит, не вышла ли новая версия. Маленький манифест в
 /// репозитории: одно поле версии и ссылка на установщик. Пусто у тех, кто
 /// сознательно очистил поле, — их выбор не переписываем.
 pub const UPDATE_URL: &str =
     "https://raw.githubusercontent.com/Killer4Reals/k4r-neko-vpn-releases/master/version.json";
+
+/// До 1.54 манифест лежал в приватном репозитории с исходниками. Без входа
+/// GitHub отдаёт на него 404, поэтому такие адреса переводим на публичный.
+pub const LEGACY_UPDATE_URL: &str =
+    "https://raw.githubusercontent.com/Killer4Reals/k4r-neko-vpn/master/version.json";
 
 fn yes() -> bool {
     true
@@ -357,6 +362,14 @@ pub fn load(data_dir: &Path) -> AppState {
             .retain(|p| !p.name.trim().is_empty() && !p.apps.is_empty());
         st.schema = 5;
     }
+    if st.schema < 6 {
+        // 1.54: манифест переехал в публичный репозиторий релизов. Старый
+        // адрес у уже установленных копий иначе так и остался бы мёртвым.
+        if st.update_url.trim() == LEGACY_UPDATE_URL {
+            st.update_url = UPDATE_URL.into();
+        }
+        st.schema = 6;
+    }
     // Правила, которые нечего применять, не храним: пустое значение или
     // незнакомое действие — это не правило, а мусор от старой версии.
     st.rules.retain(|r| {
@@ -464,6 +477,28 @@ mod tests {
         st.update_url = String::new();
         save(&dir, &st).unwrap();
         assert_eq!(load(&dir).update_url, UPDATE_URL);
+    }
+
+    #[test]
+    fn старый_приватный_адрес_переезжает_на_публичный() {
+        let dir = std::env::temp_dir().join("k4r-update-url-public");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut st = AppState::with_defaults();
+        st.schema = 5;
+        st.update_url = LEGACY_UPDATE_URL.into();
+        save(&dir, &st).unwrap();
+        assert_eq!(load(&dir).update_url, UPDATE_URL);
+    }
+
+    #[test]
+    fn свой_адрес_обновлений_миграция_не_перебивает() {
+        let dir = std::env::temp_dir().join("k4r-update-url-custom");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut st = AppState::with_defaults();
+        st.schema = 5;
+        st.update_url = "https://example.com/updates.json".into();
+        save(&dir, &st).unwrap();
+        assert_eq!(load(&dir).update_url, "https://example.com/updates.json");
     }
 
     #[test]
