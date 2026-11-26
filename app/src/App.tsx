@@ -5,7 +5,7 @@ import { useT, type Lang } from "./i18n";
 import { servers as demoCatalog, type AppEntry, type ConnState, type Server } from "./data";
 import { ccFromName, knownCc, nameOf, stripCc } from "./flags";
 import type { ChosenApp, ExitInfo, KillSwitchStatus, OrchRow, RouteRule, SplitPreset } from "./api";
-import { isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
+import { fillPool, isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 import { isDegraded, pushRate } from "./degrade";
 import { lastAliveAt, poolDead, slowSwitchTarget } from "./health";
 import { engineRestarted, pickFailover, unexpectedStop } from "./failover";
@@ -868,7 +868,9 @@ export default function App() {
       const excluded = chosen.filter((a) => !a.via).map((a) => a.exe);
       const via = chosen.filter((a) => a.via).map((a) => a.exe);
       try {
-        const pool = smartPool(profile, profiles, lat);
+        // Замеры могли не прийти к первому запуску: без добивки ядро получило
+        // бы один узел и не смогло бы переключиться при его падении.
+        const pool = fillPool(profile, smartPool(profile, profiles, lat), profiles);
         setPoolSize(pool.length || 1);
         const st = await api.engineStart(
           profile,

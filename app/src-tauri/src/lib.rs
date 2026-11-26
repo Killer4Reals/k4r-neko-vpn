@@ -1304,7 +1304,14 @@ fn engine_start(
         );
     }
 
-    let pool = pool.unwrap_or_default();
+    let mut pool = pool.unwrap_or_default();
+    // Even when the window has no measurements yet, the engine gets two more
+    // saved nodes: its own urltest then survives a dead first hop without us.
+    for extra in background_pool(&saved, &profile) {
+        if extra.id != profile.id && !pool.iter().any(|p| p.id == extra.id) {
+            pool.push(extra);
+        }
+    }
     // free_port() only probes a port and immediately closes it: Windows can hand
     // the same port to another process before sing-box binds it. On a busy
     // machine this looked like "auto-connect is broken" with a raw bind error.
@@ -1449,6 +1456,21 @@ fn engine_stop(
     status
 }
 
+/// Пул для фонового запуска: окно могло ещё не померить пинг, но ядро само
+/// проверит эти узлы и переключится, если выбранный умрёт.
+fn background_pool(saved: &store::AppState, chosen: &Profile) -> Vec<Profile> {
+    let chosen_idx = saved
+        .profiles
+        .iter()
+        .position(|p| p.id == chosen.id)
+        .unwrap_or(0);
+    let reserve: Vec<bool> = saved.profiles.iter().map(|p| p.reserve).collect();
+    health::pool_indices(&reserve, chosen_idx, engine::SMART_POOL)
+        .into_iter()
+        .filter_map(|i| saved.profiles.get(i).cloned())
+        .collect()
+}
+
 /// Ставит следующий сервер из подписки, пропуская уже проверенные.
 /// Выбор владельца не перезаписываем: это обход на время, а не новая настройка.
 fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
@@ -1465,6 +1487,7 @@ fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
     };
     saved.selected = saved.profiles[idx].id.clone();
     let profile = saved.profiles[idx].clone();
+    let pool = background_pool(&saved, &profile);
     let excluded: Vec<String> = saved
         .split
         .iter()
@@ -1492,7 +1515,7 @@ fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
         app.clone(),
         state,
         profile,
-        None,
+        Some(pool),
         excluded,
         dns,
         Some(saved.split_mode.clone()),
@@ -1521,6 +1544,7 @@ fn connect_saved(app: &tauri::AppHandle) -> Result<(), String> {
         .or_else(|| saved.profiles.first())
         .cloned()
         .ok_or_else(|| "нет серверов".to_string())?;
+    let pool = background_pool(&saved, &profile);
     let excluded: Vec<String> = saved
         .split
         .iter()
@@ -1543,7 +1567,7 @@ fn connect_saved(app: &tauri::AppHandle) -> Result<(), String> {
         app.clone(),
         state,
         profile,
-        None,
+        Some(pool),
         excluded,
         dns,
         Some(saved.split_mode.clone()),

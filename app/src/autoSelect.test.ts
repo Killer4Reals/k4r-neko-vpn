@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUSY_BYTES_PER_SEC, isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
+import { fillPool, BUSY_BYTES_PER_SEC, isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 
 const m = (id: string, ms: number | null) => ({ id, ms });
 
@@ -82,5 +82,29 @@ describe("умный пул узлов", () => {
 
   it("не больше трёх узлов", () => {
     expect(smartPool(nodes[0], nodes, ms, 3)).toHaveLength(3);
+  });
+
+  it("добивает пул без замеров, чтобы первый запуск пережил падение узла", () => {
+    expect(fillPool(nodes[0], [], nodes).map((n) => n.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("сохраняет измеренный порядок и не дублирует узлы", () => {
+    const measured = [nodes[0], nodes[2]];
+    expect(fillPool(nodes[0], measured, nodes).map((n) => n.id)).toEqual(["a", "c", "b"]);
+  });
+
+  it("резервные узлы идут после основных", () => {
+    const withReserve = [
+      { id: "a" },
+      { id: "r1", reserve: true },
+      { id: "b" },
+      { id: "r2", reserve: true },
+    ];
+    expect(fillPool(withReserve[0], [], withReserve).map((n) => n.id)).toEqual(["a", "b", "r1"]);
+  });
+
+  it("не раздувает пул сверх лимита и не падает без выбранного", () => {
+    expect(fillPool(nodes[0], [], nodes, 1).map((n) => n.id)).toEqual(["a"]);
+    expect(fillPool(undefined, [], nodes)).toEqual([]);
   });
 });

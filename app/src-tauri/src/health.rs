@@ -29,6 +29,27 @@ pub fn next_index(current: usize, len: usize, skip: usize) -> Option<usize> {
     Some(idx)
 }
 
+/// Узлы для фонового пула, когда окно ещё не нарисовало список: выбранный
+/// первым, дальше основные, и только если их не хватило — резервные. Порядок
+/// повторяет `smartPool` на фронтенде, чтобы фон и окно строили один пул.
+pub fn pool_indices(reserve: &[bool], chosen: usize, limit: usize) -> Vec<usize> {
+    if chosen >= reserve.len() || limit == 0 {
+        return Vec::new();
+    }
+    let mut out = vec![chosen];
+    for (i, is_reserve) in reserve.iter().enumerate() {
+        if i != chosen && !*is_reserve && out.len() < limit {
+            out.push(i);
+        }
+    }
+    for (i, is_reserve) in reserve.iter().enumerate() {
+        if i != chosen && *is_reserve && out.len() < limit {
+            out.push(i);
+        }
+    }
+    out
+}
+
 /// Идут ли данные через туннель. Спрашиваем адрес без DNS: мёртвый резолвер
 /// не должен превращаться в «сервер плохой».
 pub fn healthy() -> bool {
@@ -58,6 +79,18 @@ mod tests {
     fn with_a_single_server_there_is_nowhere_to_switch() {
         assert_eq!(next_index(0, 1, 0), None);
         assert_eq!(next_index(0, 0, 0), None);
+    }
+
+    #[test]
+    fn background_pool_prefers_main_nodes_and_falls_back_to_reserve() {
+        assert_eq!(
+            pool_indices(&[false, false, true, false], 0, 3),
+            vec![0, 1, 3]
+        );
+        assert_eq!(pool_indices(&[false, true], 0, 3), vec![0, 1]);
+        assert_eq!(pool_indices(&[true, true], 1, 3), vec![1, 0]);
+        assert_eq!(pool_indices(&[false, false], 0, 1), vec![0]);
+        assert!(pool_indices(&[false], 3, 3).is_empty());
     }
 
     #[test]

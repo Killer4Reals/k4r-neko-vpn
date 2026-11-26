@@ -94,3 +94,27 @@ export function smartPool<T extends { id: string }>(
     .sort((a, b) => (ms[a.id] as number) - (ms[b.id] as number));
   return [chosen, ...rest.slice(0, Math.max(0, limit - 1))].slice(0, limit);
 }
+
+/**
+ * Добивает пул до рабочего размера, если замеров ещё нет. Без этого первое
+ * подключение после запуска шло в один узел: ядру нечем было заменить упавший,
+ * даже если в подписке одиннадцать живых серверов. Резерв идёт последним.
+ */
+export function fillPool<T extends { id: string; reserve?: boolean }>(
+  chosen: T | undefined,
+  measured: T[],
+  all: T[],
+  limit = 3,
+): T[] {
+  if (!chosen) return [];
+  const out = measured.filter((p) => p.id !== chosen.id).slice(0, Math.max(0, limit - 1));
+  const has = (id: string) => id === chosen.id || out.some((p) => p.id === id);
+  for (const reservePass of [false, true]) {
+    for (const p of all) {
+      if (out.length >= limit - 1) break;
+      if (!!p.reserve !== reservePass || has(p.id)) continue;
+      out.push(p);
+    }
+  }
+  return [chosen, ...out].slice(0, limit);
+}
