@@ -126,16 +126,28 @@ pub fn args_from_preset(path: &Path) -> Result<Vec<String>, String> {
 }
 
 /// A foreign winws2 (e.g. the Zapret GUI the owner is using) must never be touched.
+/// Есть ли в выводе tasklist процесс с таким именем.
+///
+/// Отдельной функцией, чтобы проверить разбор без запуска процессов.
+fn tasklist_has(output: &str, image: &str) -> bool {
+    let needle = image.trim_end_matches(".exe").to_lowercase();
+    output.to_lowercase().contains(&needle)
+}
+
+/// Чужой Zapret — это и winws2 (Zapret 2), и winws (старый Zapret).
+/// Проверять только winws2 нельзя: работающий winws тогда выглядит как
+/// «запущено ничего», и приложение лезет со своим пресетом в тот же WinDivert.
 pub fn external_instance_running() -> bool {
-    let mut cmd = Command::new("tasklist");
-    cmd.args(["/FI", "IMAGENAME eq winws2.exe", "/NH"]);
-    crate::engine::hidden(&mut cmd);
-    let Ok(out) = cmd.output() else {
-        return false;
-    };
-    String::from_utf8_lossy(&out.stdout)
-        .to_lowercase()
-        .contains("winws2")
+    ["winws2.exe", "winws.exe"].iter().any(|image| {
+        let mut cmd = Command::new("tasklist");
+        let filter = format!("IMAGENAME eq {image}");
+        cmd.args(["/FI", &filter, "/NH"]);
+        crate::engine::hidden(&mut cmd);
+        let Ok(out) = cmd.output() else {
+            return false;
+        };
+        tasklist_has(&String::from_utf8_lossy(&out.stdout), image)
+    })
 }
 
 pub fn start(
@@ -286,6 +298,13 @@ mod tests {
             presets.len()
         );
         assert!(presets.contains(&"general ALT9 1.10.3 (game filter).txt".to_string()));
+    }
+
+    #[test]
+    fn sees_both_zapret_process_names() {
+        assert!(tasklist_has("winws.exe 16664 Console 1 12 345 K", "winws.exe"));
+        assert!(tasklist_has("winws2.exe 1 Console", "winws2.exe"));
+        assert!(!tasklist_has("INFO: No tasks are running", "winws.exe"));
     }
 
     #[test]
