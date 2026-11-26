@@ -73,6 +73,33 @@ export function human(bytes: number): string {
   return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
 }
 
+/** Верхняя граница графика: круглое число, чтобы подписи оси читались. */
+export function niceMax(peak: number): number {
+  if (!Number.isFinite(peak) || peak <= 0) return 1;
+  const exp = Math.floor(Math.log10(peak));
+  const base = 10 ** exp;
+  const n = peak / base;
+  const step =
+    n <= 1 ? 1
+    : n <= 1.25 ? 1.25
+    : n <= 1.5 ? 1.5
+    : n <= 2 ? 2
+    : n <= 2.5 ? 2.5
+    : n <= 3 ? 3
+    : n <= 4 ? 4
+    : n <= 5 ? 5
+    : n <= 6 ? 6
+    : n <= 8 ? 8
+    : 10;
+  return step * base;
+}
+
+/** Три отметки оси: верх, середина, ноль. Верх не обрезает пиковый столбик. */
+export function axisTicks(peak: number): number[] {
+  const top = niceMax(peak);
+  return [top, top / 2, 0];
+}
+
 /** Высота столбика в процентах от максимума (минимум 2% для ненулевых дней). */
 export function barHeight(value: number, peak: number): number {
   if (peak <= 0 || value <= 0) return 0;

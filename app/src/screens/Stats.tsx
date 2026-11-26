@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import { barHeight, human, totals, windowOf, type DayTraffic } from "../stats";
+import { axisTicks, barHeight, human, niceMax, totals, windowOf, type DayTraffic } from "../stats";
 import { Rings } from "../Rings";
 import { ringPct } from "../ringMath";
 
@@ -71,71 +71,58 @@ export function StatsScreen({ t, head = true }: Props) {
           </div>
         ) : (
           <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${view.length}, 1fr)`,
-                alignItems: "stretch",
-                gap: 4,
-                height: 178,
-                padding: "8px 0 0",
-                borderBottom: "1px solid var(--line)",
-              }}
-            >
-              {view.map((d, i) => {
-                const value = d.down + d.up;
-                // На 30 днях подписи каждого столбца превращаются в кашу:
-                // оставляем первые/последние и каждый пятый день.
-                const showDay = span === 7 || i === 0 || i === view.length - 1 || i % 5 === 0;
-                return (
-                  <div
-                    key={d.day}
-                    style={{
-                      height: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "flex-end",
-                      alignItems: "center",
-                      gap: 6,
-                      minWidth: 0,
-                    }}
-                  >
-                    <div
-                      title={`${d.day}: ${human(value)}`}
-                      aria-label={`${d.day}: ${human(value)}`}
-                      style={{
-                        flex: 1,
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "flex-end",
-                        justifyContent: "center",
-                        minHeight: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: `${barHeight(value, peak)}%`,
-                          minHeight: value > 0 ? 3 : 2,
-                          // столбец шириной в ячейку выглядит как заливка, если
-                          // день всего один: держим полосу и центрируем её
-                          width: "100%",
-                          maxWidth: 34,
-                          background: value > 0 ? "var(--green, #39FF14)" : "rgba(136,136,136,0.25)",
-                          borderRadius: 4,
-                        }}
-                      />
-                    </div>
-                    <span className="muted" style={{ fontSize: 10, whiteSpace: "nowrap" }}>
-                      {showDay ? d.day.slice(5).replace("-", ".") : ""}
-                    </span>
+            {(() => {
+              const top = niceMax(peak);
+              const ticks = axisTicks(peak);
+              const columns = { gridTemplateColumns: `repeat(${view.length}, minmax(0, 1fr))` };
+              return (
+                <div className="chart">
+                  <div className="chart-axis" aria-hidden="true">
+                    {ticks.map((v, i) => (
+                      <span key={i}>{human(v)}</span>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-            <div className="muted" style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 4 }}>
-              <span>{view[0]?.day.slice(5).replace("-", ".")}</span>
-              <span>{t("statsToday")}</span>
-            </div>
+                  <div className="chart-main">
+                    <div className="chart-plot">
+                      <div className="chart-grid" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </div>
+                      <div className="chart-bars" role="list" aria-label={t("statsTitle")} style={columns}>
+                        {view.map((d) => {
+                          const value = d.down + d.up;
+                          return (
+                            <div
+                              key={d.day}
+                              className="chart-col"
+                              role="listitem"
+                              title={`${d.day}: ${human(value)}`}
+                              aria-label={`${d.day}: ${human(value)}`}
+                            >
+                              <div
+                                className="chart-bar"
+                                data-empty={value > 0 ? "false" : "true"}
+                                style={{
+                                  height: `${barHeight(value, top)}%`,
+                                  minHeight: value > 0 ? 3 : 2,
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="chart-days" style={columns} aria-hidden="true">
+                      {view.map((d, i) => {
+                        const showDay = span === 7 || i === 0 || i === view.length - 1 || i % 5 === 0;
+                        return <span key={d.day}>{showDay ? d.day.slice(5).replace("-", ".") : ""}</span>;
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div style={{ marginTop: 14, display: "grid", gap: 6 }}>
               <div className="row" style={{ padding: "4px 0" }}>

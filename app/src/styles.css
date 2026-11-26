@@ -333,7 +333,7 @@ input {
 }
 
 .titlebar .brand span.tag {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.9px;
   color: var(--txt-3);
@@ -426,7 +426,7 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: inherit;
-  font-size: 10px;
+  font-size: 10.5px;
   line-height: 1;
   letter-spacing: 0.01em;
   opacity: 1;
@@ -466,7 +466,7 @@ input {
 .page-head p {
   margin: 0;
   color: var(--txt-3);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 /* ---------- home ---------- */
@@ -767,7 +767,7 @@ input {
 }
 .dns-legend b {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--txt-2);
   margin-right: 2px;
 }
@@ -855,7 +855,7 @@ input {
   min-width: 44px;
   justify-content: center;
   padding: 4px 8px;
-  font-size: 10.5px;
+  font-size: 11px;
   font-family: var(--mono);
   letter-spacing: 0.03em;
 }
@@ -903,13 +903,13 @@ input {
 }
 .flag-text {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.6px;
   color: var(--txt-2);
 }
 .flag-text[data-size="sm"] {
-  font-size: 8.5px;
+  font-size: 9.5px;
 }
 
 .flag-code {
@@ -921,7 +921,7 @@ input {
   border: 1px solid var(--line);
   background: var(--bg-3);
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.6px;
   color: var(--txt-2);
@@ -960,7 +960,7 @@ input {
   background: var(--stat-bg);
 }
 .stat .k {
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--txt-3);
@@ -973,7 +973,7 @@ input {
 }
 .stat .v small {
   color: var(--txt-3);
-  font-size: 10.5px;
+  font-size: 11px;
   margin-left: 2px;
 }
 
@@ -1460,7 +1460,7 @@ select.input {
   border: 1px solid var(--line);
   display: grid;
   place-items: center;
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--txt-3);
   font-family: var(--mono);
 }
@@ -3224,7 +3224,7 @@ html[data-accent="ice"] {
 }
 
 .passport-score small {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--txt-3);
   font-weight: 500;
 }
@@ -3262,13 +3262,13 @@ html[data-accent="ice"] {
 }
 
 .passport-latency small {
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--txt-3);
 }
 
 .passport-latency em {
   margin-left: 4px;
-  font-size: 10px;
+  font-size: 10.5px;
   font-style: normal;
   color: var(--txt-3);
 }
@@ -3287,7 +3287,7 @@ html[data-accent="ice"] {
 }
 
 .passport-cell .k {
-  font-size: 9.5px;
+  font-size: 10.5px;
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--txt-3);
@@ -3315,12 +3315,12 @@ html[data-accent="ice"] {
   align-self: flex-start;
   margin-top: 2px;
   padding: 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .passport-note {
   margin: 8px 0 0;
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.35;
   color: var(--warn-text, #ffd166);
 }
@@ -3391,7 +3391,7 @@ html[data-accent="ice"] {
   display: flex;
   gap: 14px;
   margin-top: -6px;
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--txt-3);
 }
 
@@ -3468,9 +3468,131 @@ html[data-accent="ice"] {
 }
 
 .ring-text span {
-  font-size: 9.5px;
+  font-size: 10.5px;
   letter-spacing: 0.4px;
   color: var(--txt-3);
+}
+
+/* График трафика: ось и сетка, иначе столбики — просто красивые палочки. */
+.chart {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chart-axis {
+  position: relative;
+  height: 178px;
+  color: var(--txt-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.chart-axis span {
+  position: absolute;
+  right: 0;
+  white-space: nowrap;
+}
+
+.chart-axis span:nth-child(1) {
+  top: 0;
+}
+
+.chart-axis span:nth-child(2) {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.chart-axis span:nth-child(3) {
+  bottom: 0;
+}
+
+.chart-main {
+  min-width: 0;
+}
+
+.chart-plot {
+  position: relative;
+  height: 178px;
+}
+
+.chart-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.chart-grid i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.chart-grid i:nth-child(1) {
+  top: 0;
+}
+
+.chart-grid i:nth-child(2) {
+  top: 50%;
+}
+
+.chart-grid i:nth-child(3) {
+  bottom: 0;
+}
+
+.chart-bars {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  gap: 4px;
+}
+
+.chart-col {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+}
+
+.chart-bar {
+  width: 100%;
+  max-width: 34px;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--green);
+  box-shadow: 0 0 12px -5px var(--green);
+}
+
+.chart-bar[data-empty="true"] {
+  background: rgba(136, 136, 136, 0.2);
+  box-shadow: none;
+}
+
+.chart-days {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+  color: var(--txt-3);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.chart-days span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .chart {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3891,7 +4013,7 @@ html[data-mini] #root { background: transparent; }
 .mini-foot { margin-top: auto; display: flex; align-items: baseline; gap: 14px; }
 .mini-speed { display: flex; align-items: baseline; gap: 4px; font-size: 11px; color: var(--txt-3); }
 .mini-speed b { font-size: 15px; color: var(--txt); font-variant-numeric: tabular-nums; }
-.mini-speed i { font-style: normal; font-size: 10px; }
+.mini-speed i { font-style: normal; font-size: 10.5px; }
 .mini-btn {
   margin-left: auto; padding: 8px 14px; border-radius: 9px;
   background: var(--green); color: var(--on-accent);
@@ -3957,7 +4079,7 @@ html[data-mini] #root { background: transparent; }
 }
 .preset-apply b {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--txt-3);
   background: var(--bg-3);
   padding: 1px 6px;

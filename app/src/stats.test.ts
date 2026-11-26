@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barHeight, dayKey, human, totals, windowOf } from "./stats";
+import { axisTicks, barHeight, dayKey, human, niceMax, totals, windowOf } from "./stats";
 
 const day = (d: string, down: number, up = 0) => ({ day: d, down, up });
 
@@ -58,6 +58,15 @@ describe("helpers", () => {
     expect(barHeight(0, 100)).toBe(0);
     expect(barHeight(50, 100)).toBe(50);
     expect(barHeight(1, 1000000)).toBe(2);
+  });
+
+  it("rounds the chart top up and never hides the peak", () => {
+    expect(niceMax(0)).toBe(1);
+    expect(niceMax(1)).toBe(1);
+    expect(niceMax(44_000_000)).toBe(50_000_000);
+    expect(niceMax(1_500)).toBe(1_500);
+    expect(niceMax(1_070_000_000)).toBe(1_250_000_000);
+    expect(axisTicks(44_000_000)).toEqual([50_000_000, 25_000_000, 0]);
   });
 
   it("builds a local day key", () => {

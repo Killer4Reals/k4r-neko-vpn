@@ -461,7 +461,6 @@ export function ServersScreen(p: Props) {
             </button>
           </div>
         </div>
-        <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>{t("wgHint")}</div>
         {wgOpen && (
           <div style={{ marginTop: 10 }}>
             <div className="field">
