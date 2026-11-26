@@ -1786,14 +1786,6 @@ async fn speed_test() -> Result<serde_json::Value, String> {
 
 /// Запускает файл отвязанно от нашего процесса: установщик не должен умереть
 /// вместе с клиентом, который его скачал.
-fn launch_detached(path: &std::path::Path) -> Result<(), String> {
-    let mut cmd = std::process::Command::new(path);
-    engine::hidden(&mut cmd);
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| format!("не смог запустить установщик: {e}"))
-}
-
 #[tauri::command]
 fn engine_traffic(engine: State<'_, engine::Engine>) -> engine::Traffic {
     engine::traffic(&engine)
