@@ -45,6 +45,7 @@ pub fn step(
     current: &str,
     quiet: bool,
     pending: Option<&str>,
+    baseline: &str,
 ) -> (bool, Option<String>) {
     if current.is_empty() || current == TUN_ADDR_V4 {
         // Ушли в туннель или остались без сети: отложенное не пригодится.
@@ -57,10 +58,16 @@ pub fn step(
             (true, None)
         };
     }
-    match pending {
-        Some(p) if !quiet && p == current => (true, None),
-        _ => (false, pending.map(str::to_string)),
+    if !quiet {
+        if let Some(p) = pending {
+            if p == current {
+                // Адрес вернулся к тому, что был до тихого периода: сеть
+                // мигнула туда-обратно, перезапускать нечего.
+                return (current != baseline, None);
+            }
+        }
     }
+    (false, pending.map(str::to_string))
 }
 
 /// Крутится всё время работы приложения. `on_switch` вызывается, когда сеть
@@ -75,6 +82,9 @@ where
         // адреса на TUN (или обратно после убитого ядра) иначе выглядит как
         // смена сети и вызывает лишний перезапуск.
         let mut quiet_until = Instant::now() + Duration::from_secs(20);
+        // Адрес на входе в тихий период: если сеть мигнёт туда-обратно, смена
+        // не должна считаться настоящей.
+        let mut quiet_base = previous.clone();
         let mut pending: Option<String> = None;
         loop {
             std::thread::sleep(Duration::from_secs(5));
@@ -84,11 +94,13 @@ where
                 &current,
                 Instant::now() < quiet_until,
                 pending.as_deref(),
+                &quiet_base,
             );
             pending = next_pending;
             if fire {
                 pending = None;
                 quiet_until = Instant::now() + Duration::from_secs(20);
+                quiet_base = current.clone();
                 on_switch();
             }
             previous = current;
@@ -132,32 +144,56 @@ mod tests {
 
     #[test]
     fn quiet_period_defers_the_change_until_it_settles() {
-        let (fire, pending) = step("10.0.0.5", "10.0.0.9", true, None);
+        let (fire, pending) = step("10.0.0.5", "10.0.0.9", true, None, "10.0.0.5");
         assert!(!fire);
         assert_eq!(pending.as_deref(), Some("10.0.0.9"));
         // Адрес продержался: на выходе из тихого периода переподключаемся.
-        let (fire, pending) = step("10.0.0.9", "10.0.0.9", false, pending.as_deref());
+        let (fire, pending) = step("10.0.0.9", "10.0.0.9", false, pending.as_deref(), "10.0.0.5");
         assert!(fire);
         assert!(pending.is_none());
     }
 
     #[test]
+    fn flicker_inside_the_quiet_period_does_not_restart() {
+        let (_, pending) = step("10.0.0.5", "10.0.0.9", true, None, "10.0.0.5");
+        assert_eq!(pending.as_deref(), Some("10.0.0.9"));
+        let (_, pending) = step(
+            "10.0.0.9",
+            "10.0.0.5",
+            true,
+            pending.as_deref(),
+            "10.0.0.5",
+        );
+        assert_eq!(pending.as_deref(), Some("10.0.0.5"));
+        // Вернулись туда же, откуда вышли: это мигание, а не смена сети.
+        let (fire, pending) = step(
+            "10.0.0.5",
+            "10.0.0.5",
+            false,
+            pending.as_deref(),
+            "10.0.0.5",
+        );
+        assert!(!fire);
+        assert!(pending.is_none());
+    }
+
+    #[test]
     fn tunnel_transition_clears_the_deferred_change() {
-        let (fire, pending) = step("10.0.0.9", TUN_ADDR_V4, false, Some("10.0.0.9"));
+        let (fire, pending) = step("10.0.0.9", TUN_ADDR_V4, false, Some("10.0.0.9"), "10.0.0.9");
         assert!(!fire);
         assert!(pending.is_none());
     }
 
     #[test]
     fn change_outside_the_quiet_period_fires_at_once() {
-        let (fire, pending) = step("10.0.0.5", "10.0.0.9", false, None);
+        let (fire, pending) = step("10.0.0.5", "10.0.0.9", false, None, "");
         assert!(fire);
         assert!(pending.is_none());
     }
 
     #[test]
     fn same_address_without_pending_does_not_fire() {
-        let (fire, pending) = step("10.0.0.9", "10.0.0.9", false, None);
+        let (fire, pending) = step("10.0.0.9", "10.0.0.9", false, None, "");
         assert!(!fire);
         assert!(pending.is_none());
     }

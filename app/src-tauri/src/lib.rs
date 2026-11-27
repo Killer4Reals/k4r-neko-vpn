@@ -1233,6 +1233,10 @@ fn engine_start(
     // ожидания готовности, не видит ещё не сохранённый процесс и оставляет
     // туннель жить при выключенном интерфейсе.
     let _op = engine.op.lock().unwrap();
+    // Остановка ради перезапуска оставляет статус Idle на всё время старта.
+    // Пока живёт отметка, public_status говорит «подключаемся», и фронтенд не
+    // принимает это за обрыв.
+    let _starting = engine::begin_start(&engine);
     let bin = core_bin(&app);
     let log_path = data_dir(&app)?.join("logs").join("engine.log");
     engine::write_log_header(
@@ -1461,6 +1465,9 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generati
                             engine
                                 .recovering
                                 .store(false, std::sync::atomic::Ordering::SeqCst);
+                            engine
+                                .recover_attempts
+                                .store(0, std::sync::atomic::Ordering::SeqCst);
                             engine::stop_hold(&engine);
                             let _ = app.emit("engine-event", ok);
                         }
@@ -1525,6 +1532,12 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generati
 fn stop_engine(engine: &engine::Engine) -> engine::EngineStatus {
     let _op = engine.op.lock().unwrap();
     engine::stop(engine)
+}
+
+/// Сказать окну, что туннель выключили снаружи (трей, мини-плеер): иначе
+/// фронтенд увидит Idle, решит, что это обрыв, и поднимет туннель обратно.
+fn announce_off(app: &tauri::AppHandle) {
+    let _ = app.emit("tunnel-off", ());
 }
 
 #[tauri::command]
@@ -1595,15 +1608,15 @@ fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
     } else {
         String::new()
     };
-    {
-        let state = app.state::<engine::Engine>();
-        let _ = stop_engine(&state);
-    }
-    std::thread::sleep(std::time::Duration::from_millis(300));
     let state = app.state::<engine::Engine>();
+    // Смена узла — не обрыв: пока идёт остановка и новый запуск, интерфейс
+    // должен видеть «подключаемся», иначе запустит свой failover.
+    let _starting = engine::begin_start(&state);
+    let _ = stop_engine(&state);
+    std::thread::sleep(std::time::Duration::from_millis(300));
     engine_start(
         app.clone(),
-        state,
+        app.state::<engine::Engine>(),
         profile,
         Some(pool),
         excluded,
@@ -2246,6 +2259,7 @@ async fn quick_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if saved.kill_switch {
         let _ = wfp::disable();
     }
+    announce_off(&app);
     refresh_tray(&app);
     Ok(())
 }
@@ -2442,38 +2456,51 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             }
             // Быстрое включение/выключение: то же, что кнопка в окне, но без окна.
             if id == "toggle" {
-                let running = {
-                    // «Переподключаемся» — тоже работающий туннель: клик по
-                    // трею должен его выключить, а не запустить второй раз.
-                    let st = app.state::<engine::Engine>();
-                    let engine_state = engine::public_status(&st).state;
-                    engine_state == engine::EngineState::Running
-                        || engine_state == engine::EngineState::Starting
-                };
-                let result = if running {
-                    let st = app.state::<engine::Engine>();
-                    let _ = stop_engine(&st);
-                    let saved = data_dir(app).map(|d| store::load(&d)).unwrap_or_default();
-                    if saved.kill_switch {
-                        let _ = wfp::disable();
+                let handle = app.clone();
+                // Не держим цикл событий на замке запуска: стоп может ждать
+                // идущий старт или respawn, а окно всё это время должно жить.
+                std::thread::spawn(move || {
+                    let running = {
+                        // «Переподключаемся» — тоже работающий туннель: клик по
+                        // трею должен его выключить, а не запустить второй раз.
+                        let st = handle.state::<engine::Engine>();
+                        let engine_state = engine::public_status(&st).state;
+                        engine_state == engine::EngineState::Running
+                            || engine_state == engine::EngineState::Starting
+                    };
+                    let result = if running {
+                        let st = handle.state::<engine::Engine>();
+                        let _ = stop_engine(&st);
+                        let saved = data_dir(&handle)
+                            .map(|d| store::load(&d))
+                            .unwrap_or_default();
+                        if saved.kill_switch {
+                            let _ = wfp::disable();
+                        }
+                        announce_off(&handle);
+                        Ok(())
+                    } else {
+                        connect_saved(&handle)
+                    };
+                    if let Err(e) = result {
+                        eprintln!("туннель из трея не переключился: {e}");
                     }
-                    Ok(())
-                } else {
-                    connect_saved(app)
-                };
-                if let Err(e) = result {
-                    eprintln!("туннель из трея не переключился: {e}");
-                }
-                refresh_tray(app);
+                    refresh_tray(&handle);
+                });
                 return;
             }
             // «● Сервер» из меню: выбрать его и поднять туннель
             if let Some(rest) = id.strip_prefix("srv:") {
                 if let Ok(idx) = rest.parse::<usize>() {
-                    if let Err(e) = pick_server(app, idx) {
-                        eprintln!("сервер из трея не поднялся: {e}");
-                    }
+                    let handle = app.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = pick_server(&handle, idx) {
+                            eprintln!("сервер из трея не поднялся: {e}");
+                        }
+                        refresh_tray(&handle);
+                    });
                 }
+                return;
             }
         })
         .on_tray_icon_event(|tray, event| {
@@ -2552,14 +2579,13 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
     } else {
         String::new()
     };
-    {
-        let state = app.state::<engine::Engine>();
-        let _ = stop_engine(&state);
-    }
     let state = app.state::<engine::Engine>();
+    // Выбор узла из меню — тот же перезапуск, а не обрыв.
+    let _starting = engine::begin_start(&state);
+    let _ = stop_engine(&state);
     engine_start(
         app.clone(),
-        state,
+        app.state::<engine::Engine>(),
         profile,
         None,
         excluded,
@@ -2950,10 +2976,11 @@ pub fn run() {
                     if !running {
                         return;
                     }
-                    {
-                        let state = handle.state::<engine::Engine>();
-                        let _ = stop_engine(&state);
-                    }
+                    let state = handle.state::<engine::Engine>();
+                    // Перезапуск после смены сети: на время остановки, паузы и
+                    // старта это «подключаемся», а не обрыв.
+                    let _starting = engine::begin_start(&state);
+                    let _ = stop_engine(&state);
                     std::thread::sleep(std::time::Duration::from_millis(400));
                     if let Err(e) = connect_saved(&handle) {
                         eprintln!("после смены сети не переподключились: {e}");
@@ -3095,6 +3122,9 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 let engine = app.state::<engine::Engine>();
                 let _ = engine::stop(&engine);
+                // Выход мог застать старт между spawn и сохранением ребёнка:
+                // stop тогда видит None. Добиваем по известным путям ядра.
+                let _ = engine::kill_orphans(&core_paths(app));
                 let zapret = app.state::<zapret::Zapret>();
                 let _ = zapret::stop(&zapret);
             }

@@ -695,11 +695,11 @@ export default function App() {
           setConn((prev) => (prev === "connected" ? "idle" : prev));
           if (unexpected) failoverRef.current?.(st.message || "");
         } else if (st.state === "starting") {
-          // Супервизор перезапускает ядро: это не обрыв, и собственный failover
-          // здесь запрещён — иначе два механизма поднимают ядро по кругу.
-          if (tunnelWant.current === "on") {
-            setConn((prev) => (prev === "connected" ? prev : "connecting"));
-          }
+          // Супервизор перезапускает ядро или идёт смена узла: это не обрыв,
+          // и собственный failover здесь запрещён — иначе два механизма
+          // поднимают ядро по кругу. Но и зелёный статус при мёртвом туннеле
+          // показывать нельзя: честно «подключаемся».
+          if (tunnelWant.current === "on") setConn("connecting");
         } else if (st.state === "error" && tunnelWant.current !== "off") {
           const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "error");
           tunnelWasRunning.current = false;
@@ -718,6 +718,27 @@ export default function App() {
       window.clearInterval(id);
     };
   }, [inTauri]);
+
+  // Туннель могут выключить без окна — из трея или мини-плеера. Без этого
+  // события фронтенд увидит Idle, сочтёт его обрывом и поднимет туннель назад.
+  useEffect(() => {
+    if (!inTauri) return;
+    let un: (() => void) | undefined;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen("tunnel-off", () => {
+          tunnelWant.current = "off";
+          tunnelWasRunning.current = false;
+          setConn("idle");
+          setError("");
+        }),
+      )
+      .then((fn) => {
+        un = fn;
+      })
+      .catch(() => undefined);
+    return () => un?.();
+  }, []);
 
   useEffect(() => {
     if (!inTauri) return;

@@ -13,6 +13,22 @@ use crate::subscription::Profile;
 #[cfg(windows)]
 pub const HIDE_WINDOW: u32 = 0x0800_0000;
 
+/// Отметка «запуск в работе»: пока она жива, Idle в интерфейсе значит
+/// «подключаемся». Счётчик, а не флаг: вложенные запуски не должны снимать
+/// отметку друг друга.
+pub struct StartingScope<'a>(&'a Engine);
+
+pub fn begin_start(engine: &Engine) -> StartingScope<'_> {
+    engine.starting.fetch_add(1, Ordering::SeqCst);
+    StartingScope(engine)
+}
+
+impl Drop for StartingScope<'_> {
+    fn drop(&mut self) {
+        self.0.starting.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Адрес локального конца TUN. Один на конфиг, kill-switch и сторож сети:
 /// если значения разойдутся, сторож примет поднятый туннель за смену сети.
 pub const TUN_ADDR_V4: &str = "172.19.0.1";
@@ -73,6 +89,10 @@ pub struct Engine {
     /// Жива ли нить супервизора. Пока жива, падение ядра ещё может обернуться
     /// «переподключаемся»: интерфейсу рано устраивать собственный failover.
     pub supervising: AtomicBool,
+    /// Сколько запусков сейчас в работе. Остановка ради смены узла/сети на
+    /// время старта оставляет статус Idle; без счётчика интерфейс принимал это
+    /// за обрыв и запускал свой failover.
+    pub starting: AtomicU32,
     /// where the engine reports its own counters, and the last sample we took
     pub api: Mutex<Option<(u16, String)>>,
     pub last_sample: Mutex<Option<(u64, u64, std::time::Instant)>>,
@@ -91,6 +111,7 @@ impl Default for Engine {
             recovering: AtomicBool::new(false),
             recover_attempts: AtomicU32::new(0),
             supervising: AtomicBool::new(false),
+            starting: AtomicU32::new(0),
             api: Mutex::new(None),
             last_sample: Mutex::new(None),
         }
@@ -995,7 +1016,11 @@ pub fn kill_orphans(bins: &[PathBuf]) -> usize {
                         let mut len = buf.len() as u32;
                         if QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len) != 0 {
                             let image = String::from_utf16_lossy(&buf[..len as usize]);
-                            if targets.iter().any(|t| *t == image_key(&image)) {
+                            // Канонизируем и сторону процесса: ядро могло быть
+                            // запущено через junction или короткое имя, а наш
+                            // путь уже развёрнут в конечный.
+                            let process_key = exe_key(Path::new(&image));
+                            if targets.iter().any(|t| *t == process_key) {
                                 // Отдельный handle: читать чужой образ можно и
                                 // без права завершения, а просим его только
                                 // после точного совпадения пути.
@@ -1343,6 +1368,16 @@ pub fn poll(engine: &Engine) -> EngineStatus {
 /// собственным failover, и два механизма начинают поднимать ядро по кругу.
 pub fn public_status(engine: &Engine) -> EngineStatus {
     let status = poll(engine);
+    // Идёт запуск: статус уже Idle (старое ядро остановлено), но новое ещё
+    // поднимается. Для человека и фронтенда это «подключаемся», а не обрыв.
+    if status.state == EngineState::Idle && engine.starting.load(Ordering::SeqCst) > 0 {
+        return EngineStatus {
+            state: EngineState::Starting,
+            message: "подключаемся".into(),
+            server: status.server,
+            pid: 0,
+        };
+    }
     let supervised = engine.supervising.load(Ordering::SeqCst)
         || engine.recovering.load(Ordering::SeqCst);
     if status.state != EngineState::Error || !supervised {
@@ -1478,6 +1513,22 @@ mod tests {
         // Окончательная ошибка (супервизор сдался/вышел) снова видна интерфейсу.
         engine.supervising.store(false, Ordering::SeqCst);
         assert_eq!(super::public_status(&engine).state, EngineState::Error);
+    }
+
+    #[test]
+    fn a_start_in_progress_is_not_reported_as_idle() {
+        let engine = Engine::default();
+        assert_eq!(super::public_status(&engine).state, EngineState::Idle);
+        {
+            let _starting = super::begin_start(&engine);
+            assert_eq!(engine.starting.load(Ordering::SeqCst), 1);
+            assert_eq!(super::public_status(&engine).state, EngineState::Starting);
+            let _nested = super::begin_start(&engine);
+            assert_eq!(engine.starting.load(Ordering::SeqCst), 2);
+        }
+        // Оба охранника вышли — и только тогда снова честный Idle.
+        assert_eq!(engine.starting.load(Ordering::SeqCst), 0);
+        assert_eq!(super::public_status(&engine).state, EngineState::Idle);
     }
 
     #[test]
