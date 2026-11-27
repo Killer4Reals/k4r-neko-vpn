@@ -129,6 +129,7 @@ export const api = {
     mode: string,
     via: string[],
   ) => invoke<EngineStatus>("engine_start", { profile, pool, excluded, dns, mode, via }),
+  engineSwitch: (id: string) => invoke<void>("engine_switch", { id }),
   // release=false — это переподключение: блокировку не снимаем
   engineStop: (release = true) => invoke<EngineStatus>("engine_stop", { release }),
   killSwitchStatus: () => invoke<KillSwitchStatus>("kill_switch_status"),

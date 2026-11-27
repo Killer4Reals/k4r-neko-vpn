@@ -2596,6 +2596,21 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// Выбор узла из окна: тот же путь, что у меню трея, — с `begin_start`,
+/// остановкой старого ядра и запуском нового. Без него клик по строке менял
+/// только подпись, а трафик оставался на прежнем узле (нашла живая приёмка 1.59).
+#[tauri::command]
+fn engine_switch(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let dir = data_dir(&app)?;
+    let saved = store::load(&dir);
+    let idx = saved
+        .profiles
+        .iter()
+        .position(|p| p.id == id)
+        .ok_or_else(|| "такого сервера больше нет".to_string())?;
+    pick_server(&app, idx)
+}
+
 /// Что в меню трея сейчас: сколько серверов и какой выбран. Меню пересобираем
 /// только когда это меняется — иначе оно дёргалось бы на каждом сохранении.
 /// Какая подложка реально включилась: mica / acrylic / none (Win10).
@@ -3101,6 +3116,7 @@ pub fn run() {
             state_save,
             logs_tail,
             engine_start,
+            engine_switch,
             engine_stop,
             engine_status,
             engine_traffic,

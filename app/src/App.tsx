@@ -442,6 +442,9 @@ export default function App() {
   const tunnelWasRunning = useRef(false);
   /** Идёт автопереключение: не даём таймеру и триггеру потери сработать повторно. */
   const switching = useRef(false);
+  /// Смена узла из окна: пока команда в полёте, опрос не должен подменять
+  /// «подключаемся» зелёным статусом ещё живого старого ядра.
+  const switchBusy = useRef(false);
   const failoverRef = useRef<((reason?: string) => void) | null>(null);
   const lastFailover = useRef(0);
   const win = inTauri ? getCurrentWindow() : null;
@@ -681,6 +684,9 @@ export default function App() {
         if (!alive) return;
         if (st.state === "running") {
           if (tunnelWant.current === "off") return;
+          // Старое ядро ещё живо, а смена уже началась: не показываем зелёный
+          // статус до её завершения.
+          if (switchBusy.current) return;
           // Туннель мог быть поднят до открытия окна: без этой строки
           // неожиданное падение такого туннеля не считается неожиданным.
           tunnelWant.current = "on";
@@ -1005,6 +1011,43 @@ export default function App() {
     await stopTunnel(false);
     await startTunnel(onlyId);
   }, [stopTunnel, startTunnel]);
+
+  /**
+   * Клик по узлу при поднятом туннеле — это смена, а не «запомни на следующий
+   * раз». Идём тем же путём, что меню трея: бэкенд помечает старт `starting`,
+   * гасит старое ядро и поднимает новое, поэтому опрос не видит `idle` и не
+   * запускает второй failover. Без этого менялась только подпись, а трафик
+   * оставался на прежнем узле (нашла живая приёмка 1.59).
+   */
+  const selectServer = useCallback(
+    (id: string) => {
+      if (id === selectedId) return;
+      setSelectedId(id);
+      if (!inTauri || conn !== "connected" || switching.current) return;
+      switching.current = true;
+      switchBusy.current = true;
+      setError("");
+      setConn("connecting");
+      api
+        .engineSwitch(id)
+        .then(() => {
+          record("switch", selectedId, id);
+          // Команда вернулась только после успешного старта нового ядра.
+          setConn("connected");
+        })
+        .catch((e) => {
+          setConn("error");
+          setError(engineErrorText(String(e)));
+        })
+        .finally(() => {
+          switchBusy.current = false;
+          window.setTimeout(() => {
+            switching.current = false;
+          }, 1000);
+        });
+    },
+    [conn, engineErrorText, inTauri, record, selectedId],
+  );
 
   // Срок и остаток берём у действующей подписки: у разных подписок они разные
   const activeSub =
@@ -1844,7 +1887,7 @@ export default function App() {
     selected,
     servers: viewServers,
     selectedId,
-    setSelectedId,
+    setSelectedId: selectServer,
     catalog,
     chosen,
     assignApp,
