@@ -2560,7 +2560,9 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
         .get(idx)
         .cloned()
         .ok_or_else(|| "такого сервера больше нет".to_string())?;
-    saved.selected = profile.id.clone();
+    let previous = saved.selected.clone();
+    let profile_id = profile.id.clone();
+    saved.selected = profile_id.clone();
     store::save(&dir, &saved).map_err(|e| format!("не смог сохранить выбор: {e}"))?;
     let excluded: Vec<String> = saved
         .split
@@ -2583,7 +2585,7 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
     // Выбор узла из меню — тот же перезапуск, а не обрыв.
     let _starting = engine::begin_start(&state);
     let _ = stop_engine(&state);
-    engine_start(
+    let started = engine_start(
         app.clone(),
         app.state::<engine::Engine>(),
         profile,
@@ -2592,8 +2594,22 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
         dns,
         Some(saved.split_mode.clone()),
         Some(via),
-    )?;
-    Ok(())
+    );
+    match started {
+        Ok(_) => {
+            // Окно должно узнать о выборе из трея, иначе подпись и трафик
+            // разойдутся до следующего клика.
+            let _ = app.emit("server-switched", profile_id);
+            Ok(())
+        }
+        Err(e) => {
+            // Старт не удался — возвращаем прежний выбор, чтобы store не
+            // расходился с реально работающим узлом.
+            saved.selected = previous;
+            let _ = store::save(&dir, &saved);
+            Err(e)
+        }
+    }
 }
 
 /// Выбор узла из окна: тот же путь, что у меню трея, — с `begin_start`,

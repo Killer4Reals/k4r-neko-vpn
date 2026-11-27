@@ -445,6 +445,8 @@ export default function App() {
   /// Смена узла из окна: пока команда в полёте, опрос не должен подменять
   /// «подключаемся» зелёным статусом ещё живого старого ядра.
   const switchBusy = useRef(false);
+  /// Смена не удалась: не даём опросу уйти в failover и подменить узел молча.
+  const switchFailed = useRef(false);
   const failoverRef = useRef<((reason?: string) => void) | null>(null);
   const lastFailover = useRef(0);
   const win = inTauri ? getCurrentWindow() : null;
@@ -692,10 +694,15 @@ export default function App() {
           tunnelWant.current = "on";
           // Ядро могло только что подняться после перезапуска супервизором:
           // это не обрыв, и узел меняет только он.
+          // Ядро живо — значит, провалившаяся смена не оставила нас без VPN.
+          switchFailed.current = false;
           if (!tunnelWasRunning.current) setError("");
           tunnelWasRunning.current = true;
           setConn((prev) => (prev === "connected" ? prev : "connected"));
         } else if (st.state === "idle") {
+          // Смена в полёте или только что провалилась: не устраиваем failover
+          // поверх неё и не меняем узел без человека.
+          if (switchBusy.current || switchFailed.current) return;
           const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "idle");
           tunnelWasRunning.current = false;
           setConn((prev) => (prev === "connected" ? "idle" : prev));
@@ -707,6 +714,7 @@ export default function App() {
           // показывать нельзя: честно «подключаемся».
           if (tunnelWant.current === "on") setConn("connecting");
         } else if (st.state === "error" && tunnelWant.current !== "off") {
+          if (switchBusy.current || switchFailed.current) return;
           const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "error");
           tunnelWasRunning.current = false;
           setConn((prev) => (prev === "idle" ? prev : "error"));
@@ -737,6 +745,26 @@ export default function App() {
           tunnelWasRunning.current = false;
           setConn("idle");
           setError("");
+        }),
+      )
+      .then((fn) => {
+        un = fn;
+      })
+      .catch(() => undefined);
+    return () => un?.();
+  }, []);
+
+  // Узел сменили из трея: окно должно показать тот же выбор, а не старый.
+  useEffect(() => {
+    if (!inTauri) return;
+    let un: (() => void) | undefined;
+    import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<string>("server-switched", (e) => {
+          if (typeof e.payload === "string" && e.payload) {
+            switchFailed.current = false;
+            setSelectedId(e.payload);
+          }
         }),
       )
       .then((fn) => {
@@ -864,6 +892,7 @@ export default function App() {
 
   const startTunnel = useCallback(async (onlyId?: string) => {
     tunnelWant.current = "on";
+    switchFailed.current = false;
     setError("");
     setConn("connecting");
     prevTotals.current = null;
@@ -1025,22 +1054,47 @@ export default function App() {
       // Пока идёт подключение или смена, выбор не двигаем: иначе подпись
       // уедет на новый узел, а трафик останется на старом.
       if (switching.current || switchBusy.current || conn === "connecting") return;
+      const prevId = selectedId;
       setSelectedId(id);
       if (!inTauri || conn !== "connected") return;
       switching.current = true;
       switchBusy.current = true;
+      switchFailed.current = false;
       setError("");
       setConn("connecting");
       api
         .engineSwitch(id)
         .then(() => {
-          record("switch", selectedId, id);
+          record("switch", prevId, id);
+          // Поздний ответ не должен вернуть зелёный статус после выключения.
+          if (tunnelWant.current !== "on") {
+            setConn("idle");
+            return;
+          }
+          switchFailed.current = false;
           // Команда вернулась только после успешного старта нового ядра.
           setConn("connected");
         })
         .catch((e) => {
-          setConn("error");
+          // Выбор не должен оставаться на узле, который не поднялся.
+          switchFailed.current = true;
+          setSelectedId(prevId);
           setError(engineErrorText(String(e)));
+          api
+            .engineStatus()
+            .then((st) => {
+              if (st.state === "running") {
+                // Старое ядро пережило отказ: туннель цел, выбор вернули.
+                switchFailed.current = false;
+                setConn("connected");
+                setError("");
+              } else if (st.state === "starting") {
+                setConn("connecting");
+              } else {
+                setConn("error");
+              }
+            })
+            .catch(() => setConn("error"));
         })
         .finally(() => {
           switchBusy.current = false;
@@ -1290,7 +1344,7 @@ export default function App() {
         title: t("autoSwitchSlow"),
         body: `${t("slowSwitched")} ${name} · ${measured[targetId]} мс`,
       });
-      await reconnectTunnel();
+      await reconnectTunnel(targetId);
     };
     const timer = window.setInterval(() => void tick(), 10 * 60 * 1000);
     return () => window.clearInterval(timer);
@@ -1393,7 +1447,7 @@ export default function App() {
       setToast({ title, body: `${t("gamePicked")} ${name} · ${best.ms} мс` });
       // Переподключаемся только если туннель уже стоит: рвать ручное
       // подключение ради замера нельзя.
-      if (conn === "connected") await reconnectTunnel();
+      if (conn === "connected") await reconnectTunnel(best.p.id);
     },
     [conn, lat, measurePing, profiles, reconnectTunnel, selectedId, t],
   );
@@ -2048,7 +2102,7 @@ export default function App() {
                   const lb = measured[b.id] ?? Number.MAX_SAFE_INTEGER;
                   return la - lb;
                 })[0];
-                if (best) setSelectedId(best.id);
+                if (best) selectServer(best.id);
               }}
               dead={dead}
               lastAliveAt={lastOk}
