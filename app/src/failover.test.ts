@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { engineRestarted, pickFailover, unexpectedStop } from "./failover";
+import { pickFailover, unexpectedStop } from "./failover";
 
 const nodes = [{ id: "a" }, { id: "b" }, { id: "c" }];
 
@@ -13,13 +13,6 @@ describe("failover", () => {
   it("неожиданный idle/error при включённом желании — обрыв", () => {
     expect(unexpectedStop("on", true, "idle")).toBe(true);
     expect(unexpectedStop("on", true, "error")).toBe(true);
-  });
-
-  it("смена pid живого движка — тоже обрыв, но первый запуск — нет", () => {
-    expect(engineRestarted(100, 200, true)).toBe(true);
-    expect(engineRestarted(0, 200, true)).toBe(false);
-    expect(engineRestarted(100, 100, true)).toBe(false);
-    expect(engineRestarted(100, 200, false)).toBe(false);
   });
 
   it("выбирает живой узел с меньшим пингом, а не текущий", () => {

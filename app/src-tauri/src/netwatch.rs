@@ -9,6 +9,8 @@
 use std::net::UdpSocket;
 use std::time::{Duration, Instant};
 
+use crate::engine::TUN_ADDR_V4;
+
 /// Адрес, которым ОС собирается идти в интернет. Пустая строка — сети нет.
 /// DNS-сервер отвечать не обязан: UDP-сокет не отправляет пакетов, только
 /// выбирает маршрут, поэтому функция работает даже когда всё заблокировано.
@@ -25,16 +27,40 @@ pub fn local_ip() -> String {
     }
 }
 
-/// Локальный адрес TUN. После подъёма туннеля маршрут по умолчанию уходит в
-/// него, и опрос видит этот адрес. Это не смена сети: иначе автоподключение
-/// зацикливается «подняли туннель → увидели TUN → переподключились».
-const TUN_LOCAL: &str = "172.19.0.1";
-
 /// Пора ли переподключаться: адрес сменился на другой непустой.
 /// Появление сети после её отсутствия — тоже смена: туннель к тому моменту
-/// уже мёртв.
+/// уже мёртв. Переход на адрес TUN сменой не считается: это наш же туннель.
 pub fn changed(previous: &str, current: &str) -> bool {
-    !current.is_empty() && current != TUN_LOCAL && previous != current
+    !current.is_empty() && current != TUN_ADDR_V4 && previous != current
+}
+
+/// Один шаг сторожа: (переподключаться?, новое отложенное изменение).
+///
+/// В тихий период после старта смену не теряем, а запоминаем. Если адрес
+/// продержался до конца периода, переподключаемся: иначе смена Wi-Fi в первые
+/// двадцать секунд после запуска оставалась бы незамеченной до следующей
+/// смены сети.
+pub fn step(
+    previous: &str,
+    current: &str,
+    quiet: bool,
+    pending: Option<&str>,
+) -> (bool, Option<String>) {
+    if current.is_empty() || current == TUN_ADDR_V4 {
+        // Ушли в туннель или остались без сети: отложенное не пригодится.
+        return (false, None);
+    }
+    if changed(previous, current) {
+        return if quiet {
+            (false, Some(current.to_string()))
+        } else {
+            (true, None)
+        };
+    }
+    match pending {
+        Some(p) if !quiet && p == current => (true, None),
+        _ => (false, pending.map(str::to_string)),
+    }
 }
 
 /// Крутится всё время работы приложения. `on_switch` вызывается, когда сеть
@@ -49,16 +75,23 @@ where
         // адреса на TUN (или обратно после убитого ядра) иначе выглядит как
         // смена сети и вызывает лишний перезапуск.
         let mut quiet_until = Instant::now() + Duration::from_secs(20);
+        let mut pending: Option<String> = None;
         loop {
             std::thread::sleep(Duration::from_secs(5));
             let current = local_ip();
-            if changed(&previous, &current) && Instant::now() >= quiet_until {
-                previous = current;
+            let (fire, next_pending) = step(
+                &previous,
+                &current,
+                Instant::now() < quiet_until,
+                pending.as_deref(),
+            );
+            pending = next_pending;
+            if fire {
+                pending = None;
                 quiet_until = Instant::now() + Duration::from_secs(20);
                 on_switch();
-            } else {
-                previous = current;
             }
+            previous = current;
         }
     });
 }
@@ -79,9 +112,9 @@ mod tests {
 
     #[test]
     fn tunnel_address_is_not_a_network_switch() {
-        assert!(!changed("192.168.1.5", TUN_LOCAL));
+        assert!(!changed("192.168.1.5", TUN_ADDR_V4));
         // Выход из туннеля на реальную сеть — наоборот, повод переподняться.
-        assert!(changed(TUN_LOCAL, "192.168.1.5"));
+        assert!(changed(TUN_ADDR_V4, "192.168.1.5"));
     }
 
     #[test]
@@ -95,6 +128,38 @@ mod tests {
         // переподключаться некуда, ждём возвращения
         assert!(!changed("192.168.1.5", ""));
         assert!(!changed("", ""));
+    }
+
+    #[test]
+    fn quiet_period_defers_the_change_until_it_settles() {
+        let (fire, pending) = step("10.0.0.5", "10.0.0.9", true, None);
+        assert!(!fire);
+        assert_eq!(pending.as_deref(), Some("10.0.0.9"));
+        // Адрес продержался: на выходе из тихого периода переподключаемся.
+        let (fire, pending) = step("10.0.0.9", "10.0.0.9", false, pending.as_deref());
+        assert!(fire);
+        assert!(pending.is_none());
+    }
+
+    #[test]
+    fn tunnel_transition_clears_the_deferred_change() {
+        let (fire, pending) = step("10.0.0.9", TUN_ADDR_V4, false, Some("10.0.0.9"));
+        assert!(!fire);
+        assert!(pending.is_none());
+    }
+
+    #[test]
+    fn change_outside_the_quiet_period_fires_at_once() {
+        let (fire, pending) = step("10.0.0.5", "10.0.0.9", false, None);
+        assert!(fire);
+        assert!(pending.is_none());
+    }
+
+    #[test]
+    fn same_address_without_pending_does_not_fire() {
+        let (fire, pending) = step("10.0.0.9", "10.0.0.9", false, None);
+        assert!(!fire);
+        assert!(pending.is_none());
     }
 
     #[test]

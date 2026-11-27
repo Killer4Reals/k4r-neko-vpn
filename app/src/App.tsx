@@ -684,9 +684,8 @@ export default function App() {
           // Туннель мог быть поднят до открытия окна: без этой строки
           // неожиданное падение такого туннеля не считается неожиданным.
           tunnelWant.current = "on";
-          // Смена pid — это штатный перезапуск супервизором, а не обрыв:
-          // переключать узел здесь нельзя, иначе два механизма failover
-          // начинают гонку и поднимают ядро по кругу.
+          // Ядро могло только что подняться после перезапуска супервизором:
+          // это не обрыв, и узел меняет только он.
           if (!tunnelWasRunning.current) setError("");
           tunnelWasRunning.current = true;
           setConn((prev) => (prev === "connected" ? prev : "connected"));
@@ -695,6 +694,12 @@ export default function App() {
           tunnelWasRunning.current = false;
           setConn((prev) => (prev === "connected" ? "idle" : prev));
           if (unexpected) failoverRef.current?.(st.message || "");
+        } else if (st.state === "starting") {
+          // Супервизор перезапускает ядро: это не обрыв, и собственный failover
+          // здесь запрещён — иначе два механизма поднимают ядро по кругу.
+          if (tunnelWant.current === "on") {
+            setConn((prev) => (prev === "connected" ? prev : "connecting"));
+          }
         } else if (st.state === "error" && tunnelWant.current !== "off") {
           const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "error");
           tunnelWasRunning.current = false;
@@ -1386,7 +1391,10 @@ export default function App() {
     // сторож честно ждал бы второй пробы, хотя трафика нет вовсе.
     let coreAlive = true;
     try {
-      coreAlive = (await api.engineStatus()).state === "running";
+      const state = (await api.engineStatus()).state;
+      // «starting» — это штатный перезапуск супервизором, а не мёртвое ядро:
+      // иначе сторож дублирует перезапуск и обрывает только что поднятый туннель.
+      coreAlive = state === "running" || state === "starting";
     } catch {
       coreAlive = true; // статус не спросили — это не приговор движку
     }

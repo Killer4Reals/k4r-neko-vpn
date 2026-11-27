@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use crate::store::{redact_log, RouteRule};
@@ -12,6 +12,10 @@ use crate::subscription::Profile;
 /// CREATE_NO_WINDOW: a console child must never flash a black window on screen.
 #[cfg(windows)]
 pub const HIDE_WINDOW: u32 = 0x0800_0000;
+
+/// Адрес локального конца TUN. Один на конфиг, kill-switch и сторож сети:
+/// если значения разойдутся, сторож примет поднятый туннель за смену сети.
+pub const TUN_ADDR_V4: &str = "172.19.0.1";
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -60,6 +64,15 @@ pub struct Engine {
     /// Номер поколения: старый супервизор после нового запуска обязан выйти,
     /// иначе два потока начнут перезапускать один и тот же движок.
     pub supervisor: AtomicU64,
+    /// Супервизор сейчас перезапускает ядро. Для интерфейса это «подключаемся»,
+    /// а не окончательная ошибка: иначе UI устраивает свой failover и гонка
+    /// двух механизмов поднимает ядро по кругу.
+    pub recovering: AtomicBool,
+    /// Какая попытка перезапуска идёт: только для честной надписи человеку.
+    pub recover_attempts: AtomicU32,
+    /// Жива ли нить супервизора. Пока жива, падение ядра ещё может обернуться
+    /// «переподключаемся»: интерфейсу рано устраивать собственный failover.
+    pub supervising: AtomicBool,
     /// where the engine reports its own counters, and the last sample we took
     pub api: Mutex<Option<(u16, String)>>,
     pub last_sample: Mutex<Option<(u64, u64, std::time::Instant)>>,
@@ -75,6 +88,9 @@ impl Default for Engine {
             config_path: Mutex::new(None),
             wanted: AtomicBool::new(false),
             supervisor: AtomicU64::new(0),
+            recovering: AtomicBool::new(false),
+            recover_attempts: AtomicU32::new(0),
+            supervising: AtomicBool::new(false),
             api: Mutex::new(None),
             last_sample: Mutex::new(None),
         }
@@ -602,7 +618,7 @@ fn build_with_outbound(
         "inbounds": [{
             "type": "tun",
             "tag": "tun-in",
-            "address": ["172.19.0.1/30"],
+            "address": [format!("{TUN_ADDR_V4}/30")],
             "mtu": 1350,
             "auto_route": true,
             "strict_route": true,
@@ -935,21 +951,28 @@ fn failure_reason(config: &Value, server_name: &str, tail: &str, kind: &str) -> 
 /// держать TUN. Новый запуск тогда получает занятый адаптер и «не поднимается».
 /// Убиваем только процессы, чей образ — ровно наше ядро: чужой sing-box не трогаем.
 #[cfg(windows)]
-pub fn kill_orphans(bin: &Path) -> usize {
-    use windows_sys::Win32::Foundation::CloseHandle;
+pub fn kill_orphans(bins: &[PathBuf]) -> usize {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
     use windows_sys::Win32::System::Threading::{
         OpenProcess, QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
-        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
     };
 
-    if !bin.is_file() {
+    // Путь обновлённого ядра и путь встроенного могут отличаться, а после
+    // обновления приложения старый процесс живёт именно по прежнему пути.
+    // Поэтому сверяем со всеми известными путями, а не с одним.
+    let targets: Vec<String> = bins
+        .iter()
+        .filter(|p| p.is_file())
+        .map(|p| exe_key(p))
+        .collect();
+    if targets.is_empty() {
         return 0;
     }
-    let target = bin.to_string_lossy();
     let mut killed = 0usize;
     // SAFETY: снимок, процессные handles и буфер живут внутри вызова; размер
     // структуры отдан ядру до первого Process32FirstW.
@@ -964,21 +987,33 @@ pub fn kill_orphans(bin: &Path) -> usize {
             loop {
                 let pid = entry.th32ProcessID;
                 if pid > 4 {
-                    let h = OpenProcess(
-                        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
-                        0,
-                        pid,
-                    );
+                    // Сначала только читаем образ: право на завершение просим
+                    // лишь для тех процессов, которые действительно наши.
+                    let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
                     if !h.is_null() {
                         let mut buf = [0u16; 1024];
                         let mut len = buf.len() as u32;
                         if QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len) != 0 {
                             let image = String::from_utf16_lossy(&buf[..len as usize]);
-                            if same_exe(&image, &target) && TerminateProcess(h, 1) != 0 {
-                                // Ждём, пока ядро отпустит TUN, иначе следующий
-                                // запуск снова упрётся в занятый адаптер.
-                                WaitForSingleObject(h, 3000);
-                                killed += 1;
+                            if targets.iter().any(|t| *t == image_key(&image)) {
+                                // Отдельный handle: читать чужой образ можно и
+                                // без права завершения, а просим его только
+                                // после точного совпадения пути.
+                                let hk = OpenProcess(
+                                    PROCESS_TERMINATE | PROCESS_SYNCHRONIZE,
+                                    0,
+                                    pid,
+                                );
+                                if !hk.is_null() {
+                                    // Ждём, пока ядро отпустит TUN, иначе
+                                    // следующий запуск снова упрётся в адаптер.
+                                    if TerminateProcess(hk, 1) != 0
+                                        && WaitForSingleObject(hk, 3000) == WAIT_OBJECT_0
+                                    {
+                                        killed += 1;
+                                    }
+                                    CloseHandle(hk);
+                                }
                             }
                         }
                         CloseHandle(h);
@@ -995,16 +1030,21 @@ pub fn kill_orphans(bin: &Path) -> usize {
 }
 
 #[cfg(not(windows))]
-pub fn kill_orphans(_bin: &Path) -> usize {
+pub fn kill_orphans(_bins: &[PathBuf]) -> usize {
     0
 }
 
-/// Сравнение путей процессов: Windows отдаёт их без учёта регистра, иногда с
-/// префиксом \\?\.
-fn same_exe(left: &str, right: &str) -> bool {
-    let left = left.strip_prefix(r"\\?\").unwrap_or(left);
-    let right = right.strip_prefix(r"\\?\").unwrap_or(right);
-    left.eq_ignore_ascii_case(right)
+/// Полный путь процесса в сравнимом виде: без префикса \\?\, без учёта
+/// регистра.
+fn image_key(path: &str) -> String {
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_lowercase()
+}
+
+/// Канонический ключ файла ядра: canonicalize убирает `..`, `.` и короткие
+/// имена, префикс \\?\ снимается для сравнения с образом процесса.
+fn exe_key(path: &Path) -> String {
+    let full = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    image_key(&full.to_string_lossy())
 }
 
 pub fn start(
@@ -1098,6 +1138,8 @@ pub fn start(
     *engine.config_path.lock().unwrap() = Some(cfg_path.clone());
     *engine.status.lock().unwrap() = status.clone();
     engine.wanted.store(true, Ordering::SeqCst);
+    engine.recovering.store(false, Ordering::SeqCst);
+    engine.recover_attempts.store(0, Ordering::SeqCst);
     Ok(status)
 }
 
@@ -1108,6 +1150,11 @@ pub fn stop(engine: &Engine) -> EngineStatus {
         let _ = child.wait();
     }
     engine.wanted.store(false, Ordering::SeqCst);
+    // Останавливаем и надзор: иначе старый флаг «супервизор жив» переживёт
+    // неудачный запуск и спрячет настоящую ошибку от интерфейса.
+    engine.supervising.store(false, Ordering::SeqCst);
+    engine.recovering.store(false, Ordering::SeqCst);
+    engine.recover_attempts.store(0, Ordering::SeqCst);
     let status = EngineStatus::default();
     *engine.status.lock().unwrap() = status.clone();
     status
@@ -1175,7 +1222,7 @@ pub fn hold_config() -> Value {
         "inbounds": [{
             "type": "tun",
             "tag": "tun-in",
-            "address": ["172.19.0.1/30"],
+            "address": [format!("{TUN_ADDR_V4}/30")],
             "mtu": 1350,
             "auto_route": true,
             "strict_route": true,
@@ -1291,6 +1338,29 @@ pub fn poll(engine: &Engine) -> EngineStatus {
     engine.status.lock().unwrap().clone()
 }
 
+/// Статус для интерфейса. Пока супервизор перезапускает ядро, честнее показать
+/// «подключаемся (n/3)», чем окончательную ошибку: на ошибку фронтенд отвечает
+/// собственным failover, и два механизма начинают поднимать ядро по кругу.
+pub fn public_status(engine: &Engine) -> EngineStatus {
+    let status = poll(engine);
+    let supervised = engine.supervising.load(Ordering::SeqCst)
+        || engine.recovering.load(Ordering::SeqCst);
+    if status.state != EngineState::Error || !supervised {
+        return status;
+    }
+    let attempts = engine.recover_attempts.load(Ordering::SeqCst);
+    EngineStatus {
+        state: EngineState::Starting,
+        message: if attempts > 0 {
+            format!("переподключаемся ({attempts}/3)")
+        } else {
+            "движок перезапускается".into()
+        },
+        server: status.server,
+        pid: 0,
+    }
+}
+
 /// A running process is not the same as a working tunnel: sing-box happily
 /// runs a config with no tun in it. We only call it connected when the engine
 /// has really brought the adapter up.
@@ -1365,7 +1435,7 @@ mod tests {
             .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(1200));
         assert!(child.try_wait().unwrap().is_none(), "ядро не запустилось");
-        let killed = super::kill_orphans(&bin);
+        let killed = super::kill_orphans(std::slice::from_ref(&bin));
         assert!(killed >= 1, "уборка не нашла процесс");
         let _ = child.wait();
         let _ = std::fs::remove_dir_all(&dir);
@@ -1373,18 +1443,51 @@ mod tests {
 
     #[test]
     fn orphan_check_compares_the_exact_engine_path() {
-        assert!(super::same_exe(
-            r"\\?\C:\Apps\K4R\sing-box.exe",
-            r"c:\apps\k4r\SING-BOX.EXE"
-        ));
-        assert!(super::same_exe(
-            r"C:\Apps\K4R\sing-box.exe",
-            r"\\?\c:\apps\k4r\SING-BOX.EXE"
-        ));
-        assert!(!super::same_exe(
-            r"C:\Apps\K4R\sing-box.exe",
-            r"C:\Other\sing-box.exe"
-        ));
+        assert_eq!(
+            super::image_key(r"\\?\C:\Apps\K4R\sing-box.exe"),
+            super::image_key(r"c:\apps\k4r\SING-BOX.EXE")
+        );
+        assert_eq!(
+            super::image_key(r"C:\Apps\K4R\sing-box.exe"),
+            super::image_key(r"\\?\c:\apps\k4r\SING-BOX.EXE")
+        );
+        assert_ne!(
+            super::image_key(r"C:\Apps\K4R\sing-box.exe"),
+            super::image_key(r"C:\Other\sing-box.exe")
+        );
+    }
+
+    #[test]
+    fn recovering_engine_is_not_reported_as_dead() {
+        let engine = Engine::default();
+        *engine.status.lock().unwrap() = EngineStatus {
+            state: EngineState::Error,
+            message: "туннель упал".into(),
+            server: "Токио".into(),
+            pid: 0,
+        };
+        engine.recovering.store(true, Ordering::SeqCst);
+        engine.recover_attempts.store(2, Ordering::SeqCst);
+        let st = super::public_status(&engine);
+        assert_eq!(st.state, EngineState::Starting);
+        assert!(st.message.contains("2/3"), "{}", st.message);
+        // Ошибка при живом супервизоре — всё ещё «переподключаемся».
+        engine.recovering.store(false, Ordering::SeqCst);
+        engine.supervising.store(true, Ordering::SeqCst);
+        assert_eq!(super::public_status(&engine).state, EngineState::Starting);
+        // Окончательная ошибка (супервизор сдался/вышел) снова видна интерфейсу.
+        engine.supervising.store(false, Ordering::SeqCst);
+        assert_eq!(super::public_status(&engine).state, EngineState::Error);
+    }
+
+    #[test]
+    fn tun_address_in_config_matches_the_netwatch_constant() {
+        let opts = NetOptions::default();
+        let cfg = build_pool_config(&sample(), &[], &[], &opts);
+        assert_eq!(
+            cfg["inbounds"][0]["address"][0],
+            format!("{TUN_ADDR_V4}/30")
+        );
     }
 
     #[test]

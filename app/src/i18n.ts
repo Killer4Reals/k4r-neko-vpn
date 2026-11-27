@@ -28,10 +28,6 @@ const dict: Dict = {
     ru: "Движок неожиданно остановился. Переключаюсь на другой узел",
     en: "The engine stopped unexpectedly. Switching to another node",
   },
-  failoverRestarted: {
-    ru: "Супервизор перезапустил движок. Переключаюсь на другой узел",
-    en: "The supervisor restarted the engine. Switching to another node",
-  },
   failoverSwitching: { ru: "Переключаюсь на", en: "Switching to" },
   failoverNoAlt: {
     ru: "Живых альтернатив нет. Проверь подписку и повтори",

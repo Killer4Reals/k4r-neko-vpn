@@ -15,14 +15,6 @@ export function unexpectedStop(
 }
 
 /**
- * Rust-супервизор поднимает тот же узел и меняет pid раньше, чем фронтенд
- * успевает увидеть idle/error. Смена pid при живом туннеле — тоже обрыв.
- */
-export function engineRestarted(lastPid: number, pid: number, wasRunning: boolean): boolean {
-  return wasRunning && lastPid > 0 && pid > 0 && pid !== lastPid;
-}
-
-/**
  * Кого поднять после обрыва: сначала живой узел с лучшим замером, затем любой
  * непроверенный, но не текущий и не карантинный. null — альтернатив нет.
  */

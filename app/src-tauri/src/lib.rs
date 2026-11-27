@@ -55,6 +55,19 @@ fn core_bin(app: &tauri::AppHandle) -> PathBuf {
     engine::sidecar_with_core(&resources_dir(app), data.as_deref())
 }
 
+/// Все пути, по которым может жить наше ядро: обновлённое в данных,
+/// встроенное рядом с программой и запасное в resources. После обновления
+/// приложения осиротевший процесс остаётся по прежнему пути — его тоже надо
+/// узнать, иначе уборка не найдёт его и TUN останется занятым.
+fn core_paths(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let resources = resources_dir(app);
+    let mut out = vec![core_bin(app), engine::sidecar_path(&resources)];
+    if let Ok(dir) = data_dir(app) {
+        out.push(engine::updated_core(&dir));
+    }
+    out
+}
+
 fn resources_dir(app: &tauri::AppHandle) -> PathBuf {
     app.path()
         .resource_dir()
@@ -1220,12 +1233,6 @@ fn engine_start(
     // ожидания готовности, не видит ещё не сохранённый процесс и оставляет
     // туннель жить при выключенном интерфейсе.
     let _op = engine.op.lock().unwrap();
-    // Этот запуск отменяет прошлый супервизор ещё до остановки старого ядра:
-    // иначе он успел бы перезапустить старый конфиг поверх нового.
-    let generation = engine
-        .supervisor
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        + 1;
     let bin = core_bin(&app);
     let log_path = data_dir(&app)?.join("logs").join("engine.log");
     engine::write_log_header(
@@ -1322,6 +1329,13 @@ fn engine_start(
     // the same port to another process before sing-box binds it. On a busy
     // machine this looked like "auto-connect is broken" with a raw bind error.
     // Retry with a fresh port instead of showing that to a person.
+    // Этот запуск отменяет прошлый супервизор ровно перед остановкой старого
+    // ядра. Раньше номер менялся в самом начале: ошибка сборки конфига
+    // оставляла живой туннель без надзора.
+    let generation = engine
+        .supervisor
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        + 1;
     let mut attempt = 0;
     let status = loop {
         *engine.api.lock().unwrap() = Some((opts.api_port, opts.api_secret.clone()));
@@ -1347,10 +1361,41 @@ fn engine_start(
     Ok(status)
 }
 
+/// Пока нить супервизора жива, падение ядра для интерфейса — «переподключаемся»,
+/// а не окончательная ошибка. Сбрасываем флаг только если поколение всё ещё
+/// наше: старый супервизор не должен погасить флаг нового.
+struct SuperviseGuard<'a> {
+    engine: &'a engine::Engine,
+    generation: u64,
+}
+
+impl Drop for SuperviseGuard<'_> {
+    fn drop(&mut self) {
+        if self.engine.supervisor.load(std::sync::atomic::Ordering::SeqCst) == self.generation {
+            self.engine
+                .supervising
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            self.engine
+                .recovering
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            self.engine
+                .recover_attempts
+                .store(0, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
 /// Watches the engine: three silent retries, then an honest error in the UI.
 fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generation: u64) {
     std::thread::spawn(move || {
         let engine = app.state::<engine::Engine>();
+        engine
+            .supervising
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let _guard = SuperviseGuard {
+            engine: &engine,
+            generation,
+        };
         let mut attempts: u32 = 0;
         loop {
             std::thread::sleep(std::time::Duration::from_millis(1200));
@@ -1365,11 +1410,30 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generati
                 engine::EngineState::Idle => break,
                 engine::EngineState::Error if reconnect && attempts < 3 => {
                     attempts += 1;
+                    // Пока идёт перезапуск, интерфейс должен видеть «подключаемся»,
+                    // а не окончательную ошибку. Иначе фронтенд запускает свой
+                    // failover и два механизма поднимают ядро по кругу.
+                    engine
+                        .recovering
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    engine
+                        .recover_attempts
+                        .store(attempts, std::sync::atomic::Ordering::SeqCst);
                     let bin = core_bin(&app);
                     let log_path = match data_dir(&app) {
                         Ok(d) => d.join("logs").join("engine.log"),
                         Err(_) => break,
                     };
+                    std::thread::sleep(std::time::Duration::from_millis(1400));
+                    // Один владелец на пуск и стоп: держим op на время hold и
+                    // respawn, иначе новый запуск успеет поднять ядро, а мы
+                    // поверх поставим свой hold.
+                    let _op = engine.op.lock().unwrap();
+                    if engine.supervisor.load(std::sync::atomic::Ordering::SeqCst) != generation
+                        || !engine.wanted.load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        break;
+                    }
                     // Kill switch: no packet may slip out in the clear while we retry.
                     if kill_switch && engine::start_hold(&engine, &bin, &log_path) {
                         let _ = app.emit(
@@ -1391,18 +1455,12 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generati
                             pid: 0,
                         },
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(1400));
-                    // Новый запуск мог обогнать нас, пока мы ждали: не убиваем
-                    // только что поднятый движок старым конфигом.
-                    let _op = engine.op.lock().unwrap();
-                    if engine.supervisor.load(std::sync::atomic::Ordering::SeqCst) != generation
-                        || !engine.wanted.load(std::sync::atomic::Ordering::SeqCst)
-                    {
-                        break;
-                    }
                     match engine::respawn(&engine, &bin, &log_path, &st.server) {
                         Ok(ok) => {
                             attempts = 0;
+                            engine
+                                .recovering
+                                .store(false, std::sync::atomic::Ordering::SeqCst);
                             engine::stop_hold(&engine);
                             let _ = app.emit("engine-event", ok);
                         }
@@ -1420,7 +1478,18 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generati
                     }
                 }
                 engine::EngineState::Error => {
+                    engine
+                        .recovering
+                        .store(false, std::sync::atomic::Ordering::SeqCst);
                     let mut message = st.message.clone();
+                    // Hold ставим под тем же op, что и пуск/стоп: иначе он
+                    // может появиться уже после того, как новый движок занял TUN.
+                    let _op = engine.op.lock().unwrap();
+                    if engine.supervisor.load(std::sync::atomic::Ordering::SeqCst) != generation
+                        || !engine.wanted.load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        break;
+                    }
                     if kill_switch {
                         let bin = core_bin(&app);
                         if let Ok(d) = data_dir(&app) {
@@ -1449,6 +1518,13 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generati
             }
         }
     });
+}
+
+/// Остановка под тем же замком, что и запуск: «стоп» во время engine_start
+/// не должен убить только что поднятое ядро или оставить несохранённый процесс.
+fn stop_engine(engine: &engine::Engine) -> engine::EngineStatus {
+    let _op = engine.op.lock().unwrap();
+    engine::stop(engine)
 }
 
 #[tauri::command]
@@ -1521,7 +1597,7 @@ fn switch_server(app: &tauri::AppHandle, skip: usize) -> Result<(), String> {
     };
     {
         let state = app.state::<engine::Engine>();
-        let _ = engine::stop(&state);
+        let _ = stop_engine(&state);
     }
     std::thread::sleep(std::time::Duration::from_millis(300));
     let state = app.state::<engine::Engine>();
@@ -2018,7 +2094,7 @@ fn engine_traffic(engine: State<'_, engine::Engine>) -> engine::Traffic {
 
 #[tauri::command]
 fn engine_status(engine: State<'_, engine::Engine>) -> engine::EngineStatus {
-    engine::poll(&engine)
+    engine::public_status(&engine)
 }
 
 #[tauri::command]
@@ -2165,7 +2241,7 @@ async fn quick_connect(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 async fn quick_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     let st = app.state::<engine::Engine>();
-    let _ = engine::stop(&st);
+    let _ = stop_engine(&st);
     let saved = data_dir(&app).map(|d| store::load(&d)).unwrap_or_default();
     if saved.kill_switch {
         let _ = wfp::disable();
@@ -2248,7 +2324,7 @@ fn tray_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // не должен гадать, включено ли, и искать это в окне.
     let engine_state = {
         let st = app.state::<engine::Engine>();
-        engine::poll(&st).state
+        engine::public_status(&st).state
     };
     let (status_text, toggle_text) = match engine_state {
         engine::EngineState::Running => ("● Подключено", "Отключить"),
@@ -2367,14 +2443,16 @@ fn build_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
             // Быстрое включение/выключение: то же, что кнопка в окне, но без окна.
             if id == "toggle" {
                 let running = {
+                    // «Переподключаемся» — тоже работающий туннель: клик по
+                    // трею должен его выключить, а не запустить второй раз.
                     let st = app.state::<engine::Engine>();
-                    let engine_state = engine::poll(&st).state;
+                    let engine_state = engine::public_status(&st).state;
                     engine_state == engine::EngineState::Running
                         || engine_state == engine::EngineState::Starting
                 };
                 let result = if running {
                     let st = app.state::<engine::Engine>();
-                    let _ = engine::stop(&st);
+                    let _ = stop_engine(&st);
                     let saved = data_dir(app).map(|d| store::load(&d)).unwrap_or_default();
                     if saved.kill_switch {
                         let _ = wfp::disable();
@@ -2431,7 +2509,7 @@ fn tray_tooltip(app: &tauri::AppHandle) -> String {
         .unwrap_or_default();
     let state = {
         let st = app.state::<engine::Engine>();
-        engine::poll(&st).state
+        engine::public_status(&st).state
     };
     let head = match state {
         engine::EngineState::Running => "Защищено",
@@ -2476,7 +2554,7 @@ fn pick_server(app: &tauri::AppHandle, idx: usize) -> Result<(), String> {
     };
     {
         let state = app.state::<engine::Engine>();
-        let _ = engine::stop(&state);
+        let _ = stop_engine(&state);
     }
     let state = app.state::<engine::Engine>();
     engine_start(
@@ -2659,7 +2737,7 @@ fn refresh_tray(app: &tauri::AppHandle) {
             let saved = store::load(&d);
             let engine_state = {
                 let st = app.state::<engine::Engine>();
-                format!("{:?}", engine::poll(&st).state)
+                format!("{:?}", engine::public_status(&st).state)
             };
             let zapret_state = {
                 let st = app.state::<zapret::Zapret>();
@@ -2722,7 +2800,7 @@ pub fn run() {
             // Принудительно убитое приложение оставляло своё ядро с TUN:
             // следующий запуск не мог поднять адаптер. Чужой sing-box не трогаем,
             // сравнение идёт по точному пути нашего образа.
-            let cleaned = engine::kill_orphans(&core_bin(app.handle()));
+            let cleaned = engine::kill_orphans(&core_paths(app.handle()));
             if cleaned > 0 {
                 if let Ok(dir) = data_dir(app.handle()) {
                     note_app(&dir, &format!("убрано осиротевших ядер: {cleaned}"));
@@ -2874,7 +2952,7 @@ pub fn run() {
                     }
                     {
                         let state = handle.state::<engine::Engine>();
-                        let _ = engine::stop(&state);
+                        let _ = stop_engine(&state);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(400));
                     if let Err(e) = connect_saved(&handle) {
