@@ -901,9 +901,19 @@ export default function App() {
           splitMode,
           via,
         );
+        // Пока шёл запуск, человек мог выключить туннель (окно, трей,
+        // мини-плеер). Поздний ответ не должен вернуть зелёный статус.
+        if (tunnelWant.current !== "on") {
+          setConn("idle");
+          return;
+        }
         setConn(st.state === "running" ? "connected" : "error");
         if (st.state !== "running") setError(engineErrorText(st.message));
       } catch (e) {
+        if (tunnelWant.current !== "on") {
+          setConn("idle");
+          return;
+        }
         setConn("error");
         setError(engineErrorText(String(e)));
       }
