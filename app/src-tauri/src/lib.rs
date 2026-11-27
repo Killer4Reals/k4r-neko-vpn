@@ -1220,6 +1220,12 @@ fn engine_start(
     // ожидания готовности, не видит ещё не сохранённый процесс и оставляет
     // туннель жить при выключенном интерфейсе.
     let _op = engine.op.lock().unwrap();
+    // Этот запуск отменяет прошлый супервизор ещё до остановки старого ядра:
+    // иначе он успел бы перезапустить старый конфиг поверх нового.
+    let generation = engine
+        .supervisor
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+        + 1;
     let bin = core_bin(&app);
     let log_path = data_dir(&app)?.join("logs").join("engine.log");
     engine::write_log_header(
@@ -1337,17 +1343,20 @@ fn engine_start(
             }
         }
     };
-    supervise(app, saved.reconnect, saved.kill_switch);
+    supervise(app, saved.reconnect, saved.kill_switch, generation);
     Ok(status)
 }
 
 /// Watches the engine: three silent retries, then an honest error in the UI.
-fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
+fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool, generation: u64) {
     std::thread::spawn(move || {
         let engine = app.state::<engine::Engine>();
         let mut attempts: u32 = 0;
         loop {
             std::thread::sleep(std::time::Duration::from_millis(1200));
+            if engine.supervisor.load(std::sync::atomic::Ordering::SeqCst) != generation {
+                break;
+            }
             if !engine.wanted.load(std::sync::atomic::Ordering::SeqCst) {
                 break;
             }
@@ -1383,7 +1392,12 @@ fn supervise(app: tauri::AppHandle, reconnect: bool, kill_switch: bool) {
                         },
                     );
                     std::thread::sleep(std::time::Duration::from_millis(1400));
-                    if !engine.wanted.load(std::sync::atomic::Ordering::SeqCst) {
+                    // Новый запуск мог обогнать нас, пока мы ждали: не убиваем
+                    // только что поднятый движок старым конфигом.
+                    let _op = engine.op.lock().unwrap();
+                    if engine.supervisor.load(std::sync::atomic::Ordering::SeqCst) != generation
+                        || !engine.wanted.load(std::sync::atomic::Ordering::SeqCst)
+                    {
                         break;
                     }
                     match engine::respawn(&engine, &bin, &log_path, &st.server) {
@@ -2705,6 +2719,15 @@ pub fn run() {
         .manage(zapret::Zapret::default())
         .setup(move |app| {
             let handle = app.handle().clone();
+            // Принудительно убитое приложение оставляло своё ядро с TUN:
+            // следующий запуск не мог поднять адаптер. Чужой sing-box не трогаем,
+            // сравнение идёт по точному пути нашего образа.
+            let cleaned = engine::kill_orphans(&core_bin(app.handle()));
+            if cleaned > 0 {
+                if let Ok(dir) = data_dir(app.handle()) {
+                    note_app(&dir, &format!("убрано осиротевших ядер: {cleaned}"));
+                }
+            }
             single::serve(single, move || {
                 let outer = handle.clone();
                 let inner = handle.clone();

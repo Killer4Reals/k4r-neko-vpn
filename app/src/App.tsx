@@ -8,7 +8,7 @@ import type { ChosenApp, ExitInfo, KillSwitchStatus, OrchRow, RouteRule, SplitPr
 import { fillPool, isBusy, pickServer, smartPool, splitReserve } from "./autoSelect";
 import { isDegraded, pushRate } from "./degrade";
 import { lastAliveAt, poolDead, slowSwitchTarget } from "./health";
-import { engineRestarted, pickFailover, unexpectedStop } from "./failover";
+import { pickFailover, unexpectedStop } from "./failover";
 import { parseEvents, pushEvent, serializeEvents, type HistoryEvent } from "./history";
 import { HistoryScreen } from "./screens/History";
 import { activeScenario, changedKeys, scenarioById, type ScenarioId, type ScenarioSettings } from "./scenarios";
@@ -444,7 +444,6 @@ export default function App() {
   const switching = useRef(false);
   const failoverRef = useRef<((reason?: string) => void) | null>(null);
   const lastFailover = useRef(0);
-  const enginePid = useRef(0);
   const win = inTauri ? getCurrentWindow() : null;
 
   const t = useT(lang);
@@ -685,23 +684,20 @@ export default function App() {
           // Туннель мог быть поднят до открытия окна: без этой строки
           // неожиданное падение такого туннеля не считается неожиданным.
           tunnelWant.current = "on";
-          const pid = st.pid ?? 0;
-          const restarted = engineRestarted(enginePid.current, pid, tunnelWasRunning.current);
-          enginePid.current = pid;
+          // Смена pid — это штатный перезапуск супервизором, а не обрыв:
+          // переключать узел здесь нельзя, иначе два механизма failover
+          // начинают гонку и поднимают ядро по кругу.
           if (!tunnelWasRunning.current) setError("");
           tunnelWasRunning.current = true;
           setConn((prev) => (prev === "connected" ? prev : "connected"));
-          if (restarted) failoverRef.current?.(t("failoverRestarted"));
         } else if (st.state === "idle") {
           const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "idle");
           tunnelWasRunning.current = false;
-          enginePid.current = 0;
           setConn((prev) => (prev === "connected" ? "idle" : prev));
           if (unexpected) failoverRef.current?.(st.message || "");
         } else if (st.state === "error" && tunnelWant.current !== "off") {
           const unexpected = unexpectedStop(tunnelWant.current, tunnelWasRunning.current, "error");
           tunnelWasRunning.current = false;
-          enginePid.current = 0;
           setConn((prev) => (prev === "idle" ? prev : "error"));
           setError(st.message);
           if (unexpected) failoverRef.current?.(st.message || "");
@@ -790,7 +786,6 @@ export default function App() {
 
   const stopTunnel = useCallback(async (release = true) => {
     tunnelWant.current = "off";
-    enginePid.current = 0;
     setError("");
     setTunnelIssue("");
     setTunnelRecovered(false);
@@ -880,7 +875,6 @@ export default function App() {
           splitMode,
           via,
         );
-        enginePid.current = st.pid ?? 0;
         setConn(st.state === "running" ? "connected" : "error");
         if (st.state !== "running") setError(engineErrorText(st.message));
       } catch (e) {

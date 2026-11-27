@@ -3,7 +3,7 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use crate::store::{redact_log, RouteRule};
@@ -57,6 +57,9 @@ pub struct Engine {
     pub config_path: Mutex<Option<PathBuf>>,
     /// false when the user pressed "disconnect": the supervisor must not reconnect
     pub wanted: AtomicBool,
+    /// Номер поколения: старый супервизор после нового запуска обязан выйти,
+    /// иначе два потока начнут перезапускать один и тот же движок.
+    pub supervisor: AtomicU64,
     /// where the engine reports its own counters, and the last sample we took
     pub api: Mutex<Option<(u16, String)>>,
     pub last_sample: Mutex<Option<(u64, u64, std::time::Instant)>>,
@@ -71,6 +74,7 @@ impl Default for Engine {
             hold: Mutex::new(None),
             config_path: Mutex::new(None),
             wanted: AtomicBool::new(false),
+            supervisor: AtomicU64::new(0),
             api: Mutex::new(None),
             last_sample: Mutex::new(None),
         }
@@ -927,6 +931,82 @@ fn failure_reason(config: &Value, server_name: &str, tail: &str, kind: &str) -> 
     }
 }
 
+/// После аварии приложения дочерний sing-box может пережить родителя и
+/// держать TUN. Новый запуск тогда получает занятый адаптер и «не поднимается».
+/// Убиваем только процессы, чей образ — ровно наше ядро: чужой sing-box не трогаем.
+#[cfg(windows)]
+pub fn kill_orphans(bin: &Path) -> usize {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+    };
+
+    if !bin.is_file() {
+        return 0;
+    }
+    let target = bin.to_string_lossy();
+    let mut killed = 0usize;
+    // SAFETY: снимок, процессные handles и буфер живут внутри вызова; размер
+    // структуры отдан ядру до первого Process32FirstW.
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap.is_null() || snap as isize == -1 {
+            return 0;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        if Process32FirstW(snap, &mut entry) != 0 {
+            loop {
+                let pid = entry.th32ProcessID;
+                if pid > 4 {
+                    let h = OpenProcess(
+                        PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                        0,
+                        pid,
+                    );
+                    if !h.is_null() {
+                        let mut buf = [0u16; 1024];
+                        let mut len = buf.len() as u32;
+                        if QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len) != 0 {
+                            let image = String::from_utf16_lossy(&buf[..len as usize]);
+                            if same_exe(&image, &target) && TerminateProcess(h, 1) != 0 {
+                                // Ждём, пока ядро отпустит TUN, иначе следующий
+                                // запуск снова упрётся в занятый адаптер.
+                                WaitForSingleObject(h, 3000);
+                                killed += 1;
+                            }
+                        }
+                        CloseHandle(h);
+                    }
+                }
+                if Process32NextW(snap, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snap);
+    }
+    killed
+}
+
+#[cfg(not(windows))]
+pub fn kill_orphans(_bin: &Path) -> usize {
+    0
+}
+
+/// Сравнение путей процессов: Windows отдаёт их без учёта регистра, иногда с
+/// префиксом \\?\.
+fn same_exe(left: &str, right: &str) -> bool {
+    let left = left.strip_prefix(r"\\?\").unwrap_or(left);
+    let right = right.strip_prefix(r"\\?\").unwrap_or(right);
+    left.eq_ignore_ascii_case(right)
+}
+
 pub fn start(
     engine: &Engine,
     bin: &Path,
@@ -1258,6 +1338,55 @@ pub fn write_log_header(path: &Path, header: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "запускает настоящий sing-box; ручная проверка уборки"]
+    fn kills_orphan_with_our_engine_path() {
+        use std::process::Command;
+
+        let bin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("bin")
+            .join("sing-box.exe");
+        assert!(bin.is_file(), "нет {}", bin.display());
+        let dir = std::env::temp_dir().join(format!("k4r-orphan-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("socks.json");
+        std::fs::write(
+            &cfg,
+            r#"{"log":{"level":"info"},"inbounds":[{"type":"socks","listen":"127.0.0.1","listen_port":39997}],"outbounds":[{"type":"direct"}]}"#,
+        )
+        .unwrap();
+        let mut child = Command::new(&bin)
+            .args(["run", "-c"])
+            .arg(&cfg)
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        assert!(child.try_wait().unwrap().is_none(), "ядро не запустилось");
+        let killed = super::kill_orphans(&bin);
+        assert!(killed >= 1, "уборка не нашла процесс");
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn orphan_check_compares_the_exact_engine_path() {
+        assert!(super::same_exe(
+            r"\\?\C:\Apps\K4R\sing-box.exe",
+            r"c:\apps\k4r\SING-BOX.EXE"
+        ));
+        assert!(super::same_exe(
+            r"C:\Apps\K4R\sing-box.exe",
+            r"\\?\c:\apps\k4r\SING-BOX.EXE"
+        ));
+        assert!(!super::same_exe(
+            r"C:\Apps\K4R\sing-box.exe",
+            r"C:\Other\sing-box.exe"
+        ));
+    }
+
     #[test]
     fn server_address_comes_from_the_first_outbound() {
         let cfg: Value = serde_json::from_str(

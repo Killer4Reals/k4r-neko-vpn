@@ -25,11 +25,16 @@ pub fn local_ip() -> String {
     }
 }
 
+/// Локальный адрес TUN. После подъёма туннеля маршрут по умолчанию уходит в
+/// него, и опрос видит этот адрес. Это не смена сети: иначе автоподключение
+/// зацикливается «подняли туннель → увидели TUN → переподключились».
+const TUN_LOCAL: &str = "172.19.0.1";
+
 /// Пора ли переподключаться: адрес сменился на другой непустой.
 /// Появление сети после её отсутствия — тоже смена: туннель к тому моменту
 /// уже мёртв.
 pub fn changed(previous: &str, current: &str) -> bool {
-    !current.is_empty() && previous != current
+    !current.is_empty() && current != TUN_LOCAL && previous != current
 }
 
 /// Крутится всё время работы приложения. `on_switch` вызывается, когда сеть
@@ -40,9 +45,10 @@ where
 {
     std::thread::spawn(move || {
         let mut previous = local_ip();
-        // после перезапуска даём туннелю встать, иначе один и тот же сбой
-        // сети вызовет лавину перезапусков
-        let mut quiet_until = Instant::now();
+        // После старта даём туннелю встать: первый же переход с реального
+        // адреса на TUN (или обратно после убитого ядра) иначе выглядит как
+        // смена сети и вызывает лишний перезапуск.
+        let mut quiet_until = Instant::now() + Duration::from_secs(20);
         loop {
             std::thread::sleep(Duration::from_secs(5));
             let current = local_ip();
@@ -69,6 +75,13 @@ mod tests {
     #[test]
     fn another_address_is_a_change() {
         assert!(changed("192.168.1.5", "10.0.0.7"));
+    }
+
+    #[test]
+    fn tunnel_address_is_not_a_network_switch() {
+        assert!(!changed("192.168.1.5", TUN_LOCAL));
+        // Выход из туннеля на реальную сеть — наоборот, повод переподняться.
+        assert!(changed(TUN_LOCAL, "192.168.1.5"));
     }
 
     #[test]
