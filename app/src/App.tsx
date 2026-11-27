@@ -1022,8 +1022,11 @@ export default function App() {
   const selectServer = useCallback(
     (id: string) => {
       if (id === selectedId) return;
+      // Пока идёт подключение или смена, выбор не двигаем: иначе подпись
+      // уедет на новый узел, а трафик останется на старом.
+      if (switching.current || switchBusy.current || conn === "connecting") return;
       setSelectedId(id);
-      if (!inTauri || conn !== "connected" || switching.current) return;
+      if (!inTauri || conn !== "connected") return;
       switching.current = true;
       switchBusy.current = true;
       setError("");
